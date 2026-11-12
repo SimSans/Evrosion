@@ -1,0 +1,1253 @@
+E-013 — Programming Languages
+
+
+Status: PRIMARY SYSTEMS LANGUAGE DECIDED
+Primary language: Rust
+Secondary-language policy: PARTIALLY DECIDED
+Detailed toolchain/runtime policy: TBD
+
+Decision
+
+Evrosion will use Rust as its primary systems programming language.
+
+Rust should be the default language for most first-party low-level and privileged components unless another language is demonstrably better for a specific task.
+
+The intent is to gain:
+
+- High performance
+- Low-level hardware control
+- Predictable systems behavior
+- Strong memory safety
+- Strong concurrency safety
+- Modern type safety
+- Reduced risk of use-after-free bugs
+- Reduced risk of double-free bugs
+- Reduced risk of dangling-pointer bugs
+- Reduced risk of accidental data races
+- Better reliability in privileged code
+
+This aligns strongly with Evrosion's goals of reliability, security, graceful degradation, modularity, and long-term maintainability.
+
+---
+
+E-013.1 — Primary Systems Language
+
+Rust
+
+Rust is the default language for areas such as:
+
+- Kernel/core
+- Core system libraries
+- System services
+- Driver infrastructure
+- First-party drivers where practical
+- Networking
+- Storage
+- Security components
+- Hardware management
+- IPC infrastructure
+- Capability/security systems
+- Update/recovery components
+- Core diagnostic tooling
+- Other performance-sensitive system software
+
+Exact component boundaries will be determined by later architecture work.
+
+---
+
+E-013.2 — Assembly
+
+Assembly should be used only where technically necessary.
+
+Likely uses include:
+
+- Initial CPU entry
+- Bootstrapping
+- Context switching
+- Interrupt/trap entry and exit
+- Architecture-specific CPU operations
+- Special register access
+- Extremely low-level platform initialization
+- Small optimized routines where justified
+
+Assembly should not be used merely because operating systems traditionally contain large amounts of it.
+
+Principle
+
+«Use Rust wherever possible. Use assembly where the hardware requires it.»
+
+Architecture-specific assembly should be:
+
+- Small
+- Isolated
+- Documented
+- Tested where possible
+- Wrapped behind safe or carefully controlled Rust interfaces
+
+---
+
+E-013.3 — Evrosion Is Not a Rust-Only Operating System
+
+Rust is Evrosion's primary implementation language, but Evrosion itself must remain language-neutral.
+
+The operating system should not require developers to write software exclusively in Rust.
+
+Evrosion should support software written in multiple languages through clearly defined interfaces.
+
+Potential languages include:
+
+- Rust
+- C
+- C++
+- Zig
+- Assembly
+- Managed languages
+- Scripting languages
+- Future languages that do not yet exist
+
+This applies to areas such as:
+
+- Applications
+- Services
+- Libraries
+- Drivers where supported
+- Developer tools
+- System extensions
+
+Principle
+
+«Evrosion may be built primarily in Rust without becoming architecturally dependent on Rust.»
+
+---
+
+E-013.4 — Language-Neutral System Interfaces
+
+Public Evrosion interfaces should be specified independently of Rust wherever practical.
+
+These may include:
+
+- System call ABI
+- IPC protocol
+- Capability interfaces
+- Driver interfaces
+- Service interfaces
+- Application APIs
+- Binary formats
+- Plugin/extension interfaces
+- System data formats
+
+Internal implementation may use Rust-specific abstractions, but external interfaces should not require another language to reproduce Rust's internal type system or ABI.
+
+This allows other languages to interact with Evrosion without needing to behave like Rust internally.
+
+---
+
+E-013.5 — C Interoperability
+
+C interoperability should be treated as a first-class compatibility requirement.
+
+C remains one of the most important interoperability languages in systems software.
+
+Supporting a clean C-compatible interface can make it easier to integrate:
+
+- Existing libraries
+- Hardware SDKs
+- Firmware interfaces
+- Drivers
+- Graphics libraries
+- Multimedia libraries
+- Cryptographic libraries
+- Development tools
+- Existing native software
+
+Rust's foreign-function interface can be used where appropriate, but Evrosion's compatibility model should not simply expose unstable Rust-specific ABIs.
+
+---
+
+E-013.6 — Other Systems Languages
+
+Other systems languages may be used where they provide a clear benefit.
+
+Possible examples include:
+
+Zig
+
+Potential uses:
+
+- Low-level utilities
+- Cross-compilation tooling
+- Bootstrapping tools
+- Build tooling
+- Experimental components
+- Components where Zig's simplicity or tooling provides an advantage
+
+C
+
+Potential uses:
+
+- Existing libraries
+- Hardware/vendor code
+- Compatibility components
+- Firmware interfaces
+- Legacy integration
+
+New privileged Evrosion code should generally prefer Rust unless a strong technical reason exists.
+
+C++
+
+Potential uses:
+
+- Existing libraries
+- Existing application ecosystems
+- Compatibility layers
+- Third-party applications
+
+Evrosion should support C++ software without requiring Evrosion's privileged core to be written in C++.
+
+---
+
+E-013.7 — Unsafe Rust Policy
+
+Rust does not eliminate the need for unsafe operations in operating-system development.
+
+Low-level tasks may inherently require "unsafe", including:
+
+- Raw memory access
+- MMIO
+- DMA
+- CPU registers
+- Interrupt handling
+- Context switching
+- Foreign-function interfaces
+- Certain synchronization primitives
+- Hardware initialization
+
+However, "unsafe" should be treated as a contained engineering tool rather than the default programming model.
+
+Proposed direction:
+
+- Keep unsafe regions small
+- Clearly document safety assumptions
+- Encapsulate unsafe internals behind safer interfaces
+- Review privileged unsafe code carefully
+- Avoid spreading raw pointers and unchecked state throughout the system
+- Test safety invariants aggressively
+
+Detailed unsafe-code policy remains TBD.
+
+---
+
+E-013.8 — Toolchain Independence
+
+Choosing Rust must not mean Evrosion becomes permanently dependent on one irreplaceable external toolchain or company.
+
+Future research should examine:
+
+- Rust compiler dependencies
+- LLVM dependency
+- Alternative Rust compiler efforts
+- Reproducible builds
+- Compiler bootstrapping
+- Long-term toolchain preservation
+- Offline compilation
+- Cross-compilation
+- Custom Evrosion Rust targets
+- Standard-library/runtime requirements
+- Long-term source compatibility
+
+This is particularly important because of:
+
+- F-010 No Irreplaceable Magic
+- F-011 Local First
+- F-012 Evolvability
+
+---
+
+E-013.9 — Bare-Metal Rust
+
+Evrosion's low-level Rust environment will likely operate without a conventional host operating system or full standard library in core areas.
+
+This may require:
+
+- "no_std" environments
+- Custom allocators
+- Custom panic handling
+- Custom runtime initialization
+- Architecture-specific target definitions
+- Custom synchronization primitives
+- Custom threading/process abstractions
+- Evrosion-specific standard/runtime libraries
+
+These details will be designed later alongside the kernel and memory architecture.
+
+---
+
+E-013.10 — Applications Are Separate From Core Language Choice
+
+The language used to implement Evrosion should not determine what language application developers must use.
+
+Evrosion should eventually support a broad application ecosystem.
+
+Application support may include:
+
+- Native Rust applications
+- C/C++ applications
+- Zig applications
+- Managed-language runtimes
+- Web technologies where appropriate
+- Scripting languages
+- Compatibility runtimes
+- Portable application frameworks
+
+Exact application-language support belongs primarily to E-015, E-016, and E-022.
+
+---
+
+E-013 Decision Summary
+
+Decided
+
+Primary systems language: Rust
+
+Assembly: Minimal and architecture-specific, used only when technically justified.
+
+Public OS interfaces: Language-neutral wherever practical.
+
+C compatibility: First-class requirement.
+
+Other languages: Supported rather than artificially excluded.
+
+Rust-specific ABI dependency: Avoid for public system interfaces.
+
+---
+
+Still To Be Decided
+
+- Exact Rust compiler/toolchain
+- LLVM dependence
+- Custom target definitions
+- Unsafe-code policy
+- Allocator architecture
+- Kernel runtime
+- Panic/error strategy
+- Standard-library strategy
+- Driver-language requirements
+- Application SDK languages
+- Scripting environment
+- Build system
+- Package/toolchain distribution
+- Reproducible-build strategy
+- Long-term compiler independence
+
+---
+
+Governing Principle
+
+«Rust will be Evrosion's primary systems language because it combines performance, low-level control, and strong safety guarantees. But Evrosion itself will remain language-neutral, interoperable, and open to whatever languages best serve its users and developers in the future.»
+
+E-013 — Programming Languages
+
+Continuation & Finalization
+
+Status: DECIDED AND CLOSED
+
+This section continues the original E-013 decision:
+
+- Rust is Evrosion's primary systems language.
+- Assembly is used only where technically necessary.
+- Public interfaces remain language-neutral.
+- C interoperability is first-class.
+- Other languages remain supported where appropriate.
+
+The following decisions complete E-013.
+
+---
+
+E-013.11 — Rust Environment for the Kernel
+
+The Evrosion kernel will use:
+
+«Rust "no_std" + "core", with "alloc" only where appropriate.»
+
+The kernel will never depend on the normal Rust "std" environment.
+
+"no_std" removes the normal standard-library runtime and leaves the portable "core" library. The separate "alloc" library can provide structures such as "Vec", "Box", and "Arc" once Evrosion supplies an allocator.
+
+Conceptually:
+
+Evrosion Kernel
+
+core
+│
+├── primitives
+├── Result / Option
+├── atomics
+└── fundamental Rust functionality
+
+alloc
+│
+├── Box
+├── Vec
+├── Arc
+└── collections
+
+Evrosion Kernel Runtime
+│
+├── memory allocation
+├── panic handling
+├── startup
+└── architecture integration
+
+---
+
+E-013.12 — Kernel Runtime
+
+Evrosion should provide a very small first-party Rust kernel runtime.
+
+Its responsibilities may include:
+
+- Kernel entry/startup
+- Panic handling
+- Allocator integration
+- Architecture-specific initialization
+- Required compiler runtime support
+- Low-level synchronization support
+- Minimal runtime hooks
+
+This runtime should remain small and auditable.
+
+It must not evolve into a hidden giant runtime underneath the kernel.
+
+---
+
+E-013.13 — Early Boot
+
+Early boot must not assume heap allocation exists.
+
+Initial kernel execution should primarily use:
+
+- Static memory
+- Stack memory
+- Boot-provided memory
+- Fixed/preallocated structures
+
+Once E-005's physical-memory and kernel-allocation systems are initialized, selected kernel components may use dynamic allocation.
+
+---
+
+E-013.14 — Allocation Policy
+
+Evrosion should not treat successful heap allocation as guaranteed.
+
+Critical code should use fallible allocation where practical.
+
+Rust already provides mechanisms such as "Vec::try_reserve", which reports allocation failure instead of blindly continuing.
+
+Important kernel paths should therefore prefer:
+
+«request memory → handle failure explicitly»
+
+rather than:
+
+«request memory → panic if unavailable»
+
+---
+
+E-013.15 — No Unbounded Allocation in Critical Paths
+
+Certain paths should avoid unbounded dynamic allocation entirely.
+
+Examples include:
+
+- Interrupt handling
+- Scheduler fast paths
+- IPC fast paths
+- Emergency recovery
+- Low-memory recovery
+- Certain lock-held regions
+
+These paths should use mechanisms such as:
+
+- Preallocated objects
+- Fixed pools
+- Bounded buffers
+- Reserved emergency memory
+
+Exact allocator algorithms remain part of later memory implementation work.
+
+---
+
+E-013.16 — Do Not Depend on Experimental Allocator APIs
+
+Rust supports a stable global-allocation model, but parts of its generic allocator API remain experimental.
+
+Evrosion's architecture should therefore not expose unstable Rust allocator APIs as permanent OS contracts.
+
+Evrosion should define its own stable memory interfaces and adapt Rust allocation internally.
+
+---
+
+E-013.17 — Unsafe Rust Is Allowed but Contained
+
+Operating-system development inevitably requires "unsafe" for operations such as:
+
+- MMIO
+- Raw pointers
+- Page tables
+- CPU registers
+- DMA
+- Interrupts
+- Context switching
+- FFI
+- Low-level synchronization
+
+Evrosion will therefore not prohibit "unsafe" entirely.
+
+Instead:
+
+«Unsafe code is treated as a small audited boundary around hardware or invariants that safe Rust cannot express.»
+
+---
+
+E-013.18 — Unsafe Boundary Crates
+
+Whenever practical, unsafe code should be concentrated into dedicated low-level modules/crates such as:
+
+arch
+hal
+mmio
+memory_lowlevel
+ffi
+context_switch
+interrupts
+
+Higher-level crates should use safe wrappers.
+
+Many crates may explicitly forbid unsafe code completely.
+
+---
+
+E-013.19 — Explicit Unsafe Blocks
+
+Evrosion will require unsafe operations to appear inside explicit "unsafe {}" blocks even inside "unsafe fn".
+
+Rust 2024 already warns when unsafe operations inside an unsafe function lack an explicit unsafe block; Evrosion should raise this policy to an error for privileged first-party code.
+
+Policy:
+
+deny(unsafe_op_in_unsafe_fn)
+
+---
+
+E-013.20 — Every Unsafe Block Requires Justification
+
+Every meaningful unsafe block must include a nearby explanation of the safety invariant.
+
+Example:
+
+// SAFETY:
+// `ptr` refers to the MMIO range exclusively assigned
+// to this device capability and remains valid for
+// the lifetime of this mapping.
+
+unsafe {
+    ...
+}
+
+Unsafe functions must document:
+
+- Preconditions
+- Validity requirements
+- Ownership assumptions
+- Concurrency assumptions
+- Lifetime assumptions
+
+Principle
+
+«Unsafe means "the compiler cannot prove this." It must never mean "we stopped thinking about safety."»
+
+---
+
+E-013.21 — Small Unsafe Regions
+
+Large unsafe regions should be avoided.
+
+Preferred:
+
+safe code
+safe validation
+tiny unsafe operation
+safe wrapper
+safe code
+
+Avoid:
+
+unsafe {
+    2,000 lines of kernel
+}
+
+The smaller the unsafe surface, the easier it is to audit.
+
+---
+
+E-013.22 — Unsafe Dependencies
+
+Third-party crates containing unsafe code may still be used where justified.
+
+However, privileged Evrosion components should strongly prefer:
+
+- Safe Rust
+- Small dependencies
+- Auditable dependencies
+- Well-maintained libraries
+
+Unsafe third-party code entering the trusted core requires explicit review.
+
+Detailed supply-chain verification belongs to E-014.
+
+---
+
+E-013.23 — Panic Philosophy
+
+Evrosion will distinguish between:
+
+Recoverable error
+
+Handled through:
+
+Result<T, Error>
+
+Broken program/kernel invariant
+
+May trigger:
+
+panic
+
+Principle
+
+«Expected failures return errors. Panics represent bugs or violated invariants.»
+
+Examples such as:
+
+- Device unavailable
+- File missing
+- Memory request rejected
+- Network disconnected
+
+are ordinary errors.
+
+They should not panic.
+
+---
+
+E-013.24 — Kernel Panic Strategy
+
+Production kernel code should use an abort-style panic strategy rather than stack unwinding.
+
+Rust explicitly supports "panic=abort".
+
+A kernel panic should conceptually:
+
+Invariant violation
+      ↓
+Stop unsafe continuation
+      ↓
+Record crash information
+      ↓
+Trigger emergency/recovery path
+      ↓
+Controlled halt/reboot/recovery
+
+Evrosion should not attempt to continue normal kernel operation after an invariant failure that may have invalidated trusted state.
+
+---
+
+E-013.25 — Kernel Crash Evidence
+
+Before controlled shutdown/recovery, the panic path should attempt to preserve minimal diagnostic information such as:
+
+- CPU/core
+- Faulting thread
+- Instruction location
+- Stack/backtrace where safe
+- Panic reason
+- Current generation
+- Relevant subsystem
+- Boot/session identifier
+
+The panic path itself must remain extremely small and dependable.
+
+Detailed debugging architecture belongs to E-020.
+
+---
+
+E-013.26 — System-Service Panic Strategy
+
+First-party privileged userspace services and drivers should generally use:
+
+«panic → terminate component»
+
+rather than unwinding through the entire component.
+
+E-006/E-007 supervision then handles:
+
+panic
+↓
+process terminates
+↓
+supervisor observes failure
+↓
+restart / rollback / quarantine
+
+This leverages Evrosion's fault-isolated architecture.
+
+---
+
+E-013.27 — Application Panic Strategy
+
+Ordinary applications are not required to use the same panic strategy as the kernel.
+
+Application runtimes may support:
+
+- Abort
+- Unwinding
+- Language-specific exception mechanisms
+
+Evrosion system interfaces must not depend on any particular application panic model.
+
+---
+
+E-013.28 — No Unwinding Across System Boundaries
+
+Panics or foreign exceptions should not cross Evrosion's public ABI/IPC boundaries.
+
+Rust distinguishes non-unwinding C ABI boundaries from "C-unwind" variants, and incorrect foreign unwinding can be unsafe.
+
+Evrosion system boundaries should therefore treat errors explicitly rather than relying on cross-component exception unwinding.
+
+---
+
+E-013.29 — No Rust ABI for Public Interfaces
+
+Rust's native ""Rust"" ABI explicitly provides no stability guarantees.
+
+Therefore Evrosion must never make the Rust ABI its permanent public OS ABI.
+
+Do not expose across stable binary boundaries:
+
+- Rust trait objects
+- Rust references
+- "Vec"
+- "String"
+- Native Rust enum layout
+- Generic Rust types
+- Rust-specific vtables
+- Rust unwinding assumptions
+
+---
+
+E-013.30 — Stable Cross-Language Boundaries
+
+Stable binary boundaries should instead use:
+
+- E-008 interface definitions
+- Explicit wire formats
+- Opaque handles
+- Fixed-width integers
+- Versioned structures
+- Explicit lengths
+- Explicit ownership rules
+- C-compatible calling conventions where direct ABI calls are required
+
+Rust's "extern "C"" uses the platform C calling convention, and Rust supports "#[repr(C)]" structures for C interoperability.
+
+Principle
+
+«Rust is the implementation language. Evrosion protocols belong to Evrosion.»
+
+---
+
+E-013.31 — C Interoperability Boundary
+
+C will remain Evrosion's primary lowest-common-denominator language ABI.
+
+C, C++, Zig and other systems languages can interface with Evrosion through:
+
+- Generated E-008 protocol bindings
+- C-compatible APIs
+- Opaque handles
+- Stable data layouts
+
+C++-specific ABI complexity should remain outside core Evrosion interfaces wherever practical.
+
+---
+
+E-013.32 — Integer Safety
+
+Release builds of privileged Evrosion code should keep integer-overflow checking enabled unless a measured reason requires otherwise.
+
+Cargo normally disables overflow checks in ordinary release profiles, so Evrosion should explicitly override that for trusted system code.
+
+Intentional arithmetic behavior should be explicit:
+
+checked_*
+wrapping_*
+saturating_*
+overflowing_*
+
+rather than relying on accidental overflow behavior.
+
+---
+
+E-013.33 — Bounds and Conversion Safety
+
+Privileged Evrosion code should prefer:
+
+- Bounds-checked access
+- Checked numeric conversions
+- Explicit parsing
+- Validated external input
+
+Unchecked access should require the same unsafe justification rules as other low-level operations.
+
+Performance exceptions must be benchmarked rather than assumed.
+
+---
+
+E-013.34 — "unwrap" / "expect" Policy
+
+Production privileged code should not casually use:
+
+unwrap()
+expect()
+
+for conditions that can fail because of:
+
+- Hardware
+- User input
+- Resource exhaustion
+- External data
+- Runtime state
+- Network conditions
+
+They may be used for genuinely proven invariants when the reason is explicit and reviewable.
+
+Tests and prototypes may use less restrictive policy.
+
+---
+
+E-013.35 — Stack Discipline
+
+Kernel code should avoid:
+
+- Unbounded recursion
+- Extremely large stack allocations
+- Unpredictable stack growth
+
+Kernel stacks are a limited privileged resource.
+
+Large or dynamic data should normally use appropriate bounded or allocated storage.
+
+---
+
+E-013.36 — Mutable Global State
+
+Privileged code should avoid uncontrolled mutable global state.
+
+Global state should instead use:
+
+- Ownership
+- Capability-controlled objects
+- Atomics
+- Explicit synchronization
+- Carefully scoped initialization
+
+Raw mutable globals should be treated as exceptional low-level mechanisms.
+
+---
+
+E-013.37 — Rust Version Strategy
+
+Evrosion should primarily target stable Rust.
+
+Nightly-only features may be used only when they are genuinely required for OS development and should be:
+
+- Isolated
+- Documented
+- Pinned
+- Tracked for eventual replacement/stabilization
+
+Principle
+
+«Do not make the whole OS dependent on nightly merely because one low-level operation requires it.»
+
+---
+
+E-013.38 — Rust Edition Strategy
+
+Evrosion should begin with the current stable Rust edition appropriate at development start and deliberately migrate between editions.
+
+The edition must not become a permanent architectural dependency.
+
+Edition migration should be treated as controlled maintenance rather than something that silently changes system behavior.
+
+---
+
+E-013.39 — Initial Bare-Metal Targets
+
+For early kernel bring-up, use official freestanding Rust targets where practical.
+
+Rust currently provides "x86_64-unknown-none" as a Tier-2 bare-metal target with prebuilt "core", no "std", kernel code model, and no red zone.
+
+ARM64 similarly has official bare-metal targets in Rust's supported-target system.
+
+This reduces the amount of custom compiler machinery required during early development.
+
+---
+
+E-013.40 — Native Evrosion Rust Targets
+
+Once Evrosion's ABI and userspace environment stabilize, create native Rust targets conceptually such as:
+
+x86_64-unknown-evrosion
+aarch64-unknown-evrosion
+riscv64-unknown-evrosion
+
+Exact target names remain TBD.
+
+The goal should eventually be to upstream official Evrosion target support into the Rust project rather than permanently depending on private compiler patches.
+
+---
+
+E-013.41 — Rust Standard Library Strategy
+
+The kernel remains permanently "no_std".
+
+Evrosion userspace should eventually support the normal Rust standard library.
+
+This provides compatibility with the wider Rust ecosystem.
+
+Rust already supports complete "std" implementations on nontraditional OS targets such as Fuchsia, demonstrating that this model is viable.
+
+The intended progression is:
+
+Early Kernel
+core only
+   ↓
+Kernel matures
+core + selected alloc
+   ↓
+Early Userspace
+Evrosion runtime + core/alloc
+   ↓
+Mature Userspace
+Full Rust std port
+
+---
+
+E-013.42 — Evrosion Native Rust Library
+
+In addition to ordinary "std", Evrosion should provide an Evrosion-native library/API exposing capabilities that generic Rust cannot represent naturally.
+
+Conceptually:
+
+evrosion::
+    capability
+    job
+    service
+    memory
+    driver
+    storage
+    network
+    recovery
+
+Portable applications can use normal Rust "std".
+
+Evrosion-native software can use richer Evrosion APIs.
+
+---
+
+E-013.43 — Do Not Fork Rust Standard Library Permanently
+
+Evrosion should avoid maintaining a completely independent permanent fork of Rust "std".
+
+Where possible:
+
+- Port upstream "std"
+- Contribute Evrosion target support upstream
+- Keep Evrosion-specific functionality in separate libraries
+
+This minimizes long-term maintenance burden.
+
+---
+
+E-013.44 — Compiler Backend Independence
+
+"rustc" remains the primary Rust compiler.
+
+LLVM is the practical primary code-generation backend initially.
+
+However, Evrosion's architecture must not depend on LLVM-specific behavior.
+
+Rust's compiler architecture currently has support for LLVM, Cranelift, and GCC code-generation backends.
+
+Evrosion should therefore avoid exposing:
+
+- LLVM IR
+- LLVM-specific type layouts
+- LLVM-only calling conventions
+- Backend-specific assumptions
+
+as OS architecture.
+
+---
+
+E-013.45 — Alternative Backend Validation
+
+Where practical in the future, parts of Evrosion should be compile-tested with alternative Rust backends.
+
+The goal is not necessarily to ship every backend.
+
+The goal is to avoid accidentally making:
+
+«Rust»
+
+mean:
+
+«LLVM forever.»
+
+Exact CI strategy belongs to E-014.
+
+---
+
+E-013.46 — Architecture-Specific Rust
+
+Architecture-specific code should be isolated behind clear modules.
+
+Example:
+
+arch/
+├── x86_64/
+├── aarch64/
+└── riscv64/
+
+Shared kernel logic should remain architecture-neutral wherever practical.
+
+Architecture-specific operations may use:
+
+- Rust intrinsics
+- Inline assembly
+- External assembly
+
+only behind narrow interfaces.
+
+---
+
+E-013.47 — Secondary Language Policy
+
+Kernel / Privileged Core
+
+Default:
+
+«Rust + minimal assembly»
+
+Other languages require exceptional justification.
+
+First-Party Drivers
+
+Default:
+
+«Rust»
+
+Existing vendor or compatibility code may use C/C++/other languages inside appropriate isolation boundaries.
+
+First-Party System Services
+
+Default:
+
+«Rust»
+
+Other languages may be used when technically justified.
+
+Compatibility Components
+
+May use:
+
+- Rust
+- C
+- C++
+- Zig
+- Other appropriate languages
+
+because reuse of existing ecosystems is important.
+
+Applications
+
+Evrosion should impose no unnecessary language restriction.
+
+---
+
+E-013.48 — Third-Party Language Freedom
+
+Third-party developers may use any language capable of correctly implementing Evrosion's ABI/protocols.
+
+The OS security model depends on:
+
+- Capabilities
+- Isolation
+- Protocol validation
+- Sandboxing
+
+not on forcing developers to use Rust.
+
+Principle
+
+«Rust makes Evrosion safer. Rust is not a requirement for participating in Evrosion.»
+
+---
+
+E-013.49 — Language Does Not Grant Trust
+
+A Rust component is not automatically trustworthy.
+
+A C component is not automatically malicious.
+
+Security decisions depend on:
+
+- Capabilities
+- Provenance
+- Isolation
+- Testing
+- Signing
+- Component role
+
+Rust reduces important categories of programming errors, but it does not replace the security architecture.
+
+---
+
+E-013.50 — Coding Standards
+
+First-party privileged Rust should follow strict coding rules.
+
+Core principles:
+
+- Format consistently
+- Treat compiler warnings seriously
+- Document public interfaces
+- Document all unsafe invariants
+- Prefer typed errors
+- Avoid unnecessary panics
+- Avoid unnecessary allocation
+- Keep unsafe code localized
+- Keep architecture-specific code isolated
+- Avoid hidden global state
+- Prefer explicit ownership
+- Keep abstractions measurable
+
+Exact automated tooling belongs to E-014.
+
+---
+
+E-013 Final Language Architecture
+
+                    EVROSION
+
+      ┌────────────────────────────────┐
+      │        Applications            │
+      │ Rust / C / C++ / Zig / etc.    │
+      └────────────────────────────────┘
+                       │
+              Stable Evrosion APIs
+                       │
+      ┌────────────────────────────────┐
+      │       System Services          │
+      │        Rust default            │
+      └────────────────────────────────┘
+                       │
+      ┌────────────────────────────────┐
+      │          Drivers               │
+      │        Rust default            │
+      └────────────────────────────────┘
+                       │
+      ┌────────────────────────────────┐
+      │     Privileged Kernel Core     │
+      │                                │
+      │     Rust no_std + core         │
+      │     selected alloc usage       │
+      │     minimal audited unsafe     │
+      │     minimal assembly           │
+      └────────────────────────────────┘
+                       │
+                    Hardware
+
+Public boundaries:
+
+Evrosion IDL / protocols
+Stable C-compatible ABI
+Opaque handles
+Versioned structures
+Capability objects
+
+Never:
+
+Permanent Rust ABI dependency
+
+---
+
+E-013 Final Summary
+
+Primary systems language: Rust
+
+Kernel: Rust "no_std"
+
+Kernel libraries: "core", selected "alloc"
+
+Assembly: Minimal, architecture-specific
+
+Unsafe: Permitted only as contained audited low-level boundaries
+
+Kernel panic: Abort/recovery, no unwinding
+
+System-service panic: Terminate component and let supervisor recover
+
+Recoverable failures: Typed "Result" errors
+
+Allocation: Explicit/fallible in critical code
+
+Overflow checking: Enabled for privileged release code by default
+
+Public ABI: Language-neutral
+
+Rust ABI: Never a permanent public system contract
+
+C ABI: First-class interoperability boundary
+
+Userspace Rust: Eventually full "std"
+
+Evrosion-native Rust API: Separate first-party system library
+
+Compiler: "rustc"
+
+Primary backend: LLVM initially
+
+Backend dependency: Not architectural
+
+Secondary languages: Fully permitted through defined interfaces
+
+First-party privileged code: Rust by default
+
+---
+
+Governing Principles
+
+«Use Rust's safety wherever possible and make every escape from that safety explicit.»
+
+«Expected failures return errors. Panics indicate broken invariants.»
+
+«The kernel must never depend on a userspace standard library.»
+
+«Rust is Evrosion's implementation language; Evrosion's ABI belongs to Evrosion.»
+
+«Never expose unstable Rust implementation details as permanent system interfaces.»
+
+«Use stable Rust wherever possible; iso

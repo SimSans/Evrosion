@@ -1,0 +1,45 @@
+{
+  "schema": 1,
+  "interface": "ev.app.private-data",
+  "version": 1,
+  "maturity": "Internal",
+  "wire": {
+    "bytes": 8,
+    "magic": "ND",
+    "endianness": "little",
+    "requests": {
+      "Read": {
+        "opcode": 1,
+        "value": 0
+      },
+      "SetValue": {
+        "opcode": 2,
+        "value": "u32"
+      }
+    },
+    "replies": {
+      "Value": {
+        "opcode": 3,
+        "value": "u32"
+      },
+      "Refused": {
+        "opcode": 4,
+        "reasons": {
+          "Denied": 1,
+          "Malformed": 2,
+          "Busy": 3,
+          "Storage": 4
+        }
+      }
+    }
+  },
+  "transport": {
+    "mode": "bounded_async",
+    "max_capabilities": 0,
+    "max_outstanding_per_actual_incarnation": 1,
+    "exchange": "one_read_then_optional_set",
+    "retry": "never_after_acceptance",
+    "completion": "Value_after_actual_durable_commit_for_set",
+    "authority": "authenticated_root_sender_namespace_and_incarnation_outside_wire"
+  }
+}

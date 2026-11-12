@@ -1,0 +1,2010 @@
+E-017 — Graphics & Display Architecture
+
+Status: ARCHITECTURAL DIRECTION DECIDED AND CLOSED
+
+Evrosion will use a:
+
+«Capability-Isolated Surface Graph with Adaptive Zero-Copy Composition»
+
+Applications render their own content.
+
+Evrosion controls how that content is securely composed, scheduled and presented.
+
+The graphics architecture must simultaneously provide:
+
+- Native high-performance rendering
+- Strong application isolation
+- Minimal copying
+- Direct display paths where possible
+- Smooth desktop composition
+- Gaming performance
+- Multi-display support
+- Multi-GPU support
+- HDR and modern color handling
+- Variable refresh
+- Fractional scaling
+- Accessibility
+- Screen-capture security
+- GPU failure containment
+- Trusted security/recovery display
+- Compatibility with foreign graphics APIs
+- Graceful operation on weak/old hardware
+
+The central principles are:
+
+«Applications render. Evrosion composes. Hardware scans out.»
+
+and:
+
+«Modularity belongs on the control path. Performance stays on the fast data path.»
+
+---
+
+E-017.1 — Major Graphics Components
+
+Evrosion should logically separate:
+
+GPU Device Service
+Display Service
+Surface / Composition Service
+Desktop Shell
+Input / Focus Service
+Accessibility Service
+Trusted Control Plane
+
+These components may be co-located where measured performance justifies it.
+
+Their responsibilities remain logically separate.
+
+---
+
+E-017.2 — Applications Render Their Own Content
+
+Evrosion should not use a central display server to draw every application's controls and content.
+
+Instead:
+
+Application
+    ↓
+UI framework / rendering engine / Vulkan
+    ↓
+Application-owned image
+    ↓
+Evrosion Surface
+    ↓
+Composition
+    ↓
+Display
+
+This avoids unnecessary rendering indirection.
+
+---
+
+E-017.3 — Native Graphics Path
+
+The ideal native path is:
+
+Application
+    ↓
+Native renderer
+    ↓
+GPU image / Memory Object
+    ↓
+Surface Present
+    ↓
+Composition Planner
+    ↓
+Display
+
+No compatibility system participates in this path.
+
+---
+
+E-017.4 — Vulkan Is the First-Class Low-Level Graphics API
+
+Evrosion should initially use:
+
+«Vulkan»
+
+as its principal native low-level GPU rendering API.
+
+Evrosion should not invent a proprietary low-level graphics API merely for uniqueness.
+
+Vulkan already provides mature concepts for:
+
+- GPU devices
+- command queues
+- memory
+- synchronization
+- rendering
+- compute
+- images
+- presentation
+- swapchains
+
+---
+
+E-017.5 — Evrosion Vulkan Platform Integration
+
+Evrosion should provide native Vulkan window-system integration.
+
+Conceptually:
+
+VkSurfaceKHR
+     ↓
+Evrosion Surface
+     ↓
+Evrosion presentation system
+
+The precise Vulkan platform extension mechanism remains an implementation/toolchain matter.
+
+Applications should experience Evrosion as a normal Vulkan platform.
+
+---
+
+E-017.6 — Vulkan API Is Stable; GPU Driver ABI Is Not Automatically Stable
+
+Application-facing Vulkan compatibility does not mean permanently freezing Evrosion's internal GPU-driver architecture.
+
+The path may be:
+
+Vulkan Application API
+        ↓
+Vulkan loader/runtime
+        ↓
+Evrosion GPU protocol
+        ↓
+GPU driver
+
+The internal driver protocol may evolve under E-006/E-015 versioning rules.
+
+---
+
+E-017.7 — Higher-Level Applications Do Not Need Vulkan Knowledge
+
+Ordinary Evrosion applications should normally use a first-party or compatible UI/rendering framework.
+
+Conceptually:
+
+Application
+    ↓
+Evrosion UI Framework
+    ↓
+Renderer
+    ↓
+Vulkan
+
+or on constrained/fallback systems:
+
+Evrosion UI Framework
+    ↓
+Software renderer
+
+The exact native UI toolkit is not permanently decided by E-017.
+
+---
+
+E-017.8 — Foreign Graphics APIs
+
+Foreign graphics APIs should translate toward Evrosion's native GPU path where practical.
+
+Examples:
+
+Direct3D
+    ↓
+DXVK / VKD3D-style translation
+    ↓
+Vulkan
+
+OpenGL
+    ↓
+Native implementation or translation
+    ↓
+Evrosion GPU stack
+
+This supports E-016 without requiring parallel kernel graphics architectures.
+
+---
+
+E-017.9 — Surface Objects
+
+Visible application content should be represented through capability-controlled:
+
+«Surface Objects»
+
+A Surface represents application content intended for presentation.
+
+An application receives authority over its own surfaces, not unrestricted access to the global desktop.
+
+---
+
+E-017.10 — Surface Capabilities
+
+Surface authority may allow operations such as:
+
+- Present content
+- Resize
+- Attach child surfaces
+- Set metadata
+- Receive visibility information
+- Receive presentation feedback
+- Destroy surface
+- Transfer limited surface relationships
+
+Holding one surface does not grant authority over unrelated surfaces.
+
+---
+
+E-017.11 — Surface Hierarchy
+
+Applications may construct controlled local hierarchies.
+
+Example:
+
+Application View
+├── Main content
+├── Dialog
+├── Menu
+├── Tooltip
+└── Video surface
+
+The compositor integrates these into the global scene.
+
+---
+
+E-017.12 — No Ambient Global Desktop Authority
+
+Normal applications should not automatically receive:
+
+- Other applications' surfaces
+- Global z-order
+- Arbitrary window contents
+- Global display buffers
+- Other applications' input
+- Global screen-capture authority
+
+This follows E-009.
+
+---
+
+E-017.13 — Global Coordinates Are Not a Basic Application Right
+
+Applications should normally reason in their own logical coordinate system.
+
+Example:
+
+Surface:
+1200 × 800 logical units
+
+The Desktop Shell/compositor determines global placement.
+
+Applications may receive information needed for legitimate layout without gaining arbitrary desktop inspection.
+
+---
+
+E-017.14 — Window Roles Instead of Unrestricted Placement
+
+Applications may request semantic roles such as:
+
+- Normal window
+- Dialog
+- Popup
+- Tooltip
+- Menu
+- Fullscreen
+- Picture-in-picture
+
+The shell decides placement and policy.
+
+Applications do not automatically control global z-order.
+
+---
+
+E-017.15 — Privileged Presentation Requires Capability
+
+Functions such as:
+
+- Always-on-top system overlays
+- Global overlays
+- Lock-screen presentation
+- Secure prompts
+- Screen-wide annotation
+
+require explicit authority.
+
+---
+
+E-017.16 — Memory Objects Form the Buffer Foundation
+
+E-005 Memory Objects should be reused for graphics rather than creating an unrelated shared-memory system.
+
+GPU-capable objects may extend the Memory Object model with:
+
+- Device mappings
+- Image layout
+- Format
+- Tiling
+- Usage
+- Import/export metadata
+- Synchronization
+
+---
+
+E-017.17 — GPU Image Objects
+
+The implementation may provide specialized GPU/Image Memory Objects.
+
+They remain capability-controlled.
+
+Possible rights include:
+
+MAP
+RENDER
+SAMPLE
+TRANSFER
+SCANOUT
+EXPORT
+IMPORT
+
+The exact rights remain resource-specific.
+
+---
+
+E-017.18 — Zero-Copy Is the Preferred Path
+
+Where hardware and security permit:
+
+Application renders image
+          ↓
+same image referenced by compositor
+          ↓
+same image scanned out
+
+Avoid:
+
+Application image
+ ↓ copy
+Compositor image
+ ↓ copy
+Display image
+
+unless technically required.
+
+Principle
+
+«Never copy a frame when the same buffer can safely travel by reference.»
+
+---
+
+E-017.19 — Explicit Synchronization
+
+Buffer ownership between:
+
+- Application
+- GPU
+- Compositor
+- Display hardware
+
+must use explicit synchronization where practical.
+
+Conceptually:
+
+Render starts
+    ↓
+Acquire/ready synchronization
+    ↓
+Compositor/display uses buffer
+    ↓
+Release synchronization
+    ↓
+Application may reuse buffer
+
+---
+
+E-017.20 — Avoid CPU Waiting on GPU Work
+
+The normal graphics path should not require the CPU to synchronously wait for every GPU operation.
+
+Fences/timelines should allow asynchronous pipelining.
+
+---
+
+E-017.21 — Transactional Present
+
+Applications should submit coherent surface state through an atomic presentation operation.
+
+Conceptually:
+
+Surface Update
+├── Image
+├── Damage
+├── Logical dimensions
+├── Transform
+├── Scale
+├── Opacity
+├── Color information
+├── HDR metadata
+├── Synchronization
+└── Presentation intent
+
+Present()
+
+The state becomes eligible for display as one logical update.
+
+---
+
+E-017.22 — Partial Updates
+
+Applications should be able to describe changed/damaged regions.
+
+The compositor may avoid processing unchanged areas where beneficial.
+
+---
+
+E-017.23 — Presentation Feedback
+
+Applications should receive meaningful presentation information.
+
+Potential feedback:
+
+- Frame accepted
+- Target presentation time
+- Frame actually displayed
+- Frame skipped
+- Surface occluded
+- Refresh interval
+- Resource reusable
+
+This enables proper pacing.
+
+---
+
+E-017.24 — Presentation Backpressure
+
+Applications must not be allowed to submit unlimited pending frames.
+
+The graphics protocol should include bounded presentation flow control.
+
+Potential mechanism:
+
+«Presentation credits.»
+
+This prevents clients from exhausting memory or queues.
+
+---
+
+E-017.25 — Surface Graph
+
+The compositor should maintain a retained graph of visible surface relationships.
+
+Example:
+
+Display
+│
+├── Desktop
+│
+├── Application A
+│   ├── Main Surface
+│   └── Dialog
+│
+├── Application B
+│
+├── System Overlay
+│
+└── Cursor
+
+---
+
+E-017.26 — 2D-First Composition Model
+
+The system compositor should primarily model:
+
+- Rectangles
+- Position
+- Scale
+- Rotation
+- Crop
+- Opacity
+- Clipping
+- Layer relationships
+- Simple effects
+
+It should not become an arbitrary 3D scene engine.
+
+Principle
+
+«Do not build a general-purpose 3D engine merely to display windows.»
+
+---
+
+E-017.27 — 3D Belongs Inside Application Surfaces
+
+Games, CAD software and visualization programs remain free to render arbitrary 3D content.
+
+They produce a 2D image/surface for the system compositor.
+
+---
+
+E-017.28 — Composition Planner
+
+For every frame, Evrosion should determine the cheapest correct presentation path.
+
+Conceptually:
+
+Scene
+  ↓
+Composition Planner
+  ↓
+Hardware planes possible?
+   ├── Yes → direct/hardware composition
+   └── No  → GPU composition
+
+---
+
+E-017.29 — Direct Scanout
+
+When a surface fully occupies a display and satisfies hardware/security requirements:
+
+Application Buffer
+        ↓
+Display Plane
+
+The compositor does not need to redraw those pixels.
+
+---
+
+E-017.30 — Hardware Overlay Planes
+
+Where supported, multiple surfaces may be assigned directly to hardware display planes.
+
+Example:
+
+Primary desktop plane
+Video overlay plane
+Cursor plane
+
+This can save:
+
+- GPU work
+- memory bandwidth
+- power
+- latency
+
+---
+
+E-017.31 — Direct Presentation Is an Optimization, Not a Contract
+
+Applications must never depend on receiving direct scanout.
+
+The system may disable it because of:
+
+- Secure overlays
+- Screen capture
+- Color conversion
+- Effects
+- Scaling
+- Hardware limitations
+- Multi-GPU transfer
+- Accessibility overlays
+
+Correctness must remain unchanged.
+
+---
+
+E-017.32 — GPU Composition Fallback
+
+When hardware planes cannot represent the scene:
+
+Surface buffers
+      ↓
+GPU compositor
+      ↓
+Final image
+      ↓
+Display
+
+---
+
+E-017.33 — Software / Basic Composition Fallback
+
+If accelerated graphics are unavailable:
+
+Surfaces
+   ↓
+Basic software renderer
+   ↓
+Framebuffer/display
+
+The fallback does not need advanced effects.
+
+It exists to preserve usability and recovery.
+
+---
+
+E-017.34 — Display Service
+
+Physical output management should belong to a dedicated:
+
+«Display Service»
+
+It handles concepts including:
+
+- Display discovery
+- Output capabilities
+- Modes
+- Resolution
+- Refresh rate
+- Planes
+- Rotation
+- Scaling capability
+- HDR capability
+- Color capability
+- VRR
+- Brightness where applicable
+- Hotplug
+- Atomic configuration
+
+---
+
+E-017.35 — Display Service Is Not the Desktop Shell
+
+The Desktop Shell may request display changes.
+
+It does not directly own display hardware.
+
+This allows the shell to crash/restart without destroying physical display authority.
+
+---
+
+E-017.36 — Atomic Display Configuration
+
+Display reconfiguration should be transactional.
+
+Example candidate state:
+
+Display A:
+3840×2160
+144 Hz
+HDR
+VRR
+
+Display B:
+2560×1440
+165 Hz
+rotation 90°
+
+The entire state should be validated before commit.
+
+Avoid partially applying an invalid configuration.
+
+---
+
+E-017.37 — Failed Display Configuration Rollback
+
+If a display mode cannot successfully activate:
+
+Stage
+ ↓
+Validate
+ ↓
+Activate
+ ↓
+Confirm health
+ ↓
+Commit
+
+Failure should restore the previous working state where possible.
+
+---
+
+E-017.38 — Logical Coordinates
+
+Evrosion UI must not assume physical pixels are equivalent to interface dimensions.
+
+Use logical coordinates.
+
+Physical display density and scaling are separate concepts.
+
+---
+
+E-017.39 — Per-Display Scaling
+
+Different displays may simultaneously use different scale factors.
+
+Applications should handle moving between displays without assuming one global DPI.
+
+---
+
+E-017.40 — Fractional Scaling
+
+Fractional scaling must be part of the architecture from the beginning.
+
+Examples:
+
+100%
+125%
+150%
+175%
+200%
+
+Applications should receive preferred rendering scale information.
+
+---
+
+E-017.41 — High-DPI Rendering
+
+Applications should preferably render at appropriate resolution rather than relying solely on bitmap stretching by the compositor.
+
+Fallback scaling remains possible for incompatible software.
+
+---
+
+E-017.42 — Color Is a First-Class Property
+
+Evrosion must not assume all surfaces are permanently:
+
+«8-bit sRGB.»
+
+Surfaces should eventually describe:
+
+- Color space
+- Transfer function
+- Bit depth
+- Content luminance
+- HDR metadata
+
+---
+
+E-017.43 — Display Color Capability
+
+Display Service should understand the output's supported:
+
+- Color spaces
+- Bit depths
+- HDR modes
+- Luminance
+- Transfer functions
+
+---
+
+E-017.44 — Mixed SDR/HDR Composition
+
+The architecture should permit:
+
+SDR desktop
+HDR video
+HDR game
+Wide-gamut photo
+
+to coexist correctly.
+
+Necessary conversion/tone mapping may be performed by the composition pipeline.
+
+---
+
+E-017.45 — Variable Refresh Rate
+
+VRR should be a native display capability.
+
+Applications do not directly own VRR policy.
+
+They may express presentation intent.
+
+The system determines whether VRR can or should be used.
+
+---
+
+E-017.46 — Presentation Intent
+
+Applications may provide hints such as:
+
+Interactive
+Latency-sensitive
+Game
+Video
+Power-efficient
+Background
+
+These hints inform scheduling.
+
+They are not unchecked authority over hardware.
+
+---
+
+E-017.47 — Frame Scheduling
+
+The compositor should coordinate frame preparation with expected display presentation.
+
+Applications may receive:
+
+- Future presentation opportunities
+- Expected timing
+- Refresh duration
+- Visibility information
+
+This supports smooth pacing and lower latency.
+
+---
+
+E-017.48 — Occlusion Awareness
+
+A completely hidden application should not need to render continuously.
+
+The system may notify it:
+
+Occluded
+
+and permit/throttle reduced rendering.
+
+---
+
+E-017.49 — Background Rendering Control
+
+Background/hidden graphical Jobs may have reduced GPU priority or frame rates according to policy.
+
+This integrates with E-004.
+
+---
+
+E-017.50 — GPU Device Service
+
+GPU resource control should belong to a dedicated logical subsystem.
+
+Responsibilities may include:
+
+- GPU discovery
+- Context creation
+- Queue creation
+- Memory authorization
+- GPU accounting
+- Device capabilities
+- Scheduling integration
+- Reset/recovery coordination
+- Driver communication
+
+---
+
+E-017.51 — Applications Do Not Receive Raw GPU Authority by Default
+
+Normal applications should not directly receive unrestricted:
+
+- MMIO
+- PCI configuration
+- Arbitrary DMA
+- Global GPU memory
+- Other clients' contexts
+
+They receive scoped graphics resources.
+
+---
+
+E-017.52 — Fast GPU Data Path
+
+GPU command submission must not require slow synchronous service calls for every command.
+
+Control:
+
+IPC
+
+Data/commands:
+
+Shared command buffers
+Queues
+Memory Objects
+Synchronization objects
+
+This follows E-008.
+
+---
+
+E-017.53 — GPU Isolation
+
+Where supported by hardware/driver design, GPU contexts should isolate application resources.
+
+IOMMU protection should apply to relevant DMA paths where hardware permits.
+
+A compromised graphics client should not gain arbitrary system memory access.
+
+---
+
+E-017.54 — GPU Job Accounting
+
+GPU activity should integrate with E-004 Jobs.
+
+Example:
+
+Game Job
+├── CPU
+├── Memory
+├── Network
+└── GPU
+
+Evrosion should eventually report graphics usage at logical workload level.
+
+---
+
+E-017.55 — GPU Scheduling
+
+GPU scheduling should account for:
+
+- Interactive responsiveness
+- Foreground workloads
+- Background compute
+- Desktop composition
+- Trusted UI
+- Video
+- Games
+
+Exact guarantees depend on GPU hardware and driver capabilities.
+
+---
+
+E-017.56 — Protected Graphics Responsiveness
+
+The compositor, pointer/cursor path and Trusted Control Plane should receive enough protected GPU/graphics resources to remain responsive where possible.
+
+A compute workload consuming the GPU should not unnecessarily freeze basic desktop control.
+
+---
+
+E-017.57 — Do Not Promise Hardware Guarantees the GPU Cannot Provide
+
+Not all GPUs expose sufficient preemption or scheduling control.
+
+Where strict isolation/latency guarantees cannot be provided, Evrosion should report reduced capability rather than pretend otherwise.
+
+This follows graceful degradation.
+
+---
+
+E-017.58 — Multi-GPU Is Architecturally First-Class
+
+Evrosion must not assume:
+
+«one machine = one GPU.»
+
+Potential systems include:
+
+Integrated GPU
+Discrete GPU
+External GPU
+Virtual GPU
+
+---
+
+E-017.59 — Rendering GPU and Display GPU May Differ
+
+Example:
+
+Application renders on discrete GPU
+          ↓
+Image exported/shared
+          ↓
+Integrated GPU drives display
+
+The system should support this where hardware allows.
+
+---
+
+E-017.60 — Cross-GPU Sharing
+
+Preferred order:
+
+Direct shared/importable memory
+       ↓ if unavailable
+Efficient device transfer
+       ↓ if unavailable
+Explicit copy
+
+The system should avoid unnecessary copies without pretending zero-copy is always possible.
+
+---
+
+E-017.61 — GPU Selection
+
+Applications should normally express requirements rather than manually hardcoding a GPU.
+
+Examples:
+
+High performance
+Low power
+Compute heavy
+Display attached
+
+Evrosion may select the appropriate device.
+
+Layer 2/3 may allow override.
+
+---
+
+E-017.62 — Power-Aware GPU Selection
+
+Laptop workloads should not unnecessarily activate a high-power discrete GPU.
+
+The system may prefer integrated graphics for ordinary desktop workloads.
+
+High-performance applications may trigger another device.
+
+---
+
+E-017.63 — GPU Fault Detection
+
+The graphics system should detect:
+
+- Context faults
+- Engine faults
+- GPU hangs
+- Driver crashes
+- Submission timeouts
+- Device disappearance
+
+Failure must become explicit state.
+
+---
+
+E-017.64 — Graphics Recovery Ladder
+
+Preferred escalation:
+
+Faulting application/context
+        ↓
+Reset affected context
+        ↓
+Reset affected engine
+        ↓
+Restart GPU driver/domain
+        ↓
+Reinitialize GPU
+        ↓
+Restore presentation
+        ↓
+Fallback graphics
+        ↓
+Trusted recovery interface
+
+Use the smallest safe recovery unit.
+
+---
+
+E-017.65 — GPU Reset Is Not Magically Transparent
+
+A GPU reset may destroy:
+
+- Device contexts
+- Command queues
+- GPU-only allocations
+- Pipeline state
+
+Applications must receive explicit device-lost/recovery notification where required.
+
+They should recreate GPU state.
+
+---
+
+E-017.66 — Applications Should Survive Graphics-Service Failure Where Possible
+
+A compositor crash should not automatically terminate application processes.
+
+Applications still own their:
+
+- CPU state
+- App data
+- Non-graphics resources
+- Recoverable rendering state
+
+Presentation may temporarily disappear.
+
+---
+
+E-017.67 — Compositor Restart Model
+
+If the compositor fails:
+
+Compositor fails
+      ↓
+Service supervisor restarts it
+      ↓
+Applications reconnect
+      ↓
+Applications recreate/resubmit surfaces
+      ↓
+Desktop scene reconstructed
+
+The OS should make this fast.
+
+---
+
+E-017.68 — No False Promise of Perfect Pixel Continuity
+
+Evrosion should not promise that every compositor or GPU failure can be completely invisible.
+
+The contractual goal is:
+
+«Preserve applications and recover presentation without requiring a machine reboot whenever technically possible.»
+
+---
+
+E-017.69 — Desktop Shell Is Replaceable Policy
+
+The Desktop Shell owns policy such as:
+
+- Window placement
+- Decorations
+- Panels
+- Workspaces
+- User-facing window management
+- Animations
+- Desktop layout
+- Layer-specific presentation
+
+It should not own the fundamental graphics device.
+
+---
+
+E-017.70 — Shell Crash Does Not Equal Compositor Crash
+
+Preferred behavior:
+
+Shell crash
+   ↓
+Application surfaces remain alive
+   ↓
+Compositor remains functional
+   ↓
+Shell restarts
+   ↓
+Window-management policy reconstructed
+
+This is a major reliability objective.
+
+---
+
+E-017.71 — Shell Replacement
+
+Evrosion's customization philosophy should eventually permit alternate shells/window policies without replacing:
+
+- Kernel
+- GPU driver
+- Display Service
+- Trusted Control Plane
+
+This supports F-009 and user ownership.
+
+---
+
+E-017.72 — Trusted Control Plane
+
+Security/recovery presentation must not depend entirely on the normal Desktop Shell.
+
+The Trusted Control Plane from E-009/E-012 should have protected graphics authority.
+
+---
+
+E-017.73 — Protected Surfaces
+
+Trusted system UI may use protected presentation roles.
+
+Ordinary applications must not be able to:
+
+- Draw above secure attention
+- Spoof trusted prompts perfectly
+- Capture protected surfaces without authorization
+- Redirect trusted input
+
+---
+
+E-017.74 — Secure Attention
+
+Secure Attention should bypass ordinary application/shell input routing.
+
+Conceptually:
+
+Hardware input
+     ↓
+Kernel-recognized Secure Attention
+     ↓
+Trusted Control Plane
+     ↓
+Protected presentation
+
+---
+
+E-017.75 — Trusted UI May Use Normal Acceleration
+
+When graphics are healthy, Trusted Control may use the accelerated compositor.
+
+But it must not depend exclusively on it.
+
+---
+
+E-017.76 — Trusted Basic Display Fallback
+
+If accelerated graphics are unavailable:
+
+Trusted Control
+      ↓
+Basic renderer/framebuffer
+      ↓
+Display
+
+This allows:
+
+- Authentication
+- Recovery
+- Driver rollback
+- Reboot
+- Diagnostics
+
+without the normal compositor.
+
+---
+
+E-017.77 — Preserve Boot Framebuffer Where Practical
+
+E-012's framebuffer handoff should integrate directly with E-017.
+
+Preferred transition:
+
+Firmware framebuffer
+        ↓
+Evrosion boot graphics
+        ↓
+Basic display service
+        ↓
+Accelerated GPU stack
+        ↓
+Desktop compositor
+
+Avoid unnecessary black-screen mode transitions.
+
+---
+
+E-017.78 — Generic Graphics Fallback
+
+Where available, Evrosion should maintain enough generic display functionality to remain usable without full vendor acceleration.
+
+Performance may be reduced.
+
+Control should remain.
+
+---
+
+E-017.79 — Input Is Not Owned by the Compositor
+
+Raw input should belong to the input subsystem rather than making the compositor the root of all input authority.
+
+Conceptually:
+
+Input devices
+      ↓
+Input Service
+      ↓
+Focus/Hit-Test routing
+      ↓
+Application
+
+The scene graph provides geometry needed for routing.
+
+---
+
+E-017.80 — Focus Is Explicit State
+
+Keyboard/pointer focus should be represented as structured state rather than emergent behavior.
+
+Possible focus classes include:
+
+- Keyboard focus
+- Pointer target
+- Accessibility focus
+- Secure attention
+- Modal ownership
+
+Exact details remain for implementation.
+
+---
+
+E-017.81 — Applications Cannot Steal Focus Arbitrarily
+
+Applications may request attention.
+
+The shell/focus policy determines whether focus changes.
+
+Secure/trusted components use separate authority.
+
+---
+
+E-017.82 — Hit Testing
+
+The composition system knows visible surface geometry.
+
+This may be used to identify the destination surface for pointer input.
+
+Application-local hit testing remains the application's/UI framework's responsibility.
+
+---
+
+E-017.83 — Screen Capture Is a Capability
+
+Capturing:
+
+Own application
+
+and capturing:
+
+Entire desktop
+
+are fundamentally different authorities.
+
+Global capture requires explicit permission.
+
+---
+
+E-017.84 — Capture Portal
+
+Ordinary screen sharing should preferably use a selection flow:
+
+Application requests capture
+        ↓
+Evrosion trusted selection UI
+        ↓
+User chooses:
+  Window
+  Display
+  Region
+        ↓
+Scoped capture capability
+
+---
+
+E-017.85 — Screen Recording
+
+Screen recording follows the same capability model as capture.
+
+Capabilities may be temporary/session-bound.
+
+---
+
+E-017.86 — Protected Content
+
+Certain surfaces may be marked as non-capturable or protected where security/privacy policy requires it.
+
+The owner retains ultimate control according to E-009/Layer 3 policy.
+
+Protection must not silently become vendor DRM ownership of the machine.
+
+---
+
+E-017.87 — Clipboard Is Not a Graphics Side Effect
+
+Clipboard functionality should remain a separate system service/capability.
+
+The compositor should not become responsible for all desktop data exchange.
+
+---
+
+E-017.88 — Drag and Drop Is Structured Data Transfer
+
+Drag-and-drop should transfer capabilities/data through explicit system protocols.
+
+It should not imply that one application gains unrestricted access to another.
+
+---
+
+E-017.89 — Accessibility Is Parallel to Pixels
+
+Every interactive application should expose:
+
+Visual Surface
++
+Semantic Accessibility Tree
+
+Pixels describe appearance.
+
+The semantic tree describes meaning.
+
+---
+
+E-017.90 — Semantic Tree
+
+Possible semantic nodes include:
+
+- Window
+- Button
+- Checkbox
+- Text field
+- Heading
+- Image
+- List
+- Table
+- Slider
+- Document
+- Menu
+
+Nodes may expose:
+
+- Role
+- Label
+- State
+- Value
+- Actions
+- Relationships
+- Bounds
+
+---
+
+E-017.91 — Accessibility Updates Are Transactional
+
+Large semantic updates may be prepared incrementally and committed as a coherent state.
+
+Accessibility services should never observe half-updated trees where avoidable.
+
+---
+
+E-017.92 — Accessibility Actions
+
+Authorized accessibility services should be able to perform semantic actions such as:
+
+- Activate
+- Focus
+- Increment
+- Decrement
+- Scroll/show
+- Select
+
+without simulating blind pointer clicks.
+
+---
+
+E-017.93 — Accessibility Focus Is Distinct
+
+Accessibility focus may differ from ordinary keyboard focus.
+
+The architecture should explicitly support this distinction.
+
+---
+
+E-017.94 — First-Party UI Must Expose Semantics
+
+The eventual Evrosion UI toolkit must make accessibility semantics straightforward and preferably automatic for standard controls.
+
+Developers should need to work to make something inaccessible, not work excessively to make ordinary controls accessible.
+
+---
+
+E-017.95 — Recovery UI Accessibility
+
+Trusted/recovery interfaces must support accessibility to the greatest technically practical degree.
+
+At minimum, recovery should not assume that every owner can:
+
+- See small text
+- Use a mouse
+- Distinguish color alone
+- Hear sounds
+
+Capabilities may be reduced during early boot, but limitations must be explicit.
+
+---
+
+E-017.96 — Color Must Not Be the Only Meaning Channel
+
+System state should not be represented solely through:
+
+«green good / red bad.»
+
+Icons, text/state or equivalent semantics must exist.
+
+---
+
+E-017.97 — Motion Controls
+
+The compositor/shell should support preferences such as:
+
+- Reduced motion
+- Disabled animations
+- Animation scaling
+
+This preference should propagate through first-party UI frameworks.
+
+---
+
+E-017.98 — Virtual Displays
+
+The architecture should support non-physical outputs.
+
+Examples:
+
+- Remote desktop
+- Virtual machine display
+- Streaming
+- Testing
+- Headless rendering
+- Screen recording pipelines
+
+These should use the same surface/composition concepts.
+
+---
+
+E-017.99 — Headless Operation
+
+Systems without a physical display must still be able to run graphical applications against virtual outputs where desired.
+
+This supports servers, testing and remote use.
+
+---
+
+E-017.100 — Observability
+
+Graphics state should be structured and inspectable.
+
+Evrosion should eventually understand:
+
+- Displays
+- Modes
+- GPUs
+- GPU driver
+- GPU Jobs
+- Surfaces
+- Frame rate
+- Frame latency
+- Dropped frames
+- Direct-scanout status
+- Composition path
+- Memory usage
+- Color mode
+- HDR
+- VRR
+- Scale
+- GPU faults
+- Driver resets
+
+---
+
+E-017.101 — Layer 1 Graphics UX
+
+Layer 1 should expose simple concepts.
+
+Example:
+
+«Display connected.»
+
+«Graphics recovered after a temporary problem.»
+
+«This application is using high-performance graphics.»
+
+No unnecessary driver jargon.
+
+---
+
+E-017.102 — Layer 2 Graphics UX
+
+Layer 2 may expose:
+
+- Resolution
+- Refresh
+- HDR
+- Scaling
+- GPU selection
+- Per-application graphics preference
+- Screen sharing
+- Color settings
+- Displays
+- GPU utilization
+- Basic diagnostics
+
+---
+
+E-017.103 — Layer 3 Graphics UX
+
+Layer 3 may expose:
+
+- GPU contexts
+- Memory mappings
+- Queue state
+- Display planes
+- Surface tree
+- Driver state
+- Synchronization
+- Composition decisions
+- VRR state
+- Buffer formats
+- Manual GPU selection
+- Raw diagnostics
+- Driver restart
+- Low-level display control
+
+---
+
+E-017.104 — Compatibility Applications Use the Same Presentation System
+
+A Windows/Linux/macOS compatibility application should eventually appear as an Evrosion surface.
+
+Example:
+
+Windows application
+        ↓
+Compatibility graphics
+        ↓
+Evrosion GPU path
+        ↓
+Evrosion Surface
+        ↓
+Compositor
+
+Foreign software should not require an unrelated desktop stack where integration is possible.
+
+---
+
+E-017.105 — Compatibility Must Not Own the Display
+
+Wine/Linux/macOS compatibility environments should not normally receive unrestricted physical-display authority.
+
+Their applications participate as Evrosion applications.
+
+---
+
+E-017.106 — Performance Measurements
+
+Evrosion must benchmark graphics architecture decisions.
+
+Important measurements include:
+
+- Present latency
+- Context-switch cost
+- IPC overhead
+- GPU submission overhead
+- Buffer-copy count
+- Memory bandwidth
+- Frame pacing
+- Direct scanout rate
+- Power usage
+- Compositor CPU/GPU usage
+- Recovery time
+
+Do not optimize based purely on intuition.
+
+---
+
+E-017.107 — Adaptive Isolation
+
+Graphics components follow E-001.
+
+Default:
+
+«isolate fault-prone/high-authority components.»
+
+Where profiling demonstrates unacceptable overhead and components are sufficiently trusted:
+
+«controlled co-location is allowed.»
+
+The logical protocol remains unchanged.
+
+---
+
+E-017.108 — No Architecture-Visible Fast-Path Fork
+
+Optimizing:
+
+IPC
+
+into:
+
+direct call
+
+must not create two incompatible semantics.
+
+Generated/adapted fast paths must preserve:
+
+- Lifetime rules
+- Rights
+- Validation assumptions
+- Error behavior
+- Synchronization
+- Cancellation where applicable
+
+---
+
+E-017.109 — Display State Survives Shell Replacement
+
+Critical physical display configuration must not exist only inside volatile shell memory.
+
+The Display Service owns durable/authoritative display configuration.
+
+---
+
+E-017.110 — Surface State Reconstruction
+
+Clients/UI frameworks should retain enough presentation state to recreate surfaces after compositor replacement where practical.
+
+This improves compositor restartability.
+
+---
+
+E-017.111 — Graphics State and App State Remain Separate
+
+Losing GPU resources must not imply losing application documents/data.
+
+Applications should separate:
+
+Application state
+
+from:
+
+GPU/cache/rendering state
+
+GPU state should generally be reconstructable.
+
+---
+
+E-017.112 — Graphics Caches Are Disposable
+
+Shader caches, pipeline caches and similar derived state should be treated as rebuildable where practical.
+
+Corrupt caches should not destroy application data or system integrity.
+
+---
+
+E-017.113 — Driver Updates Integrate With E-006
+
+GPU drivers use the existing driver architecture.
+
+They remain:
+
+- Packaged
+- Capability-controlled
+- Versioned
+- Health-monitored
+- Transactionally updated
+- Rollbackable
+
+E-017 does not invent a parallel GPU-driver update system.
+
+---
+
+E-017.114 — Graphics Components Use the Unified Deployment Engine
+
+When the unified deployment/activation framework identified during the architecture audit is implemented, graphics updates should use it for:
+
+- GPU drivers
+- Display services
+- Compositor versions
+- Graphics runtime
+- Vulkan runtime components
+
+No separate graphics transaction framework should exist.
+
+---
+
+E-017.115 — Basic Graphics Must Remain Small
+
+The emergency/basic display path should have:
+
+- Few dependencies
+- Minimal renderer complexity
+- No requirement for Vulkan
+- Minimal memory requirements
+- Conservative update policy
+
+It exists specifically because the normal graphics stack may be broken.
+
+---
+
+E-017.116 — Graphics Graceful Degradation
+
+Potential capability progression:
+
+Full acceleration
+HDR / VRR / overlays
+        ↓
+Normal acceleration
+        ↓
+Reduced feature acceleration
+        ↓
+Software composition
+        ↓
+Basic framebuffer recovery
+
+Loss of advanced capability should not automatically mean loss of display.
+
+---
+
+E-017 Final Architecture
+
+                         APPLICATIONS
+                              │
+            ┌─────────────────┴─────────────────┐
+            │                                   │
+      UI Framework / Vulkan              Semantic Tree
+            │                                   │
+            ↓                                   ↓
+     GPU/Image Objects                 Accessibility Service
+            │
+            ↓
+      SURFACE SERVICE
+            │
+        Present()
+            ↓
+       SURFACE GRAPH
+            │
+            ↓
+    COMPOSITION PLANNER
+       │             │
+       │             │
+Direct Scanout   GPU Composition
+Hardware Planes       │
+       │              │
+       └──────┬───────┘
+              ↓
+        DISPLAY SERVICE
+              ↓
+        GPU / DISPLAY HW
+
+Desktop policy:
+
+Desktop Shell
+      ↓
+Window/workspace policy
+      ↓
+Surface relationships
+
+Input:
+
+Hardware Input
+      ↓
+Input Service
+      ↓
+Focus / Scene Routing
+      ↓
+Application
+
+Trusted path:
+
+Secure Attention
+      ↓
+Trusted Control Plane
+      ↓
+Protected Surface
+      ↓
+Accelerated Display
+      │
+      └── if unavailable
+              ↓
+       Basic Recovery Display
+
+Failure recovery:
+
+Graphics Fault
+      ↓
+Context reset
+      ↓
+Engine reset
+      ↓
+Driver/domain restart
+      ↓
+GPU reinitialize
+      ↓
+Applications recreate resources
+      ↓
+Presentation restored
+
+if unavailable:
+
+Basic Display
+      ↓
+Recovery
+
+---
+
+E-017 Final Summary
+
+Graphics model: Capability-Isolated Surface Graph
+
+Application rendering: Client-side/native
+
+Low-level graphics API: Vulkan first-class
+
+Evrosion proprietary GPU API: Not required
+
+Native presentation: Evrosion Vulkan WSI/platform integration
+
+Surface updates: Transactional Present model
+
+Buffers: Capability-controlled GPU/Memory Objects
+
+Synchronization: Explicit where practical
+
+Default data path: Zero-copy/shared buffers
+
+Scene representation: Lightweight retained 2D graph
+
+3D: Rendered inside application surfaces
+
+Composition: Adaptive
+
+Fastest path: Direct scanout / hardware planes
+
+Fallback: GPU composition
+
+Emergency fallback: Basic/software/framebuffer display
+
+Physical display management: Dedicated Display Service
+
+Desktop policy: Replaceable Desktop Shell
+
+Shell crash: Must not inherently kill applications
+
+Compositor crash: Applications survive where possible and reconnect/recreate presentation state
+
+GPU reset: Explicit device-loss semantics; no fake guarantee of transparent survival
+
+Display changes: Atomic/transactional
+
+Scaling: Logical + per-display fractional scaling
+
+Color: First-class color-space/HDR metadata
+
+VRR: First-class hardware capability
+
+Frame pacing: Central timing/feedback/backpressure
+
+Occluded apps: May be throttled
+
+GPU security: Capability-controlled contexts/resources
+
+GPU scheduling: Job-aware where hardware permits
+
+Multi-GPU: Architecturally supported
+
+Cross-GPU: Share/import first, copy when necessary
+
+Capture: Explicit capability/portal
+
+Trusted UI: Protected graphics path
+
+Recovery graphics: Independent basic fallback
+
+Input: Separate service integrated through scene/focus state
+
+Accessibility: Semantic tree parallel to visual surface
+
+Virtual/headless displays: Supported by architecture
+
+Compatibility applications: Integrate into the same surface/display system
+
+Graphics updates/recovery: Reuse E-006 and unified transactional mechanisms
+
+---
+
+Governing Principles
+
+«Applications render. Evrosion composes. Hardware scans out.»
+
+«Never copy a frame when the same buffer can safely travel by reference.»
+
+«Do not composite a frame when the display hardware can correctly present it directly.»
+
+«Direct scanout is an optimization, never an application-visible correctness requirement.»
+
+«Rendering authority, display authority and desktop policy are separate things.»
+
+«The Desktop Shell is replaceable. The trusted display path is not the Desktop Shell.»
+
+«A shell failure should not kill applications.»
+
+«A compositor failure should not automatically require application termination or machine reboot.»
+
+«A GPU reset may destroy GPU state; recovery must be explicit rather than pretending otherwise.»
+
+«A broken accelerated graphics stack should degrade to a usable recovery display rather than destroy control of the computer.»
+
+«Pixels describe appearance. Structured semantics describe meaning.»
+
+«Accessibility belongs beside rendering from the beginning, not after the desktop is finished.»
+
+«Applications describe presentation needs. The system chooses the cheapest correct hardware path.»
+
+«Graphics modularity must never become graphics overhead for its own sake.»
+
+«Modularity belongs on the control path. Performance stays on the fast data path.»
+
+E-017 — DECIDED AND CLOSED.

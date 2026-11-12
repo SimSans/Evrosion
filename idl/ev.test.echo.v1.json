@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "interface": "ev.test.echo",
+  "version": 1,
+  "maturity": "Internal",
+  "wire": {
+    "bytes": 8,
+    "magic": "EV",
+    "endianness": "little",
+    "request_opcode": 1,
+    "response_opcode": 2,
+    "payload": {
+      "name": "value",
+      "type": "u32"
+    }
+  },
+  "operation": {
+    "name": "echo",
+    "semantics": "READ_ONLY",
+    "reply": "same_value"
+  },
+  "transport": {
+    "modes": ["bounded_async", "non_reentrant_sync"],
+    "max_messages": 4,
+    "max_bytes": 8,
+    "max_capabilities": 0,
+    "max_outstanding_per_client": 1,
+    "deadline": "finite_absolute_monotonic_required",
+    "overflow": "WOULD_BLOCK",
+    "synchronous": {
+      "max_accepted_requests": 1,
+      "reentrancy": "forbidden",
+      "deadline": "finite_absolute_monotonic_required",
+      "cancellation": "cooperative",
+      "timeout": "ends_wait_not_proof_of_nonexecution"
+    }
+  }
+}

@@ -1,0 +1,2050 @@
+E-018 — Audio & Multimedia Architecture
+
+Status: ARCHITECTURAL DIRECTION DECIDED AND CLOSED
+
+Evrosion will use a:
+
+«Capability-Routed Media Fabric with Clock-Domain Real-Time Audio and Zero-Copy Video Pipelines»
+
+Audio and multimedia share:
+
+- Capability control
+- Media sessions
+- Device routing
+- Timing concepts
+- Buffer abstractions
+- Policy
+- Observability
+- Recovery
+- Job accounting
+
+However:
+
+«Audio and general multimedia must not be forced through one universal execution engine.»
+
+Audio requires a strict real-time data path.
+
+Video and general multimedia require timestamped asynchronous pipelines.
+
+Both integrate through common Evrosion system concepts.
+
+---
+
+E-018.1 — Major Media Components
+
+Evrosion should logically separate:
+
+Media Session Service
+Media Policy Service
+Real-Time Audio Engine
+Audio Device Service
+Capture Service
+Codec Service / Codec Workers
+Media Timeline Service
+Media Buffer Infrastructure
+Bluetooth / Transport Providers
+Multimedia Pipeline Components
+
+These remain separate from:
+
+- Kernel
+- Desktop Shell
+- Application processes
+- Physical device drivers
+
+Components may co-locate where E-001 adaptive isolation permits and measurement justifies it.
+
+---
+
+E-018.2 — Media Sessions
+
+Applications should create logical:
+
+«Media Sessions»
+
+A Media Session groups related streams belonging to one workload.
+
+Example:
+
+Game Job
+   │
+   └── Media Session
+        ├── Music
+        ├── Sound effects
+        ├── Voice output
+        └── Microphone
+
+This allows the system to reason about media at human-meaningful workload level rather than exposing every internal process independently.
+
+---
+
+E-018.3 — Media Sessions Integrate With Jobs
+
+E-004 Jobs remain the primary workload boundary.
+
+A Media Session should be associated with a Job.
+
+This enables attribution of:
+
+- CPU
+- Memory
+- GPU
+- Audio processing
+- Codec work
+- Capture activity
+- Network media traffic
+
+to the application or workload responsible.
+
+---
+
+E-018.4 — Stream Intent
+
+Applications should describe what a stream is for.
+
+Possible intent classes include:
+
+Media
+Game
+Communication
+Notification
+Accessibility
+Pro Audio
+Background
+System
+
+Intent may influence:
+
+- Routing
+- Latency
+- Scheduling
+- Ducking
+- Power policy
+- Device choice
+
+Intent is not itself permission.
+
+---
+
+E-018.5 — Stream Requirements
+
+Applications may describe requirements such as:
+
+Direction
+Format
+Channels
+Sample rate
+Latency target
+Quality preference
+Device preference
+Rerouting policy
+Timing requirements
+
+The system chooses an appropriate implementation.
+
+---
+
+E-018.6 — Media Policy Is Separate From Media Execution
+
+Evrosion should separate:
+
+Media Policy
+
+from:
+
+Real-time media processing
+
+Media Policy determines things such as:
+
+- Default output
+- Default microphone
+- Per-application routing
+- Session volume
+- Communication policy
+- Ducking
+- Device switching
+- Bluetooth selection
+- User preferences
+
+The real-time engine moves/processes media according to the resulting configuration.
+
+---
+
+E-018.7 — Policy Failure Should Not Immediately Destroy Active Media
+
+Where practical, an already-configured media path should continue running briefly even if the policy/control component restarts.
+
+The data plane should not require constant control-plane intervention.
+
+---
+
+E-018.8 — Control Plane and Data Plane
+
+Media follows E-008.
+
+Control Plane
+
+Uses normal IPC for:
+
+- Create stream
+- Destroy stream
+- Negotiate format
+- Select device
+- Configure graph
+- Change volume
+- Grant capabilities
+- Query state
+- Update routing
+
+Data Plane
+
+Uses:
+
+- Shared Memory Objects
+- Shared ring buffers
+- Synchronization primitives
+- Timestamps
+- Small atomic state
+- Device-capable buffers
+
+Principle:
+
+«Configure through IPC. Move real-time media through shared buffers.»
+
+---
+
+E-018.9 — Real-Time Audio Architecture
+
+Audio playback/capture should use a dedicated low-latency real-time path.
+
+Conceptually:
+
+Application
+    ↓
+Audio Stream
+    ↓
+Shared Ring Buffer
+    ↓
+Real-Time Audio Graph
+    ↓
+Audio Device
+
+Ordinary synchronous IPC must not occur for every audio block.
+
+---
+
+E-018.10 — Real-Time Path Restrictions
+
+The real-time audio path should avoid:
+
+- General-purpose blocking IPC
+- Heap allocation
+- Filesystem I/O
+- Unbounded waits
+- Uncontrolled mutexes
+- Logging that can block
+- Network lookups
+- Service discovery
+- Dynamic component loading
+
+Necessary resources should be prepared before entering deadline-sensitive processing.
+
+---
+
+E-018.11 — Preallocation
+
+Real-time audio components should preallocate:
+
+- Buffers
+- Graph structures
+- Processing state
+- Synchronization objects
+- Required working memory
+
+where practical.
+
+Memory-pressure handling must not casually reclaim resources required to meet active audio deadlines.
+
+---
+
+E-018.12 — Real-Time Does Not Mean Unlimited Priority
+
+Audio work may receive deadline-aware scheduling.
+
+Potential scheduling information includes:
+
+Budget
+Period
+Deadline
+Priority class
+
+This integrates with E-004 Scheduling Contexts.
+
+Real-time scheduling authority remains capability-controlled.
+
+---
+
+E-018.13 — Only Deadline-Sensitive Work Becomes Real-Time
+
+Opening an audio device must not make an entire application real-time.
+
+Example:
+
+DAW
+├── UI thread
+├── Disk loading
+├── Network
+├── Plugin scanner
+└── Audio callback ← real-time
+
+Only the specific deadline-sensitive execution receives the corresponding scheduling authority.
+
+---
+
+E-018.14 — Audio Timing Domains
+
+Evrosion should not force every device and stream into one global buffer quantum.
+
+Instead, audio processing should be organized into:
+
+«Timing Domains»
+
+also conceptually describable as:
+
+«Audio Islands»
+
+A Timing Domain contains components operating from the same meaningful clock/cycle.
+
+---
+
+E-018.15 — Example Timing Domains
+
+Example:
+
+Studio Timing Domain
+
+USB Audio Interface
+48 kHz
+64-frame period
+
+├── DAW
+├── Synth
+└── Effect chain
+
+Separately:
+
+Bluetooth Timing Domain
+
+Bluetooth Headset
+LC3 transport
+
+├── Media playback
+└── Voice communication
+
+Neither needs to inherit the other's block size.
+
+---
+
+E-018.16 — No Fake Global Clock
+
+Independent hardware devices may have physically independent oscillators.
+
+Evrosion must not pretend unrelated devices share perfect synchronization.
+
+When crossing clock domains:
+
+Domain A
+   ↓
+Asynchronous Bridge
+   ↓
+Buffering / Rate Matching / Resampling
+   ↓
+Domain B
+
+The bridge's cost and latency should be explicit.
+
+---
+
+E-018.17 — Clock Drift
+
+Hardware clocks may slowly drift relative to one another.
+
+Evrosion should compensate through techniques such as:
+
+- Controlled buffering
+- Rate matching
+- High-quality asynchronous resampling
+- Frame pacing
+
+rather than accumulating error until a disruptive correction is required.
+
+---
+
+E-018.18 — Shared Low-Latency Audio Is the Normal Path
+
+Normal audio should support low latency while retaining system mixing.
+
+Example:
+
+Browser ─┐
+Game ────┼→ Mixer → Device
+Music ───┘
+
+Applications should not need exclusive device ownership merely to obtain respectable latency.
+
+---
+
+E-018.19 — Direct Endpoint Mode
+
+Some workloads genuinely need direct or exclusive endpoint behavior.
+
+Examples:
+
+- Professional audio
+- Measurement
+- Specialized recording
+- Bit-perfect playback
+- Hardware-specific control
+
+Evrosion should support an explicit:
+
+«Direct Endpoint Mode»
+
+---
+
+E-018.20 — Exclusive Endpoint Authority
+
+Direct/exclusive device ownership requires explicit capability.
+
+Conceptually:
+
+AUDIO_ENDPOINT_EXCLUSIVE
+
+An application must not silently seize an endpoint used by the rest of the system.
+
+---
+
+E-018.21 — Direct Mode May Bypass Processing
+
+Where appropriate, Direct Endpoint Mode may bypass:
+
+- System mixing
+- Automatic resampling
+- Spatialization
+- Volume processing
+- Communication DSP
+
+according to explicitly selected policy.
+
+---
+
+E-018.22 — Audio Processing Graph
+
+Normal audio processing may form a graph.
+
+Example:
+
+Application
+    ↓
+Volume
+    ↓
+Resampler
+    ↓
+Channel Mapper
+    ↓
+Mixer
+    ↓
+Device
+
+Optional nodes may include:
+
+EQ
+Compressor
+Spatializer
+Limiter
+AEC
+Noise suppression
+AGC
+Plugins
+
+---
+
+E-018.23 — Processing Exists Only When Required
+
+Evrosion should not insert processing nodes simply because the graph architecture permits them.
+
+Principle:
+
+«Every media transformation must justify its latency, CPU cost, and quality impact.»
+
+---
+
+E-018.24 — Microphone Processing Is Not Universal
+
+Automatic:
+
+- Noise suppression
+- Echo cancellation
+- AGC
+- Beamforming
+- Voice processing
+
+may be appropriate for communication streams.
+
+They must not silently modify professional/raw capture.
+
+---
+
+E-018.25 — Audio Device Interface
+
+Audio device drivers should exchange samples through shared device/ring buffers where practical.
+
+Conceptually:
+
+Audio Engine
+     ↕
+Shared Hardware Ring
+     ↕
+Audio Driver
+     ↓
+Hardware
+
+---
+
+E-018.26 — Hardware Position Reporting
+
+The system should understand the relationship between:
+
+Hardware sample/frame position
+
+and:
+
+Evrosion monotonic time
+
+This supports:
+
+- Latency measurement
+- Synchronization
+- Clock-drift detection
+- Accurate capture timestamps
+- Playback timing
+
+---
+
+E-018.27 — Latency Is First-Class State
+
+Media components should describe latency where meaningful.
+
+Possible fields:
+
+Minimum latency
+Preferred latency
+Current latency
+Internal processing delay
+Buffering delay
+
+---
+
+E-018.28 — End-to-End Latency Accounting
+
+Evrosion should be able to reason about total media latency.
+
+Example:
+
+Microphone       2 ms
+AEC              4 ms
+Encoder           5 ms
+Network          20 ms
+Jitter buffer    30 ms
+Decoder           5 ms
+Output            4 ms
+
+This supports F-007 Observable System.
+
+---
+
+E-018.29 — XRUNs Are Structured Failures
+
+Audio underruns/overruns must be explicit events.
+
+Evrosion should know:
+
+- Which stream missed its deadline
+- Which component delayed it
+- Whether CPU starvation occurred
+- Whether the hardware stalled
+- Whether buffers were insufficient
+
+Avoid reducing diagnostics to:
+
+«Audio crackled.»
+
+---
+
+E-018.30 — Multimedia Timing Model
+
+General multimedia needs explicit time domains.
+
+Evrosion should distinguish:
+
+Monotonic System Time
+Media Timeline
+Device Clock
+Capture Time
+Presentation Time
+
+A field named merely:
+
+timestamp
+
+without defined clock semantics should be avoided.
+
+---
+
+E-018.31 — Media Timeline
+
+Playback should use a first-class:
+
+«Media Timeline»
+
+that maps media position to reference time.
+
+Conceptually:
+
+Media Time
+    ↕
+Reference Monotonic Time
+
+Timeline operations may include:
+
+- Play
+- Pause
+- Seek
+- Rate change
+- Stop
+
+---
+
+E-018.32 — Synchronized Streams Share a Timeline
+
+Related:
+
+- Audio
+- Video
+- Subtitles
+- Captions
+- Timed metadata
+
+should use a common presentation timeline.
+
+---
+
+E-018.33 — Audio as Playback Clock
+
+During conventional audiovisual playback, the audio hardware clock will commonly become the practical presentation reference.
+
+Conceptually:
+
+Audio Device Clock
+        ↓
+Media Timeline
+   ┌────┴────┐
+ Audio     Video
+
+This is a common policy, not an immutable rule.
+
+---
+
+E-018.34 — Video Synchronizes to Presentation Time
+
+Video may respond to timing differences by:
+
+- Waiting
+- Adjusting scheduling
+- Dropping late frames
+- Repeating when appropriate
+
+Audio should not receive disruptive timestamp jumps merely to force synchronization.
+
+---
+
+E-018.35 — Media Buffers
+
+Evrosion should define a common logical:
+
+«Media Buffer»
+
+backed by E-005 Memory Objects or specialized device-capable derivatives.
+
+---
+
+E-018.36 — Media Buffer Types
+
+A Media Buffer may represent:
+
+PCM Audio
+Compressed Audio Packet
+Raw Video Frame
+Compressed Video Packet
+Subtitle/Text Packet
+Timed Metadata
+
+---
+
+E-018.37 — Media Buffer Metadata
+
+Buffers may carry:
+
+Format
+Timeline identity
+Timestamp
+Duration
+Sequence
+Plane information
+Stride
+Color metadata
+HDR metadata
+Synchronization
+Flags
+
+The exact representation belongs to the eventual stable media contracts.
+
+---
+
+E-018.38 — GPU Video Buffers
+
+GPU/video buffers should use device-capable GPU Image/Memory Objects where appropriate.
+
+Do not pretend all media data is linear CPU-addressable memory.
+
+---
+
+E-018.39 — Zero-Copy Video Pipeline
+
+Preferred path:
+
+Demux
+   ↓
+Decoder
+   ↓
+GPU Image
+   ↓
+E-017 Surface
+   ↓
+Display
+
+Avoid:
+
+GPU
+ ↓
+CPU copy
+ ↓
+CPU processing
+ ↓
+GPU upload
+
+unless required.
+
+---
+
+E-018.40 — Device-Local Media Should Stay Device-Local
+
+If the decoder, compositor and display can safely use the same device-compatible image, Evrosion should preserve that path.
+
+Principle:
+
+«Do not move media through CPU memory merely because the software architecture has component boundaries.»
+
+---
+
+E-018.41 — Codec Architecture
+
+Codecs belong in userspace.
+
+The kernel should not understand:
+
+- H.264
+- HEVC
+- AV1
+- VP9
+- AAC
+- Opus
+- FLAC
+- MP3
+- Container formats
+
+Codec support evolves independently.
+
+---
+
+E-018.42 — Codec Resolver
+
+Applications should request codec functionality through logical contracts.
+
+Example:
+
+Request:
+AV1 Decode
+
+Codec Resolver
+   ↓
+Hardware implementation?
+├── Yes → use it
+└── No  → software implementation
+
+---
+
+E-018.43 — Hardware and Software Codec Equivalence
+
+Applications should not need completely unrelated APIs for:
+
+Intel decoder
+AMD decoder
+NVIDIA decoder
+Software decoder
+
+They should see one logical media codec model.
+
+Implementation-specific capabilities may still be exposed where necessary.
+
+---
+
+E-018.44 — Vulkan Video
+
+Vulkan Video should be considered a first-class codec backend where hardware and driver support make it useful.
+
+However:
+
+«Vulkan Video is a backend, not Evrosion's media architecture.»
+
+Evrosion must remain able to use other hardware/software codec implementations.
+
+---
+
+E-018.45 — Codec Workers
+
+Parsing compressed media is a high-risk operation.
+
+Codecs should normally run in isolated:
+
+«Codec Workers»
+
+or Codec Jobs.
+
+They receive only the capabilities required to:
+
+- Read compressed input
+- Write decoded output
+- Use authorized codec hardware
+- Report state
+
+---
+
+E-018.46 — Codec Sandboxing
+
+A Codec Worker should not automatically receive:
+
+- Arbitrary filesystem access
+- Network access
+- User documents
+- Unrelated devices
+- Global process control
+- System configuration
+
+Its authority should remain narrow.
+
+---
+
+E-018.47 — Codec Resource Limits
+
+Codec Workers should support:
+
+- CPU budgets
+- Memory limits
+- Output limits
+- Timeouts
+- Watchdogs
+
+Malformed media must not trivially exhaust the entire machine.
+
+---
+
+E-018.48 — Codec Failure Recovery
+
+If a decoder fails:
+
+Codec Worker dies
+      ↓
+Pipeline detects failure
+      ↓
+Restart decoder
+      ↓
+Resume from suitable synchronization point
+
+where technically possible.
+
+A bad media file should not crash the operating system.
+
+---
+
+E-018.49 — Hardware Decode Fallback
+
+If hardware decoding fails:
+
+Hardware decoder
+      ↓ failure
+Software decoder
+
+may be attempted when technically practical and resource-appropriate.
+
+The system should explain degraded performance.
+
+---
+
+E-018.50 — Baseline Codecs Are Not Kernel Architecture
+
+Evrosion should support a useful baseline of common/open media formats.
+
+However, the precise mandatory codec and container set is a product/distribution decision and is not frozen by E-018.
+
+This avoids turning codec licensing and market changes into permanent architecture.
+
+---
+
+E-018.51 — Capture Service
+
+Capture devices should integrate through a logical:
+
+«Capture Service»
+
+for devices such as:
+
+- Microphones
+- Cameras
+- Capture cards
+- Virtual media sources
+
+---
+
+E-018.52 — Capture Is Capability-Controlled
+
+Normal applications do not receive ambient microphone/camera authority.
+
+They request specific capture capabilities.
+
+---
+
+E-018.53 — Trusted Capture Selection
+
+Where appropriate:
+
+Application requests camera
+        ↓
+Trusted Evrosion chooser
+        ↓
+User selects camera
+        ↓
+Scoped capability
+
+This mirrors E-009/E-017 portal-style resource selection.
+
+---
+
+E-018.54 — Session-Scoped Capture Grants
+
+Common capture grants should be temporary.
+
+Examples:
+
+Microphone — while call is active
+Camera — this session
+Screen — selected window until sharing stops
+
+Persistent grants remain possible where policy allows.
+
+---
+
+E-018.55 — Capture Indicators
+
+Active sensitive capture must become structured system state.
+
+Examples:
+
+Browser → Camera
+Discord → Microphone
+Recorder → Display 1
+
+Applications must not be able to hide the operating system's own trusted capture indication.
+
+---
+
+E-018.56 — Camera Frames Use Media Buffers
+
+Camera capture should produce normal Media Buffers or GPU Image Objects.
+
+Preferred:
+
+Camera
+  ↓
+Capture Driver
+  ↓
+Media Buffer / GPU Image
+  ↓
+Application / Codec / Surface
+
+Avoid unnecessary copies.
+
+---
+
+E-018.57 — Screen Capture Reuses E-017
+
+Screen recording should not invent another display-capture system.
+
+Use:
+
+E-017 Capture Capability
+        ↓
+Video Media Buffer
+        ↓
+Media Pipeline
+        ↓
+Encoder
+
+---
+
+E-018.58 — Recording Uses Durable Operations
+
+Long-running recordings should integrate with E-010 Durable Operations.
+
+The system should write incrementally and recoverably where file/container formats permit.
+
+Power failure after hours of recording should not unnecessarily destroy all previously completed media.
+
+---
+
+E-018.59 — Recording Publication
+
+Where appropriate:
+
+Recording data
+    ↓
+Durable staging
+    ↓
+Finalize container
+    ↓
+Atomic publication
+
+Partial/incomplete recordings should be salvageable where technically possible.
+
+---
+
+E-018.60 — Networking Reuses E-011
+
+Media streaming must not create a parallel network stack.
+
+Conceptually:
+
+Capture
+   ↓
+Encoder
+   ↓
+E-011 Network Session
+   ↓
+Network
+
+---
+
+E-018.61 — Media Owns Media-Specific Network Behavior
+
+The media layer may manage:
+
+- Bitrate adaptation
+- Jitter buffering
+- Packet-loss recovery
+- Playout timing
+- Stream synchronization
+- Codec adaptation
+
+while E-011 owns:
+
+- Connectivity
+- Paths
+- Routing
+- VPN policy
+- Network capabilities
+- Multipath
+- Continuity
+
+---
+
+E-018.62 — Bluetooth as a Transport Provider
+
+Bluetooth media support should integrate as a transport/device provider.
+
+Bluetooth-specific architecture must not dictate the rest of Evrosion's audio design.
+
+---
+
+E-018.63 — Bluetooth Timing Domain
+
+Bluetooth audio should normally exist in its own timing domain.
+
+Conceptually:
+
+Main Audio Domain
+      ↓
+Async Bridge
+      ↓
+Bluetooth Domain
+      ↓
+Codec / Radio Transport
+      ↓
+Headset
+
+---
+
+E-018.64 — Bluetooth Never Defines Global Audio Quantum
+
+A Bluetooth transport using relatively large frame intervals must not force:
+
+- DAWs
+- games
+- USB audio
+- internal speakers
+
+to use the same processing period.
+
+Principle:
+
+«Transport timing is local to the domain that requires it.»
+
+---
+
+E-018.65 — Device Hotplug
+
+Media endpoints may disappear at any time.
+
+Examples:
+
+- USB DAC unplugged
+- Bluetooth disconnected
+- HDMI display removed
+- Microphone removed
+- Camera disconnected
+
+This is expected behavior, not exceptional corruption.
+
+---
+
+E-018.66 — Reroute Policy
+
+Streams should be able to express what should happen if their endpoint disappears.
+
+Possible policies:
+
+Automatic fallback
+Ask user
+Stop/fail
+Wait for original device
+
+---
+
+E-018.67 — Consumer Playback Recovery
+
+Ordinary media playback may default to automatic fallback.
+
+Example:
+
+USB headphones unplugged
+      ↓
+Speakers available
+      ↓
+Route continues
+
+where user policy allows.
+
+---
+
+E-018.68 — Professional Audio Recovery
+
+Professional applications may choose:
+
+Device lost → Stop
+
+rather than automatic rerouting that could damage a recording/session workflow.
+
+---
+
+E-018.69 — Audio Engine Failure
+
+If the real-time audio engine itself fails:
+
+Engine fails
+    ↓
+Supervisor restarts engine
+    ↓
+Clients reconnect
+    ↓
+Streams recreate state
+
+Applications should survive where practical.
+
+---
+
+E-018.70 — Stream Failure
+
+A broken individual stream should not require restarting the entire audio system.
+
+Preferred:
+
+Stream fails
+    ↓
+Destroy/recreate stream
+
+---
+
+E-018.71 — Processing-Node Failure
+
+Optional processing nodes should support isolation where useful.
+
+If an optional effect fails:
+
+Effect fails
+    ↓
+Bypass / restart
+    ↓
+Continue audio
+
+where correctness allows.
+
+---
+
+E-018.72 — Device Driver Failure
+
+Audio device failure integrates with E-006:
+
+Device stops responding
+       ↓
+Restart driver
+       ↓
+Reinitialize device
+       ↓
+Reconnect stream
+       ↓
+Fallback endpoint if required
+
+---
+
+E-018.73 — Recover the Smallest Safe Unit
+
+Media follows the project-wide recovery law:
+
+«Recover the smallest safe broken component.»
+
+Do not restart the machine because:
+
+- one decoder crashed
+- one plugin hung
+- one Bluetooth device disconnected
+- one audio stream underruns
+
+---
+
+E-018.74 — Media Plugins
+
+Third-party DSP/plugin systems may eventually be supported.
+
+Plugins are not automatically trusted.
+
+---
+
+E-018.75 — Adaptive Plugin Isolation
+
+Following E-001:
+
+Untrusted plugin
+      ↓
+isolated process/domain
+
+Where trust and measured performance justify it:
+
+Trusted plugin
+      ↓
+co-location / faster path
+
+The logical media contract remains stable.
+
+---
+
+E-018.76 — Plugin Isolation Has a Latency Cost
+
+Evrosion should not pretend process boundaries are free.
+
+Ultra-low-latency professional workloads may deliberately choose different isolation/performance tradeoffs.
+
+This choice must remain explicit and measurable.
+
+---
+
+E-018.77 — Plugin Crash Containment
+
+Where isolated:
+
+Plugin crashes
+      ↓
+Plugin host terminates/restarts
+      ↓
+Audio engine bypasses node
+
+The entire DAW should not necessarily die.
+
+---
+
+E-018.78 — Plugin Authority
+
+A DSP plugin should not automatically inherit all capabilities of its host application.
+
+Separate plugin hosts may receive only:
+
+- Audio buffers
+- Declared parameters
+- Required state storage
+- Explicitly authorized resources
+
+---
+
+E-018.79 — Lazy Media Activation
+
+Media services should not consume significant resources merely because the computer booted.
+
+Examples:
+
+No camera use:
+
+Camera pipeline inactive
+
+No codecs required:
+
+Codec workers absent
+
+No Bluetooth audio:
+
+Bluetooth audio processing inactive
+
+This follows E-007.
+
+---
+
+E-018.80 — Codec Workers Are On-Demand
+
+Codec components should normally activate only when content requiring them is opened.
+
+This reduces:
+
+- RAM
+- CPU
+- Attack surface
+- Background activity
+
+---
+
+E-018.81 — Media Observability
+
+Evrosion should maintain structured information about active media state.
+
+Potential state includes:
+
+- Media Sessions
+- Streams
+- Devices
+- Routes
+- Sample formats
+- Timing domains
+- Clocks
+- Current latency
+- XRUN count
+- DSP nodes
+- Codec implementation
+- Hardware/software decode status
+- Capture grants
+- Bluetooth transport
+- Buffer state
+- Recovery history
+
+---
+
+E-018.82 — Latency Explanations
+
+The system should eventually be able to say:
+
+«Your microphone path currently has approximately 38 ms of latency.»
+
+and explain why:
+
+Hardware capture      3 ms
+Noise suppression     5 ms
+Encoder               5 ms
+Network/jitter       21 ms
+Output                 4 ms
+
+---
+
+E-018.83 — Layer 1 Media UX
+
+Layer 1 should expose simple concepts.
+
+Examples:
+
+«Sound is playing through Headphones.»
+
+«Your microphone is being used by Video Call.»
+
+«Headphones disconnected. Audio moved to Speakers.»
+
+«Video playback switched to software decoding.»
+
+No unnecessary codec/clock terminology.
+
+---
+
+E-018.84 — Layer 2 Media UX
+
+Layer 2 may expose:
+
+- Per-application volume
+- Input/output device
+- Stream routing
+- Capture permissions
+- Audio quality
+- Latency mode
+- Communication processing
+- Hardware acceleration
+- Bluetooth codec information
+- Device health
+- Recording state
+
+---
+
+E-018.85 — Layer 3 Media UX
+
+Layer 3 may expose:
+
+- Audio graph
+- Timing domains
+- Clock drift
+- Buffer periods
+- XRUNs
+- Ring-buffer state
+- Media timelines
+- Codec workers
+- GPU media buffers
+- Endpoint ownership
+- Direct mode
+- DSP nodes
+- Raw device capabilities
+- Manual routing
+- Driver reset
+- Plugin isolation
+
+---
+
+E-018.86 — Accessibility Audio
+
+Accessibility media must remain first-class.
+
+Examples may include:
+
+- Screen-reader audio
+- Speech output
+- Audio cues
+- Hearing-support processing
+
+Accessibility streams may receive policy priority appropriate to their function.
+
+---
+
+E-018.87 — System Notifications Must Not Destroy Critical Audio
+
+System sounds/notifications should not unexpectedly disrupt professional or communication sessions.
+
+Ducking and interruption policies remain explicit policy decisions.
+
+---
+
+E-018.88 — Media Privacy
+
+U-015 applies directly.
+
+Evrosion should not:
+
+- Record media usage remotely by default
+- Upload recordings without authorization
+- Expose microphone/camera streams to unrelated applications
+- Leak media metadata unnecessarily
+
+Observability remains local unless explicitly shared.
+
+---
+
+E-018.89 — Media Security
+
+Untrusted media content should be treated as attacker-controlled input.
+
+Security boundaries include:
+
+- Codec sandboxing
+- Capability isolation
+- Bounded resources
+- Driver isolation
+- Validated metadata
+- Memory-safe implementations where practical
+
+---
+
+E-018.90 — Media Formats Must Be Validated
+
+All cross-boundary media descriptions should validate:
+
+- Dimensions
+- Strides
+- Plane sizes
+- Channel counts
+- Sample rates
+- Buffer lengths
+- Codec metadata
+- Timestamp ranges
+
+Never trust an application merely because it holds a stream capability.
+
+---
+
+E-018.91 — Compatibility Applications Use Native Media Fabric
+
+Windows/Linux/macOS compatibility applications should eventually map foreign media APIs onto the Evrosion media architecture.
+
+Example:
+
+Windows application
+      ↓
+Windows audio API compatibility
+      ↓
+Evrosion Audio Stream
+
+---
+
+E-018.92 — Windows Gaming Audio
+
+Compatibility should reach Evrosion's native low-latency audio path as early as practical.
+
+Avoid permanently routing Windows audio through unnecessary Linux audio layers when a direct host adapter can eventually exist.
+
+Detailed machinery remains E-022.
+
+---
+
+E-018.93 — Linux Audio Compatibility
+
+Linux applications may interact with compatibility implementations of APIs such as:
+
+- ALSA
+- PulseAudio
+- PipeWire
+
+without making those APIs Evrosion's native media architecture.
+
+---
+
+E-018.94 — Foreign Multimedia Frameworks
+
+Frameworks such as:
+
+- FFmpeg
+- GStreamer
+- game engines
+- browser media engines
+
+may be ported to native Evrosion media contracts or used through compatibility.
+
+They do not dictate native architecture.
+
+---
+
+E-018.95 — Media State Is Reconstructable
+
+Where practical, clients should retain enough logical state to reconstruct streams after recoverable service failure.
+
+Transient processing/device state may be recreated.
+
+Persistent application data remains separate.
+
+---
+
+E-018.96 — Buffers Are Disposable; User Content Is Not
+
+Media buffers, decoder state and DSP working memory should generally be treated as reconstructable.
+
+Recordings, projects and user-created media remain durable user data under E-010.
+
+---
+
+E-018.97 — Real-Time Memory Must Be Protected
+
+Active real-time buffers and critical processing state should not be casually swapped/reclaimed.
+
+This integrates with E-005 protected memory/budget concepts.
+
+---
+
+E-018.98 — Media Resource Pressure
+
+Under resource pressure, the system may progressively:
+
+reduce caches
+↓
+reduce background decoding
+↓
+reduce prebuffering
+↓
+deactivate unused pipelines
+↓
+degrade optional processing
+↓
+reduce quality where policy permits
+↓
+terminate low-priority media Jobs
+
+Critical interactive audio should be protected longer than disposable background media work.
+
+---
+
+E-018.99 — Quality Degradation Must Be Explicit
+
+If Evrosion lowers:
+
+- Video resolution
+- Decode quality
+- DSP quality
+- Buffer depth
+- Hardware acceleration
+
+because of system conditions, this should be observable.
+
+Do not silently transform the user's media experience without state explaining why.
+
+---
+
+E-018.100 — Power-Aware Media
+
+Media policy may account for:
+
+- Battery state
+- Hardware acceleration
+- Codec efficiency
+- GPU wake cost
+- CPU cost
+- Display state
+
+Example:
+
+Use hardware decode when it saves power and preserves quality.
+
+---
+
+E-018.101 — Performance Metrics
+
+Evrosion should benchmark:
+
+- Round-trip audio latency
+- Playback latency
+- Capture latency
+- XRUN rate
+- Audio CPU usage
+- Audio wake frequency
+- Codec throughput
+- Video decode latency
+- Buffer-copy count
+- GPU/CPU transitions
+- A/V sync error
+- Power consumption
+- Recovery time
+
+Performance decisions must be measured.
+
+---
+
+E-018.102 — No Universal Media Graph Requirement
+
+Evrosion may expose graph-like processing concepts.
+
+However:
+
+«The architecture must not require every media operation to become part of one enormous universal global graph.»
+
+Local pipelines may remain local.
+
+Shared routing occurs only where needed.
+
+---
+
+E-018.103 — Audio and Video Share Concepts, Not Every Mechanism
+
+Common:
+
+Sessions
+Capabilities
+Buffers
+Timestamps
+Routing
+Policy
+Observability
+Recovery
+
+Different:
+
+Audio:
+hard deadlines
+small recurring blocks
+hardware clock driven
+
+Video:
+larger asynchronous buffers
+decoder pipelines
+presentation scheduling
+GPU-heavy processing
+
+Trying to erase this distinction would damage both.
+
+---
+
+E-018.104 — Stable Native Media Contracts
+
+E-015 applies.
+
+Stable application-facing media interfaces should be:
+
+- Language-neutral
+- Versioned
+- Capability-based
+- Explicit about ownership
+- Explicit about timing
+- Explicit about buffer lifetime
+- Explicit about synchronization
+- Tested for compatibility
+
+---
+
+E-018.105 — Native Audio API
+
+Evrosion should eventually expose a native audio API designed around:
+
+Media Session
+Audio Stream
+Timing requirements
+Shared buffers
+Capabilities
+Presentation/capture timing
+
+The exact names and binary protocol are intentionally not frozen by E-018.
+
+---
+
+E-018.106 — Native Multimedia API
+
+Evrosion should expose stable contracts for:
+
+- Media buffers
+- Timelines
+- Codec discovery
+- Decoder/encoder sessions
+- Capture
+- Media routing
+- Synchronization
+
+Again, exact wire representation belongs to the IDL/API design phase.
+
+---
+
+E-018.107 — Codec Baseline Remains Flexible
+
+E-018 intentionally does not permanently specify one immutable codec baseline.
+
+The system must remain capable of evolving as:
+
+- Formats change
+- Hardware changes
+- Patent/licensing conditions change
+- New open codecs emerge
+
+This follows F-012 Evolvability.
+
+---
+
+E-018.108 — Container Formats Remain Userspace Policy
+
+File/container formats such as:
+
+MP4
+Matroska
+WebM
+Ogg
+WAV
+FLAC containers
+
+belong to userspace media components.
+
+They are not kernel concepts.
+
+---
+
+E-018.109 — Media Components Use Unified Deployment
+
+Drivers, codecs and media services should use the unified transactional deployment model established across Evrosion.
+
+No separate media-specific installer/update architecture should be created.
+
+---
+
+E-018.110 — Codec Package Updates
+
+Codec updates should support:
+
+Stage
+↓
+Verify
+↓
+Activate
+↓
+Test
+↓
+Commit
+
+and rollback where safe.
+
+Compatibility requirements may pin known-good codec/runtime versions where necessary.
+
+---
+
+E-018.111 — Audio Driver Updates
+
+Audio drivers remain E-006 Driver Packages and use the same driver update/rollback machinery.
+
+---
+
+E-018.112 — Media Failures Must Not Become System Failures
+
+A media failure should normally remain a media failure.
+
+Examples:
+
+Bad codec
+→ restart codec
+
+Bluetooth dropout
+→ recover/reroute
+
+Audio driver crash
+→ restart driver
+
+Video hardware decode failure
+→ software fallback
+
+Plugin crash
+→ bypass plugin
+
+Not:
+
+reboot computer
+
+---
+
+E-018 Final Architecture
+
+                         APPLICATION / JOB
+                                │
+                                ↓
+                         MEDIA SESSION
+                                │
+               ┌────────────────┴────────────────┐
+               │                                 │
+             AUDIO                             VIDEO
+               │                                 │
+               ↓                                 ↓
+      REAL-TIME AUDIO GRAPH               MEDIA PIPELINE
+               │                                 │
+      Shared Audio Rings                  Media Buffers
+               │                                 │
+        Timing Domain                     Codec Workers
+               │                                 │
+      Audio Device Service                GPU Images
+               │                                 │
+          Audio Driver                   E-017 Surface
+               │                                 │
+               └──────────────┬──────────────────┘
+                              │
+                       MEDIA TIMELINE
+
+Control and policy:
+
+             MEDIA POLICY SERVICE
+                      │
+       ┌──────────────┼──────────────┐
+       │              │              │
+   Routing         Devices        Sessions
+       │              │              │
+       └──────────────┼──────────────┘
+                      ↓
+               Media Execution
+
+Capture:
+
+Microphone / Camera / Screen
+            ↓
+     Capability Grant
+            ↓
+      Capture Service
+            ↓
+       Media Buffer
+            ↓
+ Application / Codec / Network
+
+Timing domains:
+
+Audio Domain A
+   │
+   └──── Async Bridge ──── Audio Domain B
+          │
+          ├── buffering
+          ├── resampling
+          └── rate matching
+
+Recovery:
+
+Media failure
+     ↓
+smallest affected component
+     ↓
+restart / bypass / reroute
+     ↓
+reconstruct stream
+     ↓
+continue
+
+---
+
+E-018 Final Summary
+
+Architecture: Capability-Routed Media Fabric
+
+Audio execution: Dedicated real-time data plane
+
+General multimedia: Timestamped asynchronous pipeline
+
+Control: E-008 IPC
+
+Real-time data: Shared Memory Objects/rings
+
+Global audio quantum: No
+
+Timing: Clock-domain based
+
+Cross-domain synchronization: Explicit bridge/resampling/buffering
+
+Normal audio: Shared low-latency
+
+Exclusive audio: Explicit capability
+
+Real-time privilege: Scoped to deadline-sensitive work only
+
+Audio processing: Graph-based where useful
+
+Mandatory DSP: None
+
+Media sessions: Integrated with Jobs
+
+Device hotplug: Recover/reroute according to policy
+
+Bluetooth: Independent timing/transport domain
+
+Media time: Explicit timelines and clock domains
+
+Video: Zero-copy/device-local where possible
+
+Media buffers: E-005 Memory Object based
+
+GPU frames: Integrate with E-017 GPU Image Objects
+
+Codecs: Userspace
+
+Codec isolation: Sandboxed workers/Jobs
+
+Hardware/software codecs: Shared logical contract
+
+Vulkan Video: Supported backend, not architectural requirement
+
+Mandatory codec baseline: Not permanently frozen
+
+Capture: Capability-controlled
+
+Capture permissions: Prefer scoped/session grants
+
+Capture visibility: Trusted OS state
+
+Screen recording: Reuses E-017 capture
+
+Recording durability: E-010 Durable Operations
+
+Networking: Reuses E-011
+
+Latency: First-class observable state
+
+XRUNs: Structured diagnosable failures
+
+Plugins: Adaptive isolation
+
+Media services: Lazy/on-demand
+
+Compatibility: Foreign APIs map toward native media fabric
+
+Recovery: Smallest safe affected component
+
+---
+
+Governing Principles
+
+«Configure through IPC. Move real-time media through shared buffers.»
+
+«One media policy architecture does not require one universal execution engine.»
+
+«Audio timing follows real clocks, not imaginary global synchronization.»
+
+«Unrelated clock domains are bridged explicitly.»
+
+«Bluetooth timing must never dictate the rest of the machine's audio quantum.»
+
+«Shared low-latency audio is the normal path. Direct hardware ownership is deliberate authority.»
+
+«No allocation, filesystem I/O, blocking general IPC, or uncontrolled locks belong on the real-time audio path.»
+
+«Real-time privilege belongs to the work that needs it, not automatically to the application that requested audio.»
+
+«Media timestamps must always have defined clock/timeline semantics.»
+
+«Latency is data, not mystery.»
+
+«Keep video in device-capable memory whenever possible.»
+
+«Do not copy a decoded video frame through CPU RAM merely because subsystem boundaries exist.»
+
+«Codecs process hostile input and should be isolated accordingly.»
+
+«Capture is explicit, capability-controlled, and visible.»
+
+«A media failure should remain a media failure.»
+
+«Recover the smallest safe media component possible.»
+
+«User-created media is durable. Processing state and buffers are disposable.»
+
+«Audio and video share architecture where useful and remain different where physics makes them different.»
+
+E-018 — DECIDED AND CLOSED.

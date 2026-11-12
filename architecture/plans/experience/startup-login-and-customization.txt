@@ -1,0 +1,295 @@
+Startup login and customization
+MyOS UX — Startup, Login & Customization
+
+UX-001 — Seamless Startup Experience
+
+The transition from motherboard firmware/UEFI into MyOS should feel like the beginning of one continuous experience rather than a collection of disconnected boot screens.
+
+The sequence should be approximately:
+
+Firmware/UEFI → MyOS → Initialization → Authentication → Desktop
+
+MyOS should take control after firmware initialization and transition naturally into its own visual environment.
+
+---
+
+UX-002 — MyOS Visual Boot Environment
+
+After the firmware/UEFI stage, the screen should initially be black and then smoothly transition into the MyOS environment.
+
+The default visual style should be:
+
+- Calm
+- Beautiful
+- Modern
+- Easy on the eyes
+- Fluid
+- Minimal without feeling empty
+- Primarily blue-ish or similarly calming by default
+
+The MyOS identity/name should appear as part of the environment rather than as a crude static logo screen.
+
+Animations should feel intentional and fluid rather than flashy or distracting.
+
+The objective is to make startup feel like the computer is coming to life, not merely displaying a loading screen.
+
+---
+
+UX-003 — Visible System Initialization
+
+During startup, MyOS may present the meaningful checks it performs on the machine.
+
+Examples may include:
+
+- Hardware checks
+- Storage checks
+- System integrity
+- Security state
+- Required system components
+- Hardware/driver readiness
+- Other important startup conditions
+
+Successful checks can receive subtle visual confirmation such as a green checkmark and/or a pleasant completion sound.
+
+The system should not expose meaningless technical implementation details merely for the sake of showing information.
+
+The information shown should be understandable to the user.
+
+---
+
+UX-004 — Initialization → Authentication Transition
+
+Once the startup checks have completed, the visual elements should smoothly transition toward the center of the screen.
+
+The completed initialization experience should naturally transform into the authentication experience rather than abruptly switching screens.
+
+The user's identity/name should appear along with the appropriate authentication method.
+
+For example:
+
+Username
+
+Password
+
+The exact authentication mechanisms are a separate security-design question.
+
+---
+
+UX-005 — Fluid Authentication Transition
+
+After successful authentication, the login/lock interface should transition naturally into the user's desktop.
+
+The login environment should not simply disappear or be replaced by a hard cut.
+
+The default concept is a fluid visual transition in which the authentication environment washes away/recedes, revealing the desktop underneath.
+
+The intended feeling is:
+
+«The computer is now yours.»
+
+The transition should be visually beautiful while remaining fast and responsive.
+
+---
+
+UX-006 — Startup Must Not Sacrifice Performance
+
+Visual startup effects must never become an excuse for slow boot times.
+
+MyOS should perform initialization efficiently underneath the visual experience.
+
+Animations should be:
+
+- Lightweight
+- Interruptible where appropriate
+- Configurable
+- Hardware-aware
+- Disabled/reduced automatically when necessary
+
+The system should prioritize actually becoming usable over showing an animation.
+
+---
+
+UX-007 — Startup Customization
+
+The startup and authentication experience must be customizable.
+
+Users should be able to modify or disable aspects such as:
+
+- Animations
+- Transition effects
+- Startup sounds
+- Visual effects
+- Colors
+- Backgrounds
+- Amount of startup information shown
+- Initialization check visibility
+- Login presentation
+
+A user who wants the full beautiful experience should have it.
+
+A user who wants a completely minimal startup should also be able to have it.
+
+Customization should never require editing configuration files or manually modifying system internals for ordinary customization.
+
+---
+
+UX-008 — Deep, Accessible Customization
+
+MyOS should support extensive customization of the operating system while keeping customization easy to understand.
+
+The goal is:
+
+«Easy AND powerful.»
+
+Not:
+
+«Easy OR powerful.»
+
+Users should be able to customize things such as:
+
+- Desktop appearance
+- Colors
+- Themes
+- Windows
+- Window behavior
+- Panels
+- Docks
+- Icons
+- Layout
+- Notifications
+- Shortcuts
+- Animations
+- Sounds
+- Accessibility
+- Login experience
+- Startup experience
+- Interaction behavior
+- System presentation
+
+Advanced customization should progressively expose deeper controls rather than forcing every user to navigate large collections of technical configuration settings.
+
+---
+
+UX-009 — Visual Customization Instead of Configuration Hunting
+
+Where practical, MyOS should allow people to customize the system directly through an understandable visual interface.
+
+For example:
+
+Want the panel at the top?
+
+Move it.
+
+Want it on the side?
+
+Move it.
+
+Don't want it?
+
+Disable it.
+
+Want floating windows?
+
+Choose that behavior.
+
+Want tiling?
+
+Choose tiling.
+
+The user should not need to search through multiple unrelated settings pages to understand how pieces of the desktop relate to one another.
+
+---
+
+UX-010 — Customization Must Preserve Capability
+
+Customization must not artificially restrict what the system can do.
+
+The default MyOS experience should be carefully designed, but it must remain the user's computer.
+
+The user can progressively customize the system as deeply as they want.
+
+This follows the universal principle:
+
+«Hide complexity. Never remove capability.»
+
+---
+
+UX-011 — Customization Must Be Reversible
+
+Customization should be safe to experiment with.
+
+Where practical, users should be able to:
+
+- Undo changes
+- Preview changes
+- Revert individual changes
+- Restore previous configurations
+- Restore default configuration
+
+Trying a new configuration should not require fear that the desktop has been permanently ruined.
+
+---
+
+Overall Startup Experience
+
+The intended default experience is:
+
+Black screen
+
+↓
+
+Smooth fade into the MyOS visual environment
+
+↓
+
+MyOS identity / environment appears
+
+↓
+
+Meaningful system initialization checks
+
+↓
+
+Successful checks receive subtle confirmation
+
+↓
+
+Completed checks visually converge toward the center
+
+↓
+
+User identity and authentication appear
+
+↓
+
+User authenticates
+
+↓
+
+Authentication interface smoothly washes away
+
+↓
+
+The user's desktop emerges
+
+↓
+
+The user is in their computer
+
+---
+
+Design Principle
+
+The startup experience should communicate:
+
+«The machine is ready.»
+
+«The system understands its state.»
+
+«The computer belongs to you.»
+
+«You are now in your own environment.»
+
+The experience should be beautiful by default, but never force the aesthetic upon the owner.
+
+Beautiful by default. Customizable by choice. Efficient underneath.

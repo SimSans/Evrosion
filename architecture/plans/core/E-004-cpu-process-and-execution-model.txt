@@ -1,0 +1,298 @@
+E-004 — CPU, Process & Execution Model
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use a modern hierarchical execution model rather than relying only on traditional processes and threads.
+
+Core Structure
+
+«Job → Process → Kernel Thread → User-Space Tasks»
+
+Job
+
+A Job is a first-class ownership, lifecycle, and resource container.
+
+A Job may contain:
+
+- Processes
+- Child Jobs
+- Resource limits
+- Scheduling budgets
+- Capabilities
+- Dependency/lifecycle information
+
+An application may consist of many processes while still belonging to one Job.
+
+This allows Evrosion to control or inspect the entire application as one logical unit.
+
+---
+
+Process
+
+A Process provides:
+
+- Address-space isolation
+- Memory ownership
+- Resource handles
+- Capabilities
+- Security boundaries
+
+Processes remain important for compatibility and strong isolation.
+
+---
+
+Kernel Thread
+
+Threads are the actual execution units scheduled by the kernel.
+
+Threads belong to processes.
+
+The kernel should not need to know about every lightweight task created by an application.
+
+---
+
+User-Space Tasks
+
+Lightweight execution models should remain in userspace.
+
+Examples:
+
+- Rust async tasks
+- Fibers
+- Coroutines
+- Game-engine jobs
+- Runtime-specific lightweight tasks
+
+Thousands of lightweight tasks may execute over a much smaller number of kernel threads.
+
+---
+
+Scheduling Contexts
+
+CPU time should be treated as an explicit controlled resource.
+
+Evrosion may use Scheduling Contexts containing information such as:
+
+- CPU budget
+- Time period
+- Priority
+- Deadline
+- Resource guarantees
+- Scheduling class
+
+Scheduling Contexts should be controlled through capabilities.
+
+Principle
+
+«CPU time is a resource that can be controlled, delegated, measured, and limited.»
+
+---
+
+Causal Resource Accounting
+
+Evrosion should attempt to understand why CPU work happened, not merely which system process executed it.
+
+Example:
+
+Browser
+   ↓
+Filesystem service
+   ↓
+Storage driver
+
+If the filesystem and storage systems perform work because the browser requested it, Evrosion should be able to attribute that resource usage back to the browser where practical.
+
+This could eventually allow system monitoring to show information such as:
+
+Browser — 14% CPU
+
+9%  Browser execution
+3%  Networking performed for Browser
+2%  Storage/filesystem work for Browser
+
+This supports Evrosion's Observable System principle.
+
+---
+
+Scheduling Model
+
+Evrosion should use a hybrid scheduling model.
+
+Fair Scheduling
+
+Used for normal workloads such as:
+
+- Applications
+- Background work
+- General services
+- Development tools
+
+CPU time should be distributed fairly according to workload and configured policy.
+
+Deadline / Real-Time Scheduling
+
+Available for genuinely latency-sensitive workloads such as:
+
+- Audio
+- Input handling
+- Display composition
+- Critical hardware work
+- Recovery controller
+- Certain realtime workloads
+
+Applications should not automatically receive realtime authority simply because they request it.
+
+Creating or assigning powerful scheduling profiles should require appropriate capability/permission.
+
+---
+
+Adaptive CPU Budgets
+
+Evrosion should support resource guarantees without unnecessarily wasting unused CPU capacity.
+
+Example:
+
+A critical recovery Job might be guaranteed a small amount of CPU time.
+
+If the recovery system is idle, other applications may use that CPU.
+
+If the system becomes overloaded and recovery needs CPU time, its guaranteed allocation becomes available immediately.
+
+Principle
+
+«Guarantee critical resources without leaving unused capacity idle.»
+
+---
+
+Critical-System Responsiveness
+
+Important system components should remain responsive even if another workload attempts to consume all CPU resources.
+
+Examples include:
+
+- Recovery controller
+- Input handling
+- Essential scheduling infrastructure
+- Critical storage operations
+- System-health monitoring
+
+An application consuming all available cores must not automatically starve Evrosion's ability to recover or remain controllable.
+
+---
+
+Scheduling Context Donation
+
+When one component performs work for another through IPC, Evrosion should investigate allowing scheduling/resource context to follow the request.
+
+Example:
+
+Application
+   ↓ request
+Service
+   ↓ request
+Driver
+
+The resulting CPU usage could remain associated with the originating Job rather than becoming invisible system overhead.
+
+This should improve:
+
+- Resource accounting
+- Fairness
+- Performance analysis
+- Abuse prevention
+- User explanations
+
+Exact implementation remains TBD.
+
+---
+
+Hierarchical Resource Control
+
+Because Jobs form a hierarchy, limits and guarantees may eventually apply to entire application trees.
+
+Possible controlled resources include:
+
+- CPU time
+- Memory
+- IPC usage
+- Process count
+- Thread count
+- Device access
+- Network bandwidth
+- Background execution
+
+Exact resource-control design belongs to later engineering work.
+
+---
+
+Future Scheduler Extensibility
+
+Evrosion should leave room for future scheduling policies without making the system dependent on an experimental scheduler.
+
+Potential future profiles might include:
+
+- Gaming
+- Battery saver
+- Workstation
+- Server
+- Low-latency audio
+- Accessibility
+- Specialized compute
+
+The kernel should retain a safe built-in scheduler that can operate if an experimental policy fails.
+
+Principle
+
+«Scheduling policy may evolve. Basic system schedulability must never depend on optional policy code.»
+
+---
+
+E-004 Summary
+
+Evrosion's execution hierarchy will be:
+
+Job
+├── Process
+│    ├── Kernel Thread
+│    │      └── User-space tasks
+│    └── Kernel Thread
+│
+└── Child Job
+      └── Processes...
+
+Combined with:
+
+«Hierarchical Jobs»
+
+«Traditional isolated Processes»
+
+«Kernel Threads»
+
+«User-space lightweight tasks»
+
+«Capability-controlled Scheduling Contexts»
+
+«Fair + Deadline scheduling»
+
+«Adaptive CPU resource guarantees»
+
+«Causal resource accounting across IPC»
+
+«Future scheduling-policy extensibility with a safe kernel fallback»
+
+---
+
+Governing Principles
+
+«Every running thing should have clear ownership.»
+
+«CPU time is a controlled resource, not an invisible side effect.»
+
+«System work performed for an application should be attributable to that application where practical.»
+
+«Critical system functionality must remain responsive under load.»
+
+«Use kernel threads for execution and userspace tasks for lightweight concurrency.»
+
+«Keep the execution model compatible with existing software while improving ownership, observability, and control.»

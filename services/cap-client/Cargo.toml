@@ -1,0 +1,32 @@
+[package]
+name = "ev-cap-client"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+license.workspace = true
+[[bin]]
+name = "ev-cap-client"
+path = "src/main.rs"
+required-features = ["executable"]
+test = false
+bench = false
+
+[features]
+executable = []
+test-timeout = ["executable"]
+test-death = ["executable"]
+test-queued-timeout = ["executable"]
+test-queued-death = ["executable"]
+
+[dependencies]
+ev-userspace-contract = { path = "../../libs/userspace-contract" }
+ev-userspace-runtime = { path = "../../libs/userspace-runtime" }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_unsafe = "deny"
+
+[lints.clippy]
+all = "warn"
+undocumented_unsafe_blocks = "deny"

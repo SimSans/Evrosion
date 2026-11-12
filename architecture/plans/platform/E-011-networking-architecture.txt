@@ -1,0 +1,764 @@
+E-011 — Networking Architecture
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use a:
+
+«Continuity-First, Multipath, Capability-Controlled Networking Architecture»
+
+The network system should prioritize:
+
+- Low latency
+- Fast recovery
+- Minimal packet loss caused by the OS
+- Multipath resilience
+- Strong isolation
+- Per-Job visibility
+- Zero-copy performance
+- Graceful failover
+- Restartable networking components
+
+---
+
+E-011.1 — Network Intent Instead of Adapter Dependency
+
+Native Evrosion applications should request networking based on intent.
+
+Example:
+
+Reliable Internet Session
+Low latency preferred
+Migration allowed
+Costly networks only as fallback
+
+The application should not need to care whether traffic currently leaves through:
+
+- Ethernet
+- Wi-Fi
+- USB tethering
+- Mobile network
+- VPN
+- Future network technology
+
+Evrosion chooses the path.
+
+Legacy socket APIs remain available for compatibility.
+
+---
+
+E-011.2 — Network Continuity Manager
+
+Evrosion should maintain a Network Continuity / Path Manager.
+
+It tracks available network paths such as:
+
+Network Session
+   │
+   ├── Ethernet
+   ├── Wi-Fi
+   ├── Tethering
+   ├── VPN
+   └── Future Path
+
+The Continuity Manager decides how traffic moves between them.
+
+---
+
+E-011.3 — Path Quality
+
+Evrosion should evaluate paths using real conditions rather than simple hardcoded adapter preference.
+
+Possible factors include:
+
+- Latency
+- Jitter
+- Packet loss
+- Bandwidth
+- Stability
+- Signal quality
+- Power consumption
+- Monetary cost
+- User preference
+- VPN requirements
+- Security policy
+
+---
+
+E-011.4 — Momentary Network Flickers
+
+A brief loss of connectivity should not immediately destroy networking state.
+
+Example:
+
+Wi-Fi disappears briefly
+       ↓
+Mark path DEGRADED
+       ↓
+Preserve connection/network state
+       ↓
+Attempt immediate reassociation
+       ↓
+Probe alternative paths
+       ↓
+Resume or migrate traffic
+
+Principle
+
+«A momentary link failure should degrade a path, not automatically destroy a connection.»
+
+---
+
+E-011.5 — Make-Before-Break
+
+Where multiple paths exist, Evrosion should prefer:
+
+Prepare new path
+      ↓
+Validate
+      ↓
+Move traffic
+      ↓
+Retire old path
+
+rather than:
+
+Destroy old path
+      ↓
+Search for replacement
+
+This reduces visible interruptions.
+
+---
+
+E-011.6 — Warm Standby
+
+Secondary network interfaces may remain ready for rapid failover.
+
+Example:
+
+Ethernet   Active
+Wi-Fi      Warm standby
+Tethering  Cold standby
+
+Power and battery considerations should influence whether secondary paths remain warm.
+
+---
+
+E-011.7 — Multipath TCP
+
+Evrosion should support Multipath TCP where peers and networks allow it.
+
+A single logical connection may use multiple available paths.
+
+Potential benefits:
+
+- Seamless failover
+- Better resilience
+- Optional bandwidth aggregation
+- Reduced interruption when interfaces change
+
+If the remote system does not support MPTCP, networking should fall back cleanly to ordinary TCP.
+
+---
+
+E-011.8 — QUIC Migration
+
+Evrosion should support QUIC connection migration where applications/protocols use QUIC.
+
+This can allow a connection to survive address/path changes more naturally than ordinary TCP.
+
+Example:
+
+Wi-Fi
+   ↓
+Connection migrates
+   ↓
+Ethernet / Tethering
+
+where supported by the peer.
+
+---
+
+E-011.9 — Legacy TCP Reality
+
+Evrosion cannot magically preserve every ordinary TCP connection if:
+
+- Client IP changes
+- Path changes completely
+- Peer lacks migration/multipath support
+
+Therefore Evrosion should:
+
+- Preserve connections where protocol semantics allow it
+- Reconnect rapidly where they do not
+- Preserve higher-level application state where APIs support it
+
+The system must not make impossible reliability promises.
+
+---
+
+E-011.10 — Userspace Network Stack
+
+Most networking policy and protocol implementation should remain outside the privileged kernel.
+
+Possible userspace responsibilities include:
+
+- TCP
+- UDP
+- QUIC integration
+- MPTCP policy
+- DNS
+- DHCP/address configuration
+- Routing
+- Firewall policy
+- VPN
+- Connectivity monitoring
+- Path selection
+
+The kernel provides:
+
+- Hardware isolation
+- DMA/IOMMU
+- Scheduling primitives
+- IPC
+- Memory protection
+- Capability enforcement
+- Required fast mechanisms
+
+---
+
+E-011.11 — Control Plane / Data Plane Split
+
+Networking should distinguish between:
+
+Control Plane
+
+Handles:
+
+- Connection configuration
+- DHCP
+- DNS
+- Route policy
+- VPN policy
+- Firewall rules
+- Path scoring
+- Link monitoring
+
+Data Plane
+
+Handles:
+
+- Packet movement
+- Transport processing
+- Queues
+- Encryption
+- Routing
+- High-frequency packet work
+
+The control plane should remain highly modular.
+
+The high-frequency data plane should remain compact and optimized.
+
+---
+
+E-011.12 — Short Packet Path
+
+Evrosion should avoid unnecessary process crossings in the high-frequency packet path.
+
+If measurements show that tightly coupled trusted networking components require co-location for performance, they may share a protection domain.
+
+Principle
+
+«Do not sacrifice network performance merely for architectural purity.»
+
+---
+
+E-011.13 — Zero-Copy Networking
+
+Networking should integrate directly with E-008 and E-005.
+
+Preferred mechanisms include:
+
+- Shared Memory Objects
+- Shared packet pools
+- RX/TX rings
+- DMA-backed buffers
+- Zero-copy transfer where possible
+- Batching
+
+Conceptually:
+
+NIC DMA
+   ↓
+Shared packet buffer
+   ↓
+Network stack
+   ↓
+Application
+
+Avoid unnecessary copies.
+
+---
+
+E-011.14 — Bounded Packet Queues
+
+Network queues should remain bounded.
+
+A producer must not generate infinite buffered traffic.
+
+Backpressure should be explicit.
+
+This prevents:
+
+- Memory exhaustion
+- Excessive latency
+- Unbounded packet buildup
+
+---
+
+E-011.15 — Low-Latency Queue Management
+
+Evrosion should use intelligent per-flow queue management.
+
+A large download should not bury latency-sensitive packets behind enormous queues.
+
+Example:
+
+Game traffic
+Voice traffic
+Browser traffic
+Large download
+       ↓
+Fair per-flow scheduling
+
+One large bulk transfer should not unnecessarily destroy latency for unrelated workloads.
+
+---
+
+E-011.16 — Bufferbloat Control
+
+Evrosion should actively minimize locally created bufferbloat.
+
+Queue-management policy should balance:
+
+- Throughput
+- Latency
+- Fairness
+- Packet loss
+- Interactive responsiveness
+
+This is especially important for:
+
+- Games
+- Voice/video calls
+- Remote desktop
+- Interactive applications
+
+---
+
+E-011.17 — Evolvable Congestion Control
+
+Evrosion should not permanently hardcode one congestion-control algorithm into the architecture.
+
+The networking stack should support replaceable/tested congestion-control policies.
+
+Different future workloads may benefit from different approaches.
+
+The default must remain stable and safe.
+
+---
+
+E-011.18 — Connection Candidate Racing
+
+Evrosion should avoid long delays caused by one apparently available but broken route.
+
+Where multiple viable options exist, the system may test them intelligently rather than waiting for one to fully fail before trying another.
+
+This may include:
+
+- IPv4 / IPv6
+- Multiple destination addresses
+- Multiple physical paths
+
+Principle
+
+«Do not wait unnecessarily on a failing path when a healthy path exists.»
+
+---
+
+E-011.19 — IPv4 and IPv6
+
+Evrosion should support both IPv4 and IPv6.
+
+IPv6 should be first-class.
+
+IPv4 remains essential for compatibility.
+
+Neither should unnecessarily block the other when one path is broken.
+
+---
+
+E-011.20 — Per-Job Networking
+
+Networking integrates with the E-004 Job model.
+
+Evrosion should be able to attribute traffic to logical workloads.
+
+Example:
+
+Game Job
+  └── Network usage
+
+Browser Job
+  └── Network usage
+
+Updater Job
+  └── Network usage
+
+This enables better:
+
+- Accounting
+- QoS
+- Security
+- Diagnostics
+- Resource control
+
+---
+
+E-011.21 — Capability-Controlled Networking
+
+Networking authority should use E-009 capabilities.
+
+Possible grants include:
+
+- No networking
+- LAN only
+- Internet only
+- Specific destination/service
+- VPN-required access
+- Raw socket access
+- Network-administration access
+
+Example:
+
+Calculator
+→ No network capability
+
+Media Server
+→ LAN capability
+
+Browser
+→ Internet capability
+
+---
+
+E-011.22 — Capability-Aware Firewall
+
+Firewall rules should understand both packets and the Job/application responsible for them.
+
+Policies may express:
+
+Browser → Internet ✓
+Calculator → Internet ✗
+Media Server → LAN ✓
+Media Server → WAN ✗
+
+Layer 3 may still expose traditional low-level firewall controls.
+
+---
+
+E-011.23 — DNS Service
+
+DNS should be provided through a supervised system service.
+
+Possible functionality includes:
+
+- Caching
+- DNSSEC validation
+- Encrypted DNS options
+- VPN-aware split DNS
+- Per-network configuration
+- Diagnostics
+- Candidate/address selection
+
+Applications receive resolver access through capabilities.
+
+If DNS fails:
+
+«Restart DNS service.»
+
+Not the computer.
+
+---
+
+E-011.24 — DHCP and Address Configuration
+
+Address configuration should also be managed as supervised networking functionality.
+
+The system should preserve valid leases/state through temporary interface disruptions when safe rather than immediately discarding configuration unnecessarily.
+
+---
+
+E-011.25 — VPN as a Network Path
+
+VPNs should participate directly in the network path graph.
+
+Conceptually:
+
+Application
+    ↓
+VPN-required Network Session
+    ↓
+VPN Path
+    ↓
+Wi-Fi / Ethernet
+
+The Continuity Manager understands the relationship.
+
+VPNs should not be bolted onto the system as an unrelated exception.
+
+---
+
+E-011.26 — VPN Policies
+
+Jobs may be configured with policies such as:
+
+- Always use VPN
+- Prefer VPN
+- Never use VPN
+- VPN only for selected destinations
+- Kill network access if VPN disappears
+
+These policies should be explicit and observable.
+
+---
+
+E-011.27 — Wi-Fi Recovery
+
+A Wi-Fi failure should trigger targeted recovery.
+
+Possible sequence:
+
+Wi-Fi path fails
+      ↓
+Attempt reassociation
+      ↓
+Restart Wi-Fi service if required
+      ↓
+Restart driver if required
+      ↓
+Fallback to alternate path
+      ↓
+Roll back broken driver if repeatedly failing
+
+The entire OS should not need rebooting.
+
+---
+
+E-011.28 — Network Service Recovery
+
+If the networking service itself fails:
+
+- Restart affected service
+- Preserve state where possible
+- Reconnect applications
+- Restore routes
+- Restore DNS
+- Restore VPN state
+- Roll back broken service version if needed
+
+This integrates directly with E-007.
+
+---
+
+E-011.29 — Driver Recovery Integration
+
+Network-driver recovery follows E-006.
+
+Repeated failures may trigger:
+
+- Driver restart
+- Hardware reset
+- Driver quarantine
+- Previous driver rollback
+- Generic fallback driver
+- User explanation
+
+---
+
+E-011.30 — Network Health Monitoring
+
+Evrosion should continuously understand network health.
+
+Possible measurements include:
+
+- Connectivity
+- Latency
+- Jitter
+- Packet loss
+- Signal quality
+- Link speed
+- Path reliability
+- DNS health
+- Internet reachability
+- VPN status
+
+This information should influence continuity decisions.
+
+---
+
+E-011.31 — Offline Operation
+
+Loss of networking must not break unrelated local functionality.
+
+When offline:
+
+- Local apps remain usable
+- Local files remain usable
+- Local authentication remains usable
+- LAN functionality may remain available
+- Cloud-dependent features explain their unavailable state
+
+This reinforces F-011 Local First.
+
+---
+
+E-011.32 — Layer-Based Networking UX
+
+Layer 1
+
+Simple:
+
+«Internet connected.»
+
+or:
+
+«Wi-Fi briefly disconnected. Evrosion restored the connection automatically.»
+
+Layer 2
+
+Shows:
+
+- Current path
+- Wi-Fi/Ethernet status
+- VPN
+- DNS
+- Latency
+- Basic diagnostics
+- Restart networking
+
+Layer 3
+
+Full access:
+
+- Routes
+- Interfaces
+- Network sessions
+- Packet statistics
+- Firewall policy
+- Capabilities
+- Multipath state
+- Congestion control
+- Queues
+- DNS configuration
+- VPN routing
+- Raw networking tools
+
+---
+
+E-011 Final Architecture
+
+APPLICATIONS
+      │
+      ├── Native Network Session API
+      └── Legacy Socket API
+      │
+      ↓
+NETWORK SERVICES
+│
+├── TCP / UDP
+├── MPTCP
+├── QUIC support
+├── DNS
+├── DHCP
+├── Firewall
+├── VPN
+└── Accounting
+      │
+      ↓
+CONTINUITY / PATH MANAGER
+│
+├── Ethernet
+├── Wi-Fi
+├── Tethering
+├── VPN paths
+└── Future interfaces
+      │
+      ↓
+HIGH-PERFORMANCE DATA PLANE
+│
+├── Shared rings
+├── Memory Objects
+├── Zero-copy buffers
+└── Fair packet queues
+      │
+      ↓
+NETWORK DRIVERS
+      │
+      ↓
+HARDWARE
+
+---
+
+E-011 Summary
+
+Evrosion networking will be:
+
+«Continuity-first»
+
+«Multipath-aware»
+
+«Capability-controlled»
+
+«Per-Job observable»
+
+«Zero-copy where practical»
+
+«Low-latency»
+
+«Fair-queued»
+
+«Resilient to brief link loss»
+
+«Make-before-break where possible»
+
+«QUIC migration capable»
+
+«MPTCP capable»
+
+«Restartable»
+
+«VPN-aware»
+
+«Offline-friendly»
+
+---
+
+Governing Principles
+
+«A brief link failure should degrade a path, not unnecessarily destroy a connection.»
+
+«Make before break whenever possible.»
+
+«Use multiple paths intelligently rather than tying applications to one adapter.»
+
+«Networking should not add avoidable latency or packet loss.»
+
+«Bulk traffic must not unnecessarily destroy interactive latency.»
+
+«Applications express networking intent; Evrosion chooses the best path.»
+
+«Networking failure should restart networking, not the computer.»
+
+«Evrosion should preserve connection state as aggressively as protocol semantics honestly allow.»

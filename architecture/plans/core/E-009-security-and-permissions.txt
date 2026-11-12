@@ -1,0 +1,812 @@
+E-009 — Security & Permission Architecture
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use a:
+
+«Capability-First, Owner-Sovereign, Zero-Ambient-Authority Security Architecture»
+
+The system should aggressively prevent unauthorized authority while preserving the owner's ultimate control over the machine.
+
+Core Principle
+
+«Evrosion should be hostile to unauthorized authority, never hostile to the owner.»
+
+---
+
+E-009.1 — Identity and Authority Are Separate
+
+Evrosion will distinguish between:
+
+Identity
+
+Describes:
+
+- User
+- Group
+- Session
+- Ownership
+- Authentication
+- Audit identity
+
+Authority
+
+Determines what a process can actually access or do.
+
+Authority is granted through capabilities.
+
+Principle
+
+«Identity tells Evrosion who you are. Capabilities determine what your code may do.»
+
+Running software as a powerful user must not automatically give that software every capability belonging to that user.
+
+---
+
+E-009.2 — Zero Ambient Authority
+
+New applications and processes should begin with essentially no automatic authority.
+
+They receive only the capabilities required for their function.
+
+Example:
+
+A photo editor may receive:
+
+Application files
+Application-private data
+Graphics service
+Selected image file
+Audio output if needed
+
+It should not automatically receive:
+
+Every user file
+All hardware
+All system services
+All network interfaces
+All processes
+
+---
+
+E-009.3 — Capability-Controlled Resources
+
+Capabilities may represent authority over resources such as:
+
+- Files
+- Directories
+- Devices
+- Camera
+- Microphone
+- Network endpoints
+- Memory Objects
+- GPU resources
+- Drivers
+- Services
+- Processes
+- Jobs
+- IPC endpoints
+- Storage objects
+- System controls
+
+Holding the appropriate capability is what permits access.
+
+---
+
+E-009.4 — Restricted Application Namespaces
+
+Normal applications should not receive a global view of the entire machine.
+
+Instead, an application's environment may resemble:
+
+/app
+/data
+/tmp
+/shared/<explicit grants>
+
+Only explicitly granted system resources appear within its namespace.
+
+This limits damage if the application is compromised.
+
+---
+
+E-009.5 — User-Selected Resource Grants
+
+File pickers and similar interfaces should function as capability-granting mechanisms.
+
+Example:
+
+The user selects:
+
+Documents/Taxes.pdf
+
+The application receives:
+
+Capability:
+Taxes.pdf
+READ + WRITE
+
+It does not automatically receive the entire Documents directory.
+
+Principle
+
+«Grant the thing the user selected, not everything surrounding it.»
+
+---
+
+E-009.6 — Capability Rights
+
+Capabilities should support explicit rights.
+
+Examples:
+
+- READ
+- WRITE
+- EXECUTE
+- MAP
+- DELETE
+- CONTROL
+- SIGNAL
+- TRANSFER
+- ADMINISTER
+
+Exact rights will depend on resource type.
+
+---
+
+E-009.7 — Rights Attenuation
+
+Capabilities may be transferred with reduced authority.
+
+Example:
+
+Original capability:
+
+File
+READ + WRITE + DELETE
+
+Transferred capability:
+
+File
+READ
+
+The receiving process cannot restore permissions it was never granted.
+
+Principle
+
+«Authority may be reduced during delegation, never magically expanded.»
+
+---
+
+E-009.8 — Revocation
+
+Evrosion should support revocable authority where practical.
+
+A granted capability should not necessarily become permanent forever.
+
+Capability relationships may track derivation:
+
+Original Authority
+      ↓
+Grant A
+      ↓
+Grant B
+      ↓
+Grant C
+
+Revocation may invalidate derived grants where required.
+
+Exact revocation mechanisms remain to be designed.
+
+---
+
+E-009.9 — Temporary Capability Leases
+
+Capabilities may be granted for limited durations or contexts.
+
+Examples:
+
+- Camera — while video call is active
+- Microphone — this session only
+- File — until application closes
+- Directory — until manually revoked
+- Device — one operation only
+
+This provides finer control than simple permanent Allow/Deny permissions.
+
+---
+
+E-009.10 — Self-Restriction
+
+Applications should be able to voluntarily surrender authority.
+
+Example:
+
+A PDF parser handling untrusted content may deliberately drop:
+
+- Network access
+- Unrelated filesystem access
+- Device access
+
+Once dropped, that authority should not return unless another authorized entity grants it again.
+
+Principle
+
+«Dropping authority should be easy. Regaining authority should require authorization.»
+
+---
+
+E-009.11 — Contextual Permission Requests
+
+Evrosion should avoid constant meaningless permission dialogs.
+
+Applications may declare potential capabilities in manifests, but sensitive authority should normally be requested when it makes contextual sense.
+
+Example:
+
+Camera app requests camera access while opening camera functionality:
+
+«Reasonable.»
+
+Calculator requests microphone access immediately at launch:
+
+«Suspicious.»
+
+---
+
+E-009.12 — Capability Pickers Instead of Permission Spam
+
+Where possible, normal user actions should naturally grant limited authority.
+
+Examples:
+
+- File picker
+- Folder picker
+- Device picker
+- Camera selection
+- Microphone selection
+
+This reduces unnecessary permission dialogs while giving users more precise control.
+
+---
+
+E-009.13 — Application Sandboxing
+
+Applications should be sandboxed by default.
+
+The sandbox may restrict:
+
+- Filesystem visibility
+- Device access
+- Network access
+- Service access
+- IPC
+- Memory sharing
+- Process interaction
+- System configuration
+
+Applications may receive additional authority through explicit grants.
+
+---
+
+E-009.14 — Service and Driver Security
+
+E-007 services and E-006 drivers follow the same capability model.
+
+A system component does not automatically become omnipotent merely because it is part of the OS.
+
+Examples:
+
+A Wi-Fi driver receives authority over:
+
+- Its PCI function
+- Its MMIO region
+- Its interrupt
+- Restricted DMA mappings
+- Required network IPC
+
+A DNS service receives:
+
+- Network-stack access
+- DNS configuration
+- Limited persistent state
+
+No more than necessary.
+
+---
+
+E-009.15 — No Permanent Ambient Root Model
+
+Evrosion should avoid making one permanent all-powerful userspace identity the foundation of system security.
+
+Administrative operations should receive explicit authority when required.
+
+This avoids the traditional situation where:
+
+«"Administrator/root launched this program"»
+
+effectively means:
+
+«"This program owns everything."»
+
+---
+
+E-009.16 — Absolute Access
+
+F-002 remains fully preserved.
+
+Layer 3 / Absolute Access means:
+
+«The machine owner may deliberately grant any capability.»
+
+This may include:
+
+- Kernel configuration authority
+- Raw hardware access
+- Boot configuration access
+- Driver loading
+- System service replacement
+- Protected filesystem access
+- Security-policy modification
+- Unrestricted process control
+- Near-total machine authority
+
+However, Absolute Access does not mean every process automatically receives that authority.
+
+The owner chooses where authority goes.
+
+Principle
+
+«Absolute Access belongs to the owner, not automatically to every program the owner launches.»
+
+---
+
+E-009.17 — Explicit Full-Authority Grants
+
+If the owner deliberately wants to grant a program essentially unrestricted access, Evrosion must allow it in Absolute Access.
+
+The system should:
+
+1. Explain the risk.
+2. Identify the program.
+3. Identify the capabilities being granted.
+4. Require deliberate confirmation.
+5. Honor the owner's decision.
+
+---
+
+E-009.18 — Secure Attention
+
+Evrosion should include an independent trusted input/security path.
+
+Security-critical actions should not depend entirely on the normal desktop.
+
+A secure-attention mechanism may be invoked through a kernel-recognized input sequence.
+
+It can open a trusted environment controlled by the recovery/security system.
+
+Possible functions:
+
+- Authentication
+- Absolute Access
+- Dangerous capability grants
+- Emergency recovery
+- Credential management
+- Security configuration
+- Compromised desktop escape
+
+---
+
+E-009.19 — Trusted Security UI
+
+Ordinary applications should not be able to impersonate Evrosion's protected security interface.
+
+The trusted UI should have:
+
+- Clearly identifiable appearance
+- Protected input routing
+- Independent rendering/recovery path where practical
+- Direct connection to trusted security components
+
+This reduces spoofing and malicious permission prompts.
+
+---
+
+E-009.20 — Secure Boot
+
+Evrosion should support secure boot by default where hardware permits.
+
+The boot chain may verify:
+
+Firmware
+   ↓
+Evrosion bootloader
+   ↓
+Kernel
+   ↓
+Critical system components
+
+The purpose is to detect unauthorized modification before normal system startup.
+
+---
+
+E-009.21 — Owner-Controlled Boot Trust
+
+Secure boot must never become vendor ownership of the computer.
+
+The machine owner should ultimately control trusted boot policy.
+
+Evrosion should support:
+
+Normal trusted boot
+
+Uses known Evrosion trust keys.
+
+Owner-trusted boot
+
+The owner installs custom trust keys and may boot:
+
+- Custom Evrosion kernels
+- Modified kernels
+- Custom bootloaders
+- Experimental builds
+
+Explicit unverified boot
+
+The owner deliberately disables verification after clear warnings.
+
+Principle
+
+«Boot verification protects the owner. It does not replace the owner.»
+
+---
+
+E-009.22 — Measured Boot
+
+Where TPM or equivalent hardware exists, Evrosion should support measured boot.
+
+Boot measurements may record information about:
+
+- Firmware
+- Bootloader
+- Kernel
+- Critical configuration
+- Important early system components
+
+This may support:
+
+- Compromise detection
+- Enterprise verification
+- Recovery decisions
+- Hardware-backed secrets
+
+---
+
+E-009.23 — Rollback Protection
+
+Evrosion should protect against malicious downgrade attacks.
+
+A validly signed but dangerously outdated vulnerable component should not automatically be accepted simply because its signature remains valid.
+
+Default security policy may reject known-dangerous rollback.
+
+Absolute Access may deliberately override this.
+
+---
+
+E-009.24 — Application and Driver Signing
+
+Code signing should establish:
+
+- Publisher identity
+- Package integrity
+- Provenance
+
+Signing should not automatically grant authority.
+
+Principle
+
+«Trust affects policy. Trust does not replace capabilities.»
+
+A signed program can still be malicious or compromised.
+
+It therefore receives only the authority it actually needs.
+
+---
+
+E-009.25 — Unsigned Software
+
+Unsigned or unknown software should remain usable.
+
+Normal mode may apply:
+
+- Warning
+- Stronger sandboxing
+- Reduced default authority
+- Additional verification
+
+Layer 3 / Absolute Access allows the owner to deliberately run or install it anyway.
+
+---
+
+E-009.26 — Credential and Secret Vault
+
+Sensitive secrets should not simply exist throughout arbitrary process memory.
+
+Evrosion should maintain an isolated Credential/Secret Vault for things such as:
+
+- Passwords
+- Encryption keys
+- Authentication tokens
+- Private keys
+- Device credentials
+- Network secrets
+
+Applications receive controlled operations or scoped credentials rather than unrestricted vault access.
+
+---
+
+E-009.27 — Hardware-Backed Secrets
+
+Where hardware supports it, Evrosion should take advantage of:
+
+- TPM
+- Secure elements
+- Hardware-backed key storage
+- Platform security processors
+- Equivalent future hardware
+
+Keys should preferably remain protected from ordinary software access.
+
+---
+
+E-009.28 — Old Hardware Fallback
+
+Hardware-backed security must not become a requirement for basic Evrosion operation.
+
+Older systems without TPM or equivalent support may use:
+
+- Software-backed encrypted vault
+- Password-derived encryption
+- Reduced security guarantees
+
+Evrosion should explain the difference.
+
+Principle
+
+«Gracefully degrade security features instead of needlessly abandoning useful hardware.»
+
+---
+
+E-009.29 — Compromise Containment
+
+If an application becomes compromised:
+
+Kill Job
+   ↓
+Revoke capabilities
+   ↓
+Replace/reinstall known-good package
+   ↓
+Inspect affected resources
+
+Because applications do not possess broad ambient authority, compromise should ideally remain confined to their granted resources.
+
+---
+
+E-009.30 — Service Compromise Recovery
+
+If a service is compromised:
+
+Remove service authority
+      ↓
+Terminate Job
+      ↓
+Restore known-good implementation
+      ↓
+Restore controlled state
+      ↓
+Reissue required capabilities
+
+This integrates directly with E-007 transactional service replacement.
+
+---
+
+E-009.31 — Driver Compromise Recovery
+
+A compromised driver can be:
+
+- Terminated
+- Capability-revoked
+- Hardware-reset
+- Quarantined
+- Rolled back
+- Replaced with fallback driver
+
+This integrates with E-006.
+
+---
+
+E-009.32 — System Compromise Recovery
+
+If critical system state becomes suspect:
+
+Evrosion should use its independent recovery environment to:
+
+- Verify trusted system state
+- Inspect modified components
+- Restore known-good versions
+- Roll back updates
+- Repair boot components
+- Preserve user data where safely possible
+- Reinstall system components without unnecessary data destruction
+
+---
+
+E-009.33 — Security Auditing
+
+Evrosion should maintain structured security state.
+
+Potential information includes:
+
+- Capability ownership
+- Capability transfers
+- Revocations
+- Sensitive grants
+- Application permissions
+- Driver authority
+- Service authority
+- Security-policy changes
+- Boot verification state
+- Absolute Access events
+
+This information should be available locally without requiring telemetry.
+
+---
+
+E-009.34 — Layer-Based Security UX
+
+Layer 1
+
+Simple:
+
+«Camera access allowed while video call is active.»
+
+«Evrosion blocked an application from accessing unrelated files.»
+
+Layer 2
+
+More detail:
+
+- Application permissions
+- Hardware access
+- File grants
+- Network access
+- Security events
+- Revocation controls
+
+Layer 3 / Absolute Access
+
+Full detail:
+
+- Capability graph
+- Raw authority
+- Boot trust
+- Security policies
+- Driver permissions
+- Service permissions
+- Process capabilities
+- Manual delegation
+- Manual revocation
+- Unsigned code execution
+- Protection overrides
+
+---
+
+E-009.35 — Future Hardware Capability Support
+
+Evrosion should be designed to take advantage of future hardware security models such as CHERI-like capability architectures.
+
+Possible benefits include:
+
+- Hardware-enforced pointer bounds
+- Fine-grained memory authority
+- Better compartmentalization
+- Stronger exploit containment
+
+Evrosion must not require such hardware for normal operation.
+
+---
+
+E-009 Final Architecture
+
+                   HUMAN IDENTITY
+                        │
+                Authentication / Policy
+                        │
+                        ↓
+                 CAPABILITY SYSTEM
+                        │
+      ┌─────────────────┼─────────────────┐
+      │                 │                 │
+Applications        Services          Drivers
+      │                 │                 │
+Sandboxes       Scoped authority    Device authority
+      │                 │                 │
+      └────────── Kernel Enforcement ─────┘
+                        │
+                     Hardware
+
+Supported by:
+
+Secure Attention
+Owner-Controlled Boot Trust
+Credential Vault
+Verified / Measured Boot
+Rollback Protection
+Capability Revocation
+Transactional Recovery
+Security Auditing
+
+---
+
+E-009 Summary
+
+Evrosion security will provide:
+
+«Capability-first authority»
+
+«Identity separate from authority»
+
+«Zero ambient authority»
+
+«Sandboxing by default»
+
+«Restricted namespaces»
+
+«User-selected capability grants»
+
+«Rights attenuation»
+
+«Capability revocation»
+
+«Temporary capability leases»
+
+«Self-restriction»
+
+«Secure-attention UI»
+
+«Owner-controlled Secure Boot»
+
+«Measured Boot»
+
+«Rollback protection»
+
+«Hardware-backed secrets where available»
+
+«Graceful security fallback on old hardware»
+
+«Transactional compromise recovery»
+
+«Absolute Access controlled by the owner»
+
+---
+
+Governing Principles
+
+«Identity tells Evrosion who you are. Capabilities determine what code can do.»
+
+«Applications begin with no unnecessary authority.»
+
+«Grant access to the specific thing the user intended, not everything around it.»
+
+«Authority can be delegated, reduced, revoked, and dropped.»
+
+«Trust and signatures provide provenance, not unlimited privilege.»
+
+«Strong security protects the owner from unauthorized software. It must never permanently protect the computer from its owner.»
+
+«Absolute Access belongs to the owner, not automatically to every process they launch.»
+
+«Evrosion should be hostile to unauthorized authority, never hostile to the owner.»

@@ -1,0 +1,1984 @@
+E-019 — Update & Lifecycle Architecture
+
+Status: ARCHITECTURAL DIRECTION DECIDED AND CLOSED
+
+Evrosion will use a:
+
+«Unified Transactional Lifecycle Architecture with Health-Gated Generations and Compatibility Cohorts»
+
+Evrosion must not build separate incompatible update systems for:
+
+- The operating system
+- Drivers
+- Services
+- Applications
+- Codecs
+- Compatibility runtimes
+- Recovery components
+- Firmware
+
+Instead:
+
+«There is one Lifecycle Engine and one common transaction model. Components differ only in what constitutes a safe activation boundary, health contract, rollback boundary, and state migration.»
+
+---
+
+E-019.1 — The Lifecycle Engine
+
+The Lifecycle Engine is the common orchestration system for managed Evrosion software.
+
+Conceptually:
+
+                 LIFECYCLE ENGINE
+                        │
+       ┌────────────────┼────────────────┐
+       │                │                │
+    System           Drivers          Services
+       │                │                │
+ Applications       Firmware         Codecs
+       │                │                │
+ Compat Runtimes    Recovery       Other Components
+
+It coordinates:
+
+- Discovery
+- Planning
+- Acquisition
+- Verification
+- Dependency/cohort resolution
+- Storage reservation
+- State checkpointing
+- Staging
+- Activation
+- Health probation
+- Commit
+- Rollback
+- Retention
+- Retirement
+- Garbage collection
+
+---
+
+E-019.2 — One Engine, Many Activation Strategies
+
+Using one lifecycle engine does not mean everything updates identically.
+
+Possible activation strategies include:
+
+Live handoff
+Process restart
+Service restart
+Device reset
+Session restart
+User logout
+System reboot
+Cohort reboot
+Firmware-specific activation
+
+Each component declares its valid strategies.
+
+---
+
+E-019.3 — Common Lifecycle States
+
+Managed components should use a coherent lifecycle state model.
+
+Conceptually:
+
+AVAILABLE
+    ↓
+PLANNED
+    ↓
+ACQUIRING
+    ↓
+VERIFIED
+    ↓
+STAGED
+    ↓
+PENDING ACTIVATION
+    ↓
+ACTIVE / PROBATION
+    ↓
+COMMITTED
+    ↓
+SUPERSEDED
+    ↓
+RETIRED
+    ↓
+GARBAGE COLLECTED
+
+Exceptional states may include:
+
+FAILED
+QUARANTINED
+ROLLED BACK
+BLOCKED
+INCOMPATIBLE
+
+Lifecycle state must be structured and observable.
+
+---
+
+E-019.4 — Lifecycle Manifest
+
+Every managed component should provide machine-readable lifecycle metadata.
+
+Potential information includes:
+
+Component identity
+Version
+Content hashes
+Content sizes
+Publisher/provenance
+Dependencies
+Protocol requirements
+Compatibility requirements
+Compatibility cohort
+Activation strategy
+Health contract
+Rollback contract
+State schema/epoch
+Migration rules
+Reboot requirement
+Firmware constraints
+Retention policy
+
+Exact stable representation belongs to E-015 IDL/platform-contract work.
+
+---
+
+E-019.5 — E-010 Owns Durable Acquisition
+
+E-019 must reuse E-010 Durable Operations.
+
+Downloading an update should therefore support:
+
+Acquire
+ ↓
+Verify chunks/content
+ ↓
+Persist checkpoint
+ ↓
+Resume after interruption
+
+Do not invent a separate updater-specific durability system.
+
+---
+
+E-019.6 — Acquisition Is Interruptible
+
+Power loss or reboot during download/staging should not damage the currently active system.
+
+If acquisition is interrupted:
+
+Resume
+
+or:
+
+Discard incomplete candidate
+
+The active version remains authoritative.
+
+---
+
+E-019.7 — Activation Is Transactional
+
+The transition from old version to new version must have an explicit durable activation point.
+
+Avoid states where the machine is unknowingly half-old and half-new.
+
+---
+
+E-019.8 — The Running Trusted System Is Not the Construction Site
+
+For boot/system-critical updates:
+
+«Evrosion must not construct the replacement system by mutating the currently trusted system in place.»
+
+Instead:
+
+Generation N
+ACTIVE
+      │
+      └──── machine keeps using N
+
+Meanwhile:
+
+Construct Generation N+1
+Verify N+1
+Stage N+1
+
+Only after staging is complete does activation occur.
+
+---
+
+E-019.9 — System Generations
+
+E-012 System Generations become E-019's system-level transaction unit.
+
+A System Generation is an immutable coherent set of references to:
+
+- Kernel
+- Boot components
+- Critical services
+- Required runtimes
+- Trusted-control components
+- Security configuration
+- Required drivers
+- Compatibility metadata
+- Other boot-critical components
+
+---
+
+E-019.10 — Generations Need Not Duplicate All Bytes
+
+System Generations should reuse E-010 immutable/content-addressed storage.
+
+Example:
+
+Generation 41
+Generation 42
+
+may share almost all unchanged objects physically.
+
+A new generation is therefore primarily:
+
+«A new coherent reference graph, not another full physical OS copy.»
+
+---
+
+E-019.11 — What Belongs in a System Generation
+
+A change should normally enter through a full System Generation when it modifies:
+
+- Kernel
+- Bootloader/boot-critical code
+- Capability foundations
+- Trusted Control Plane
+- Core security architecture
+- Boot-critical storage
+- Fundamental runtime contracts
+- Critical IPC/runtime infrastructure
+- Multiple boot-critical components requiring coherent activation
+- Other components whose incompatible mixture could prevent recovery/boot
+
+---
+
+E-019.12 — What May Update Independently
+
+Components may update independently when their stable contracts and recovery boundaries allow it.
+
+Examples may include:
+
+- Applications
+- Optional codecs
+- Noncritical services
+- Compatibility runtimes
+- Many drivers
+- Optional system tools
+- Media components
+
+Independent updating remains subject to dependencies and Compatibility Cohorts.
+
+---
+
+E-019.13 — Do Not Artificially Force Everything Into Full OS Releases
+
+Evrosion should not require rebuilding/rebooting the whole operating system merely because:
+
+- A Bluetooth service changed
+- A codec received a fix
+- One application updated
+- A restartable driver changed
+
+Use the smallest safe lifecycle scope.
+
+---
+
+E-019.14 — Do Not Artificially Avoid Reboots Either
+
+A zero-reboot marketing goal is explicitly rejected.
+
+If reboot is the safest coherent activation boundary:
+
+«Reboot.»
+
+A fast controlled reboot into a coherent generation is preferable to dangerous live mutation of boot-critical state.
+
+---
+
+E-019.15 — Compatibility Cohorts
+
+Some independently packaged components must activate and roll back together.
+
+Evrosion should represent these sets as:
+
+«Compatibility Cohorts»
+
+Example:
+
+GPU Cohort
+├── GPU Driver 12
+├── Firmware 7
+└── Graphics Service 18
+
+or:
+
+Storage Cohort
+├── Storage Service 6
+├── Filesystem Protocol 4
+└── Metadata Schema 9
+
+---
+
+E-019.16 — Smallest Safe Cohort
+
+The recovery law becomes:
+
+«Recover the smallest safe compatible cohort, not blindly the smallest component file.»
+
+If one driver fails but the old driver cannot work with the newly activated firmware, reverting only the driver would be invalid.
+
+The Lifecycle Engine resolves the correct rollback set.
+
+---
+
+E-019.17 — Mix-and-Match Prevention
+
+Evrosion must not assemble combinations of individually valid components that were never intended to operate together.
+
+Lifecycle metadata should allow:
+
+requires
+conflicts
+compatible_with
+cohort
+minimum_version
+maximum_version
+protocol_version
+
+The resolver validates the complete activation set before activation.
+
+---
+
+E-019.18 — Dependency Resolution Happens Before Activation
+
+Dependencies must be solved before exposing the new component as active.
+
+Avoid:
+
+activate component
+↓
+discover dependency is missing
+↓
+hope
+
+Prefer:
+
+Resolve
+↓
+Acquire complete closure
+↓
+Verify
+↓
+Stage
+↓
+Activate
+
+---
+
+E-019.19 — Health-Gated Activation
+
+Starting successfully is not sufficient evidence of correctness.
+
+After activation:
+
+ACTIVE
+   ↓
+PROBATION
+
+During probation, health contracts are evaluated.
+
+Only then:
+
+COMMITTED / KNOWN GOOD
+
+---
+
+E-019.20 — Health Classes
+
+Health requirements should be categorized.
+
+Critical
+
+Failure means the activation is unsafe.
+
+Examples:
+
+- Storage unavailable
+- Capability system broken
+- Boot-critical supervisor broken
+- Recovery unavailable
+- Required authentication unavailable
+
+Degraded
+
+Machine remains usable but functionality is impaired.
+
+Examples:
+
+- GPU acceleration unavailable but fallback display works
+- Wi-Fi broken while Ethernet works
+
+Optional
+
+Failure should not invalidate the generation.
+
+Examples:
+
+- Printer integration
+- Bluetooth on a machine that does not require it
+- Optional codec
+
+---
+
+E-019.21 — Health Response
+
+Conceptually:
+
+Critical failure
+→ rollback generation/cohort
+
+Degraded failure
+→ recover affected component/cohort
+→ allow system to remain usable where safe
+
+Optional failure
+→ explain / repair / quarantine
+
+This avoids rolling back an entire healthy OS because one optional peripheral failed.
+
+---
+
+E-019.22 — Known-Good State
+
+A generation becomes:
+
+«Known Good»
+
+only after its declared critical health criteria succeed.
+
+Until then, the previous known-good generation remains protected.
+
+---
+
+E-019.23 — Boot Attempt Tracking
+
+Boot-critical probation integrates with E-012.
+
+Repeated failed boots should cause:
+
+mark generation unhealthy
+↓
+select previous Known Good
+↓
+record failure reason
+
+Never loop forever trying the same broken generation.
+
+---
+
+E-019.24 — Mutable State Is Separate From Immutable Code
+
+Updating binaries is comparatively easy.
+
+Updating state is not.
+
+Lifecycle architecture must explicitly distinguish:
+
+Immutable component content
+
+from:
+
+Mutable service/application/system state
+
+---
+
+E-019.25 — State Schema / Epoch
+
+Managed mutable state should declare a schema or state epoch where compatibility matters.
+
+Example:
+
+Service 10
+State Epoch 4
+
+becomes:
+
+Service 11
+State Epoch 5
+
+The Lifecycle Engine must know whether rollback remains valid.
+
+---
+
+E-019.26 — State Migration Is a Lifecycle Object
+
+A migration should explicitly declare:
+
+Source epoch
+Target epoch
+Migration implementation
+Rollback implementation, if any
+Compatibility window
+Checkpoint requirements
+Finalization requirements
+
+State migration is not an invisible side effect of “first launch.”
+
+---
+
+E-019.27 — Rollback Includes State
+
+Principle:
+
+«Rolling back the executable while leaving incompatible migrated state is not rollback.»
+
+If rollback is promised, the old version must have compatible/readable state available.
+
+---
+
+E-019.28 — Rollback-Safe Probation
+
+If automatic rollback is available during probation, one of the following must be true:
+
+- New state remains backward-readable
+- Migration is additive
+- Old state was checkpointed
+- A copy/snapshot exists
+- A verified reverse migration exists
+
+Otherwise automatic rollback cannot honestly be promised.
+
+---
+
+E-019.29 — Irreversible Migration Must Wait
+
+Irreversible state finalization must not normally occur while the component is still inside rollback probation.
+
+Preferred:
+
+checkpoint old state
+↓
+activate new version
+↓
+use compatible/copy state
+↓
+health probation
+↓
+commit
+↓
+finalize irreversible migration later
+
+where technically practical.
+
+---
+
+E-019.30 — Commit Horizon
+
+Evrosion should represent an explicit:
+
+«Commit Horizon»
+
+Before the horizon:
+
+Guaranteed rollback path exists
+
+After crossing it:
+
+Old version may no longer be guaranteed compatible
+
+The system must never display a fake rollback promise after crossing this boundary.
+
+---
+
+E-019.31 — User Data Is Not Automatically Rolled Back
+
+System rollback must not casually revert personal documents.
+
+E-010 separation remains authoritative.
+
+Rollback may restore:
+
+- Component-private state
+- System configuration
+- Service databases
+
+according to declared migration policy.
+
+User-created documents remain durable independent user data unless the user explicitly requests their restoration from backup/version history.
+
+---
+
+E-019.32 — Lifecycle Trust Model
+
+Update security must protect against more than modified files.
+
+Evrosion's update trust model must address:
+
+- Arbitrary malicious software
+- Key compromise
+- Rollback attacks
+- Freeze attacks
+- Mix-and-match attacks
+- Fast-forward/version attacks
+- Malicious mirrors
+- Wrong-device updates
+- Endless download attacks
+- Stale metadata
+
+---
+
+E-019.33 — TUF-Like Compromise Resilience
+
+Evrosion should adopt TUF-like security principles without requiring TUF's exact wire format.
+
+The architecture should provide logically separate trust roles.
+
+Conceptually:
+
+Offline Root Authority
+        │
+        ├── Targets / Release authority
+        ├── Snapshot / coherent-state authority
+        └── Timestamp / freshness authority
+
+Delegated target roles may exist beneath them.
+
+---
+
+E-019.34 — Root Authority Is Highly Protected
+
+Root trust should change rarely.
+
+Root signing material should normally be:
+
+- Offline or strongly protected
+- Threshold-controlled where appropriate
+- Separate from routine online publishing infrastructure
+
+Compromising an ordinary publishing server should not automatically grant permanent root authority.
+
+---
+
+E-019.35 — Threshold Trust
+
+Critical trust roles may require more than one independent signature/key.
+
+Conceptually:
+
+Root threshold:
+2 of 3
+
+or another deployment-appropriate threshold.
+
+This protects against compromise of a single key.
+
+---
+
+E-019.36 — Root-Key Rotation Requires Continuity
+
+A new root-trust generation must not simply declare:
+
+«“Trust these new keys now.”»
+
+When rotating root keys:
+
+1. Start from currently trusted root metadata.
+2. Obtain the next version.
+3. Verify it using the required threshold of the old trusted root.
+4. Verify it also satisfies the threshold declared by the new root.
+5. Persist the new root.
+6. Repeat incrementally if multiple root generations were skipped.
+
+Principle:
+
+«Root trust evolves through a verifiable chain of continuity.»
+
+---
+
+E-019.37 — Root Metadata Versions Must Not Be Skipped Arbitrarily
+
+An old machine should be able to advance through intermediate trust generations.
+
+Repositories should therefore preserve required historical root metadata necessary to establish continuity.
+
+---
+
+E-019.38 — Catastrophic Root Recovery
+
+If enough root authority is compromised that normal trust continuity cannot recover safely, Evrosion must support an explicit out-of-band trust recovery path.
+
+Examples may include:
+
+- Signed recovery media
+- Owner-installed trust root
+- Recovery environment rebootstrap
+- Enterprise-managed trust reset
+- Absolute Access manual trust replacement
+
+Such events should be rare and extremely visible.
+
+---
+
+E-019.39 — Delegated Trust
+
+One signing authority should not automatically control every category of Evrosion content.
+
+Possible delegations include:
+
+Core OS
+Recovery
+Official Drivers
+Firmware
+Applications
+Compatibility
+Enterprise
+
+Compromise of one delegated role should not automatically compromise unrelated categories.
+
+---
+
+E-019.40 — Publisher Identity Is Not Runtime Authority
+
+E-009 remains unchanged.
+
+A valid update signature means:
+
+«This component came from an authorized publisher/repository role.»
+
+It does not mean:
+
+«This component receives unlimited capabilities after installation.»
+
+Runtime authority remains capability-controlled.
+
+---
+
+E-019.41 — Freshness
+
+Update metadata should support expiration/freshness checks.
+
+This enables Evrosion to detect when a repository may be maliciously or accidentally frozen on old information.
+
+---
+
+E-019.42 — Offline Operation and Freshness Are Different
+
+If Evrosion is offline, the installed operating system continues working normally.
+
+Example:
+
+Last verified repository state:
+September 17, 2026
+
+Current repository freshness:
+Unknown — offline
+
+No Internet connection is required merely to keep using the machine.
+
+---
+
+E-019.43 — Expired Metadata Does Not Brick Installed Software
+
+Expired update metadata means:
+
+«Evrosion cannot currently prove that repository information is fresh.»
+
+It does not mean:
+
+«Installed verified applications stop working.»
+
+Freshness affects new update decisions, not ownership of already-installed software.
+
+---
+
+E-019.44 — Anti-Rollback
+
+Automatic installation policy should reject known obsolete/vulnerable versions where rollback protection applies.
+
+A valid old signature alone is not enough.
+
+The system remembers security/version state necessary to recognize stale releases.
+
+---
+
+E-019.45 — Owner-Directed Downgrade
+
+Security anti-rollback must not eliminate F-002 ownership.
+
+Difference:
+
+Remote repository silently offers vulnerable old version
+→ block
+
+versus:
+
+Owner deliberately chooses old version in Absolute Access
+→ warn
+→ permit
+
+Principle:
+
+«Automatic downgrade is security-sensitive. Deliberate owner downgrade is ownership.»
+
+---
+
+E-019.46 — Target Identity
+
+Each target should include verified metadata such as:
+
+Component identity
+Version
+Expected size
+Cryptographic hash
+Architecture
+Hardware constraints
+Compatibility/cohort information
+
+This prevents ambiguity over what bytes are actually authorized.
+
+---
+
+E-019.47 — Bounded Downloads
+
+When expected file size is known, the acquisition engine must enforce reasonable size bounds.
+
+A compromised server must not be able to satisfy:
+
+download update.bin
+
+with an endless stream until the disk fills.
+
+---
+
+E-019.48 — Transport Does Not Establish Trust
+
+Trusted update bytes may eventually come from:
+
+- Official CDN
+- Mirror
+- LAN cache
+- Enterprise cache
+- USB
+- Offline bundle
+- Peer
+
+The source transport supplies bytes.
+
+Cryptographically verified metadata determines whether those bytes are trusted.
+
+---
+
+E-019.49 — Offline Update Bundles
+
+Evrosion should support verified offline bundles.
+
+Conceptually:
+
+Evrosion Update Bundle
+├── Trust metadata
+├── Target metadata
+├── Required objects
+├── Dependencies
+└── Signatures
+
+Importing an offline bundle uses the exact same Lifecycle Engine.
+
+No privileged “special offline installer” is needed.
+
+---
+
+E-019.50 — Delta Updates
+
+Delta and chunk-based updates are optimizations.
+
+Possible:
+
+Existing Object
++
+Delta
+=
+Candidate New Object
+
+But the candidate must still match the expected final cryptographic identity.
+
+If delta application fails:
+
+Fetch complete target
+
+Correctness never depends on the delta mechanism.
+
+---
+
+E-019.51 — Existing Content Is Reused
+
+Because Evrosion uses immutable/content-addressed storage:
+
+Object already present?
+→ reuse
+
+Only missing content needs acquisition.
+
+---
+
+E-019.52 — Storage Planning Happens First
+
+Before beginning a transaction, Evrosion calculates required space.
+
+Include:
+
+- Missing content
+- Staging data
+- State checkpoints
+- Rollback material
+- Transaction journal
+- Temporary transformation overhead
+- Safety margin
+
+---
+
+E-019.53 — Reserve Enough Space to Finish or Abort Safely
+
+Do not begin a transaction that can predictably strand itself halfway because of insufficient storage.
+
+Example:
+
+«Update requires 7.2 GB temporary space. 4.9 GB is available.»
+
+Layer 1 may offer safe cleanup options.
+
+---
+
+E-019.54 — Low-Storage Systems
+
+Evrosion must remain updateable on storage-constrained machines where technically possible.
+
+Possible strategies:
+
+- Shared immutable objects
+- Incremental/delta acquisition
+- Compressed temporary data
+- Fewer historical generations
+- Earlier GC of nonessential caches
+- Compact rollback representations
+
+But safety invariants come first.
+
+---
+
+E-019.55 — Mandatory Retention Roots
+
+Garbage collection must never remove data referenced by:
+
+- Current active generation
+- Current active component
+- Last Known Good bootable generation
+- Active/uncommitted transaction
+- Required recovery environment
+- Required state checkpoint before commit horizon
+- User-pinned version
+- Compatibility cohort dependency
+- Required boot metadata
+
+---
+
+E-019.56 — Historical Retention Is Policy-Driven
+
+Beyond mandatory roots, Evrosion may retain additional history according to:
+
+- Available storage
+- User policy
+- Component importance
+- Failure history
+- Age
+- Update frequency
+
+A workstation with 4 TB can retain more history than a machine with a nearly full 64 GB drive.
+
+---
+
+E-019.57 — Last Known Good Is Protected
+
+Low disk space must not silently delete the only known-good bootable fallback.
+
+The system should prefer deleting:
+
+- Caches
+- Superseded unpinned application versions
+- Extra historical generations
+
+before eliminating critical recovery safety.
+
+---
+
+E-019.58 — Rollback Material Survives Until Commit Horizon
+
+State snapshots/checkpoints required to fulfill a rollback guarantee cannot be GC'd before that guarantee expires.
+
+---
+
+E-019.59 — User Pinning
+
+Layer 2/3 may pin:
+
+System generation
+Application version
+Driver version
+Compatibility runtime
+Component
+
+Pinned content becomes a lifecycle GC root.
+
+---
+
+E-019.60 — Pinning Security Exposure Must Be Explainable
+
+If a user pins a vulnerable version:
+
+Layer 2 may say:
+
+«This version contains a known security issue and will not automatically update while pinned.»
+
+Layer 3 still honors the decision.
+
+---
+
+E-019.61 — Application Updates
+
+Native E-016 applications use side-by-side immutable versions.
+
+Example:
+
+App v7
+ACTIVE
+
+App v8
+STAGED
+
+Existing v7 process may continue running.
+
+New launches may use v8 after activation.
+
+---
+
+E-019.62 — Native Apps Usually Do Not Need Self-Updaters
+
+A native application should generally not download and replace its own executable.
+
+The Lifecycle Engine already owns package replacement.
+
+Applications may request/check update policy without needing:
+
+updater-helper-final2.exe
+
+---
+
+E-019.63 — Running User Work Should Not Be Killed Without Reason
+
+When safe:
+
+Old application instance continues
+New launches use new version
+
+Forced restart should occur only when required for:
+
+- Security
+- Data compatibility
+- Contract correctness
+- Explicit application policy
+
+---
+
+E-019.64 — Service Handoff
+
+Services supporting live transition may use:
+
+Service v4 active
+↓
+Start v5
+↓
+Health-test
+↓
+Route new requests to v5
+↓
+Drain v4
+↓
+Commit
+
+This is one Lifecycle activation strategy.
+
+---
+
+E-019.65 — Service Restart
+
+Services unable to hand off safely may simply use:
+
+stop old
+activate new
+start
+health-test
+
+A short interruption can be preferable to unsafe complexity.
+
+---
+
+E-019.66 — Driver Updates
+
+Drivers reuse E-006.
+
+Safe activation may include:
+
+quiesce clients
+↓
+quiesce device
+↓
+activate driver
+↓
+reset/reinitialize hardware
+↓
+health-test
+
+Some drivers may require logout or reboot.
+
+---
+
+E-019.67 — Firmware Is Special
+
+Firmware participates in the Lifecycle Engine for:
+
+- Trust
+- Planning
+- Acquisition
+- Verification
+- Journaling
+- Policy
+
+But actual firmware flashing has stricter device-specific rules.
+
+A firmware package is not equivalent to a userspace library update.
+
+---
+
+E-019.68 — Firmware Device Contract
+
+Firmware lifecycle metadata should include, where relevant:
+
+Exact device identity
+Hardware revision
+Current supported firmware range
+Target firmware version
+Minimum allowed firmware
+Bootloader requirements
+Power requirements
+Battery threshold
+Device-idle requirement
+Quiesce requirement
+Dual-bank capability
+Rollback capability
+Recovery mechanism
+Reboot requirement
+Post-flash health test
+
+---
+
+E-019.69 — Firmware Power Preconditions
+
+If firmware activation can brick hardware when power disappears, the Lifecycle Engine should enforce declared requirements such as:
+
+AC power required
+Battery ≥ threshold
+
+before activation.
+
+---
+
+E-019.70 — Firmware Downgrade Floors
+
+Devices may declare a minimum safe firmware version when old firmware would be incompatible with:
+
+- New data layout
+- New bootloader
+- Security state
+- Hardware configuration
+
+Automatic rollback must not ignore these device-level constraints.
+
+---
+
+E-019.71 — Dual-Bank Firmware
+
+Where hardware supports two firmware banks:
+
+Current bank
++
+Candidate bank
+
+Evrosion should take advantage of it for safer activation/rollback.
+
+Where hardware does not support rollback, the system must honestly represent the stronger risk.
+
+---
+
+E-019.72 — Firmware Recovery Is Device-Specific
+
+Evrosion cannot promise that every failed flash is software-recoverable.
+
+Potential recovery mechanisms include:
+
+- Secondary firmware bank
+- Boot ROM recovery
+- Vendor recovery mode
+- External programming
+
+The lifecycle manifest/provider describes what is actually possible.
+
+---
+
+E-019.73 — Wrong-Device Firmware Must Be Rejected
+
+Firmware verification includes target hardware identity.
+
+A validly signed firmware package for Device A must not be installable on Device B merely because the signature is valid.
+
+---
+
+E-019.74 — Recovery Environment Lifecycle
+
+The Recovery Environment must have an independent, conservative lifecycle.
+
+It should not blindly update alongside every normal system update.
+
+---
+
+E-019.75 — Recovery Must Not Fail With the Generation It Repairs
+
+Where practical:
+
+Normal System
+Generation N+1
+
+and:
+
+Recovery
+
+should not transition through the same risky activation boundary simultaneously.
+
+---
+
+E-019.76 — Recovery Redundancy
+
+Where storage permits, Evrosion may maintain:
+
+Recovery A
+Recovery B
+
+or another redundant/known-good recovery arrangement.
+
+The exact physical model remains implementation-specific.
+
+---
+
+E-019.77 — Lifecycle Engine Is Trusted Infrastructure
+
+The Lifecycle Engine itself is a critical architectural component.
+
+It should therefore be:
+
+- Small relative to the overall system
+- Heavily tested
+- Minimally privileged
+- Capability-scoped
+- Durable
+- Independently recoverable
+- Updated conservatively
+
+---
+
+E-019.78 — Lifecycle State Is Not Irreplaceable Magic
+
+F-010 requires that recovery can reason about lifecycle state without relying on a single opaque daemon.
+
+Lifecycle transaction records must therefore be:
+
+- Structured
+- Durable
+- Documented
+- Interpretable by recovery tools
+
+---
+
+E-019.79 — Transaction Journal
+
+Each transaction should persist information such as:
+
+Transaction ID
+Intent
+Target versions
+Selected cohort
+Required space
+Verified objects
+State checkpoints
+Current phase
+Activation boundary
+Health results
+Commit state
+Rollback references
+
+---
+
+E-019.80 — Durable Truth
+
+The system must never report an irreversible lifecycle milestone before it is actually durable.
+
+Examples:
+
+Do not report:
+
+Generation committed
+
+before commit metadata reached durable storage.
+
+This follows E-010.
+
+---
+
+E-019.81 — Crash Recovery
+
+After interruption:
+
+Boot / Recovery
+      ↓
+Read lifecycle journal
+      ↓
+Determine last durable phase
+      ↓
+Resume or safely abort
+
+No guessing from partial filesystem leftovers.
+
+---
+
+E-019.82 — Update Channels
+
+Evrosion may support channels such as:
+
+Stable
+Preview
+Experimental
+Developer
+Custom
+
+A channel is a release stream/repository policy.
+
+It is not a different ownership model.
+
+---
+
+E-019.83 — Coherent Release Streams
+
+Layer 1 defaults should avoid accidental mixtures like:
+
+Stable kernel
+Nightly storage
+Experimental security runtime
+Random driver stack
+
+Release metadata may define coherent sets.
+
+Layer 3 may intentionally create custom combinations.
+
+---
+
+E-019.84 — Preview Without Destroying Stable
+
+Example:
+
+Generation 50 Stable
+
+may remain available while:
+
+Generation 54 Preview
+
+is tested.
+
+Returning to stable remains possible subject to state compatibility/commit horizons.
+
+---
+
+E-019.85 — Security Updates Are Never Paywalled During Support
+
+Business rule:
+
+«All security fixes for a release that remains inside its declared support lifetime are free.»
+
+Optional paid programs may include:
+
+- Preview access
+- Enterprise services
+- Commercial tooling
+- Early features
+
+Security itself is not a premium feature.
+
+---
+
+E-019.86 — Declared Support Lifetime
+
+Each supported release should expose structured information:
+
+Release date
+Support status
+Security-support end
+Recommended successor
+Migration path
+
+---
+
+E-019.87 — End of Support
+
+End of support means:
+
+«No guarantee of future security fixes.»
+
+It does not mean:
+
+- Machine stops booting
+- Applications are disabled
+- Account becomes required
+- User data is locked
+- User must purchase anything
+
+---
+
+E-019.88 — Update Urgency
+
+Updates may carry structured severity/advisory information.
+
+Possible categories:
+
+Routine
+Recommended
+Security
+Critical security
+Compatibility
+Feature
+
+Urgency should reflect actual technical information, not marketing pressure.
+
+---
+
+E-019.89 — Never Fake Urgency
+
+Evrosion should be able to explain:
+
+Affected component
+Reason
+Severity
+Known exposure
+Available fix
+Reboot requirement
+Deadline/recommendation
+
+No dishonest “UPDATE NOW!!!” behavior.
+
+---
+
+E-019.90 — Activation Scheduling
+
+Updates may be acquired/staged in the background.
+
+Activation may consider:
+
+- User activity
+- Running work
+- Battery state
+- Reboot need
+- Maintenance window
+- Security urgency
+- Device availability
+
+---
+
+E-019.91 — Reboot Experience
+
+When reboot activation is needed, most expensive work should already be complete.
+
+Before reboot:
+
+downloaded ✓
+verified ✓
+staged ✓
+boot target prepared ✓
+
+Reboot should primarily:
+
+close/restore work safely
+↓
+select candidate generation
+↓
+boot
+↓
+health probation
+
+Avoid performing huge downloads/install transformations on the shutdown screen.
+
+---
+
+E-019.92 — Telemetry Is Not Required
+
+Lifecycle correctness and rollout must not depend on Evrosion telemetry.
+
+Machines can safely update without reporting usage/health to Evrosion.
+
+Optional user-authorized diagnostics may exist separately.
+
+---
+
+E-019.93 — Staged Rollout Without Mandatory Telemetry
+
+Repositories may expose releases progressively:
+
+Preview
+↓
+Early Stable
+↓
+General Stable
+
+based on project policy, testing and voluntary reports.
+
+Clients need not send telemetry merely to participate.
+
+---
+
+E-019.94 — Enterprise Policy
+
+Fleet/enterprise systems may coordinate:
+
+Test group
+↓
+Pilot group
+↓
+Organization-wide rollout
+
+but each individual machine still runs the normal local lifecycle transaction:
+
+verify
+stage
+activate
+health
+commit
+
+Enterprise orchestration does not bypass local integrity.
+
+---
+
+E-019.95 — Local/Peer Caching
+
+Because content identity is verified independently, multiple machines may share cached objects.
+
+Example:
+
+Machine A downloads object X
+Machine B needs hash X
+LAN cache supplies X
+Machine B verifies X
+
+This can reduce bandwidth without moving trust to the cache.
+
+---
+
+E-019.96 — Layer 1 Lifecycle UX
+
+Layer 1 should normally provide:
+
+- Automatic safe update discovery
+- Automatic acquisition
+- Automatic staging
+- Recovery/rollback
+- Low-interruption activation
+- Simple explanation
+
+Examples:
+
+«Evrosion installed an update successfully.»
+
+or:
+
+«An update caused a problem, so Evrosion restored the previous working version.»
+
+---
+
+E-019.97 — Layer 2 Lifecycle UX
+
+Layer 2 may expose:
+
+- Update history
+- Channels
+- Deferral
+- Maintenance windows
+- Component versions
+- Pinning
+- Rollback
+- Reboot requirements
+- Security advisories
+- Storage use
+- Support lifecycle
+
+---
+
+E-019.98 — Layer 3 Lifecycle UX
+
+Layer 3 may expose:
+
+- Full lifecycle graph
+- Transaction journal
+- Trust roots
+- Repository metadata
+- Custom repositories
+- Custom keys
+- Unsigned components
+- Deliberate downgrade
+- Custom System Generations
+- Manual cohort overrides
+- Raw activation
+- Policy bypass
+
+The OS warns.
+
+The owner decides.
+
+---
+
+E-019.99 — Provenance
+
+Evrosion should be able to answer for any managed component:
+
+What is this?
+Which version?
+Where did it come from?
+Who authorized/signed it?
+Which repository supplied it?
+Which transaction installed it?
+Which generation references it?
+What state does it own?
+What replaced it?
+Can it safely be removed?
+
+---
+
+E-019.100 — Garbage Collection
+
+Lifecycle GC runs only from authoritative lifecycle roots.
+
+Conceptually:
+
+Build reference graph
+↓
+mark required objects
+↓
+identify unreachable immutable content
+↓
+apply retention policy
+↓
+garbage collect
+
+No updater independently decides that a random shared library “looks unused.”
+
+---
+
+E-019.101 — GC Is Lower Priority Than Recovery
+
+When storage pressure is severe, cleanup may remove additional history.
+
+But update convenience must not outrank the ability to recover the machine.
+
+---
+
+E-019 Final Architecture
+
+                  UPDATE / CONTENT SOURCES
+
+     Official | Vendor | Custom | Offline | Cache | Peer
+                            │
+                            ↓
+                    TRUST VERIFICATION
+                            │
+                   Root / Delegations
+                            │
+                  Freshness / Snapshot
+                            │
+                   Hashes / Sizes
+                            ↓
+                    LIFECYCLE PLANNER
+                            │
+             Dependencies / Cohorts / Space
+                            │
+                            ↓
+                   ACQUISITION ENGINE
+                   E-010 Durable Ops
+                            │
+                            ↓
+                    IMMUTABLE STORE
+                            │
+                            ↓
+                   STATE CHECKPOINT
+                            │
+                            ↓
+                        STAGING
+                            │
+                            ↓
+                       ACTIVATION
+                            │
+      ┌───────────┬─────────┼──────────┬──────────┐
+      │           │         │          │          │
+     Live      Restart    Device     Reboot    Firmware
+    Handoff               Reset
+      │           │         │          │          │
+      └───────────┴─────────┼──────────┴──────────┘
+                            ↓
+                        PROBATION
+                            │
+                     HEALTH CONTRACT
+                       │         │
+                     PASS       FAIL
+                       │         │
+                       ↓         ↓
+                    COMMIT    ROLLBACK
+                       │         │
+                       └────┬────┘
+                            ↓
+                   RETENTION / RETIREMENT
+                            ↓
+                            GC
+
+System-level lifecycle:
+
+Generation N
+ACTIVE + KNOWN GOOD
+      │
+      ├──────── Machine remains operational
+      │
+      ↓
+Construct Generation N+1
+      ↓
+Resolve Cohorts
+      ↓
+Verify
+      ↓
+Stage
+      ↓
+Checkpoint required state
+      ↓
+Atomic boot-target activation
+      ↓
+Reboot
+      ↓
+Generation N+1
+PROBATION
+      ↓
+Critical health gates
+   ┌─────┴─────┐
+  PASS         FAIL
+   │             │
+   ↓             ↓
+COMMIT      Generation N
+             restored
+
+Trust continuity:
+
+Trusted Root N
+      ↓
+Root N+1
+signed by:
+  old threshold
+  +
+  new threshold
+      ↓
+Persist Root N+1
+      ↓
+Repeat as required
+
+State lifecycle:
+
+State Epoch 4
+      ↓
+Checkpoint / compatible migration
+      ↓
+Version N+1 probation
+      ↓
+Health success
+      ↓
+Commit Horizon
+      ↓
+Optional irreversible finalization
+      ↓
+State Epoch 5 authoritative
+
+Firmware lifecycle:
+
+Firmware Candidate
+      ↓
+Exact device verification
+      ↓
+Version / bootloader validation
+      ↓
+Power / battery validation
+      ↓
+Device quiesce
+      ↓
+Activate using device protocol
+      ↓
+Reboot/reset if required
+      ↓
+Health check
+      ↓
+Commit / device-supported rollback
+
+---
+
+E-019 Final Summary
+
+Lifecycle architecture: Unified Transactional Lifecycle Engine
+
+Update systems: One engine, not separate implementations
+
+Activation strategies: Component-specific
+
+System updates: Immutable System Generations
+
+Construction model: Never mutate trusted running critical system in place
+
+Dependencies: Resolved before activation
+
+Compatibility sets: Compatibility Cohorts
+
+Rollback unit: Smallest safe compatible cohort
+
+Health: Critical / degraded / optional
+
+Known Good: Requires health validation
+
+Mutable state: Explicit schema/epoch
+
+Migration: Explicit lifecycle operation
+
+Rollback: Includes state, not just binaries
+
+Irreversible migration: After explicit Commit Horizon
+
+User documents: Not casually rolled back with system state
+
+Trust architecture: TUF-like compromise resilience
+
+Root authority: Rarely used / strongly protected
+
+Threshold signatures: Supported where appropriate
+
+Root rotation: Old + new threshold continuity
+
+Delegated trust: Supported
+
+Freshness protection: Required
+
+Rollback/freeze/mix-and-match protection: Required
+
+Offline operation: Fully preserved
+
+Owner-directed downgrade: Allowed through explicit authority
+
+Trust source: Metadata/content identity, not download transport
+
+Offline bundles: First-class
+
+Delta updates: Optimization only
+
+Final content hash: Authoritative
+
+Storage planning: Before acquisition
+
+Rollback retention: Policy-driven with mandatory safety roots
+
+Last Known Good: Protected
+
+Firmware: Same orchestration, stricter device-specific activation contract
+
+Recovery lifecycle: Conservative and independent
+
+Lifecycle journal: Durable and recovery-readable
+
+Apps: Side-by-side
+
+Services: Handoff/restart as appropriate
+
+Drivers: Safe device activation boundary
+
+Security fixes: Free throughout declared support lifetime
+
+End of support: Never bricks system
+
+Telemetry: Not required
+
+Layer 3: Owner may override policy
+
+---
+
+Governing Principles
+
+«One lifecycle engine. Many activation strategies.»
+
+«Never construct the replacement system by mutating the currently trusted system in place.»
+
+«Download and staging should be interruptible. Activation and commit should be transactional.»
+
+«A component is not healthy merely because it started.»
+
+«Recover the smallest safe compatible cohort.»
+
+«Do not roll back binaries without rolling back or preserving compatible state.»
+
+«If rollback is promised during probation, rollback-compatible state must still exist.»
+
+«Irreversible migration belongs beyond an explicit commit horizon.»
+
+«Reboot when reboot is the cleanest safe boundary. Never hot-patch merely for bragging rights.»
+
+«A valid signature is necessary but not sufficient for secure updating.»
+
+«Freshness, coherent metadata, rollback protection, key-compromise resilience, and content identity are part of update security.»
+
+«Root trust evolves through a cryptographically verifiable chain of continuity.»
+
+«The transport that supplies bytes does not determine whether those bytes are trusted.»
+
+«Automatic downgrade is security-sensitive. Deliberate owner downgrade is ownership.»
+
+«Never begin an update without enough space to complete it or abort safely.»
+
+«Delta updates are an optimization. Final content identity is truth.»
+
+«The only Known Good generation must never be deleted merely to make an update convenient.»
+
+«Firmware is not a normal software package; its safe activation contract comes from the device.»
+
+«The system that repairs Evrosion must update more conservatively than the system it repairs.»
+
+«Security updates are free for the entire declared support lifetime of a release.»
+
+«End of support means support ended. It never means Evrosion takes ownership of the machine.»
+
+«Garbage collection happens only after the lifecycle graph proves the content is no longer required.»
+
+«The owner remains the final authority.»
+
+E-019 — DECIDED AND CLOSED.

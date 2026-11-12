@@ -1,0 +1,1079 @@
+E-016 — Application & Software Model
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use an:
+
+«Immutable, Capability-Native, Multi-Environment Application Architecture»
+
+The application system must simultaneously provide:
+
+- Excellent native performance
+- Extremely simple development and installation
+- Strong isolation
+- Minimal storage waste
+- Dependency independence
+- Atomic updates and rollback
+- First-class Windows/Linux compatibility
+- Future macOS compatibility
+- No compatibility overhead for users who do not need it
+- A native experience compelling enough that developers prefer targeting Evrosion directly
+
+The central rule is:
+
+«Native software never pays for compatibility.»
+
+---
+
+E-016.1 — Native Evrosion Applications
+
+Native Evrosion applications should execute directly on Evrosion.
+
+Conceptually:
+
+Native Application
+       ↓
+Evrosion APIs
+       ↓
+Evrosion services / kernel
+
+There should be:
+
+- No Linux compatibility layer
+- No Windows translation
+- No VM
+- No heavyweight container
+- No compatibility runtime
+
+Native applications use Evrosion's capability architecture directly.
+
+---
+
+E-016.2 — Working Native Package Format
+
+The working extension for native Evrosion applications is:
+
+«".sion"»
+
+This name is currently a working designation and is not yet permanently locked.
+
+A native package may conceptually look like:
+
+MyApplication.sion
+
+├── Manifest
+├── Application identity
+├── ELF64 executable(s)
+├── Resources
+├── API Level
+├── ABI Revision
+├── Capability declarations
+├── Runtime dependencies
+├── Private dependencies
+├── Content hashes
+├── Update metadata
+└── Signature / provenance
+
+---
+
+E-016.3 — ".sion" Is More Than an Archive
+
+A ".sion" package should not simply mean:
+
+«ZIP file that gets extracted somewhere.»
+
+It should describe an immutable application content graph.
+
+Installation should primarily mean:
+
+Read manifest
+     ↓
+Resolve content
+     ↓
+Verify hashes
+     ↓
+Import missing objects
+     ↓
+Create application identity
+     ↓
+Atomically activate
+
+The installed package itself should remain immutable.
+
+---
+
+E-016.4 — Immutable Application Content
+
+Application executables, libraries and static resources should not normally be modified after installation.
+
+Benefits include:
+
+- Reliable verification
+- Safe sharing
+- Rollback
+- Reproducibility
+- Reduced corruption
+- Easier repair
+- Dependency isolation
+
+Mutable application state lives elsewhere.
+
+---
+
+E-016.5 — Application Code and Application Data Are Separate
+
+Evrosion should explicitly separate:
+
+IMMUTABLE APPLICATION
+├── Executables
+├── Libraries
+└── Resources
+
+from:
+
+WRITABLE APPLICATION STATE
+├── Configuration
+├── Private data
+├── Cache
+├── Temporary state
+└── User-granted persistent resources
+
+Replacing an application's executable package should therefore not inherently destroy its data.
+
+---
+
+E-016.6 — Application Identity
+
+Every application receives an Evrosion identity.
+
+Conceptually:
+
+AppIdentity
+├── Stable application ID
+├── Name
+├── Developer/source
+├── Version
+├── Native/Windows/Linux/macOS type
+├── API/ABI requirements
+├── Capabilities
+├── Data locations
+├── Runtime environment
+├── Compatibility profile
+└── Provenance
+
+Native and compatibility applications use the same higher-level application management model.
+
+---
+
+E-016.7 — Shared Immutable Content Store
+
+Evrosion should maintain a machine-level immutable application content store.
+
+Content should be addressed by cryptographic identity.
+
+Conceptually:
+
+Hash(content) → Immutable Object
+
+Applications then reference objects rather than privately copying everything into separate directories.
+
+---
+
+E-016.8 — Logical Dependency Isolation, Physical Sharing
+
+This is a core design objective.
+
+From the application's perspective:
+
+«Dependencies are private, deterministic and version-specific.»
+
+From the storage system's perspective:
+
+«Identical content should be stored only once.»
+
+Example:
+
+App A → libFoo 4.2
+App B → libFoo 4.2
+App C → libFoo 4.2
+
+Physical store:
+
+libFoo 4.2 → ONE immutable object
+
+Applications cannot accidentally replace each other's dependencies.
+
+---
+
+E-016.9 — No Global Dependency Hell
+
+Installing an application must not overwrite another application's runtime dependencies.
+
+Evrosion should avoid traditional global dependency behavior such as:
+
+App A requires libX 4
+App B upgrades libX to 5
+App A breaks
+
+Instead:
+
+App A → libX 4
+
+App B → libX 5
+
+Both versions may coexist.
+
+---
+
+E-016.10 — Content Sharing Below the Package Level
+
+Where beneficial, Evrosion should support chunk-level content reuse.
+
+This is particularly useful for:
+
+- Large games
+- Large applications
+- Runtime environments
+- Compatibility engines
+- Application updates
+
+Example:
+
+Application v1: 60 GB
+Application v2: 61 GB
+
+Actual changed content: 4 GB
+
+The update should ideally require approximately the changed content rather than another complete copy.
+
+---
+
+E-016.11 — Deduplication Must Not Become a Performance Tax
+
+Evrosion should not perform arbitrarily expensive fine-grained deduplication merely to save every possible byte.
+
+Deduplication granularity should balance:
+
+- Storage savings
+- CPU overhead
+- Metadata overhead
+- Read performance
+- Fragmentation
+- Update performance
+
+Whole-object sharing should be common.
+
+Chunk-level sharing should be used where its benefit justifies the cost.
+
+---
+
+E-016.12 — Compression Must Respect Performance
+
+Application storage may use compression.
+
+However:
+
+«Compression ratio is not the only goal.»
+
+Hot application code and startup-critical resources should favor low-latency access.
+
+Cold or very large resources may use stronger compression.
+
+The application store should optimize for:
+
+- Fast startup
+- Random access
+- Memory mapping
+- Verification
+- Storage efficiency
+- Update efficiency
+
+---
+
+E-016.13 — Native Applications Launch Directly
+
+Native applications should be executable directly from the immutable application store where practical.
+
+Avoid:
+
+«extract entire package before launch.»
+
+Prefer:
+
+Immutable package objects
+        ↓
+Executable mapping
+        ↓
+Process
+
+This minimizes startup work and storage duplication.
+
+---
+
+E-016.14 — Capability-Native Sandboxing
+
+Native applications do not need heavyweight containers for ordinary isolation.
+
+The Evrosion process/capability model itself provides the sandbox.
+
+A native application begins with only appropriate authority.
+
+Potential capabilities include:
+
+- Network
+- User-selected files
+- Application-private data
+- Camera
+- Microphone
+- GPU
+- Clipboard
+- Notifications
+- Devices
+- Background execution
+- Other services
+
+---
+
+E-016.15 — Capability Manifest
+
+A ".sion" package should declare the capabilities it may request.
+
+Example:
+
+Requested:
+
+Network              Required
+Microphone           Optional
+Camera               None
+Documents            User selected
+Background activity  Optional
+
+Declaring a capability does not automatically grant it.
+
+E-009 remains authoritative.
+
+---
+
+E-016.16 — User-Selected Resources
+
+Applications should normally access personal files through capability grants.
+
+Example:
+
+Application requests file
+        ↓
+Evrosion file picker
+        ↓
+User selects project.siondata
+        ↓
+Application receives capability
+
+The application does not automatically gain access to the user's entire storage hierarchy.
+
+---
+
+E-016.17 — Native Application Performance
+
+The native path should be the performance reference.
+
+Conceptually:
+
+.sion
+  ↓
+Native executable
+  ↓
+Native Evrosion service protocol
+  ↓
+Native fast path
+
+There should be no additional compatibility translation in this path.
+
+---
+
+E-016.18 — Application Updates Are Transactional
+
+An application update should be staged beside the existing version.
+
+Example:
+
+Application v18
+Current
+
+Application v19
+Staged
+
+Then:
+
+Verify
+   ↓
+Activate v19
+   ↓
+Health / launch validation
+   ↓
+Commit
+
+If necessary:
+
+v19 fails
+   ↓
+Reactivate v18
+
+---
+
+E-016.19 — App Rollback
+
+Applications should support rollback where data compatibility permits.
+
+Previous immutable versions can remain temporarily available until the new version is proven healthy or retention policy removes them.
+
+---
+
+E-016.20 — Application Data Migration
+
+Updates may need to migrate application data.
+
+Data migrations should be:
+
+- Versioned
+- Explicit
+- Transactional where possible
+- Recoverable where practical
+
+Application rollback should not silently use incompatible newer data.
+
+Apps may maintain data-schema compatibility or snapshot state before destructive migrations.
+
+---
+
+E-016.21 — Atomic Installation
+
+Installation should not expose half-installed applications.
+
+Conceptually:
+
+Acquire
+↓
+Verify
+↓
+Import objects
+↓
+Resolve dependencies
+↓
+Prepare identity/state
+↓
+Atomic activation
+
+Only after successful completion does the application appear installed.
+
+---
+
+E-016.22 — Clean Uninstallation
+
+Because applications cannot scatter arbitrary system files everywhere, removal should be predictable.
+
+Uninstall can remove:
+
+- Application activation
+- App-specific immutable objects no longer referenced
+- Cache if requested
+
+User data should not be silently destroyed unless the user explicitly chooses that behavior.
+
+---
+
+E-016.23 — Garbage Collection
+
+The immutable application store should garbage-collect content only when it is no longer referenced by:
+
+- Installed applications
+- Rollback versions
+- Compatibility runtimes
+- Pinned packages
+- Recovery requirements
+
+This prevents sharing from becoming permanent storage leakage.
+
+---
+
+E-016.24 — Per-User Installation by Default
+
+Ordinary application installation should normally be per-user.
+
+It should not require machine-wide administrative authority.
+
+Conceptually:
+
+«Install for me»
+
+is the default.
+
+System-wide activation remains possible when appropriate.
+
+---
+
+E-016.25 — Shared Physical Content Across Users
+
+Per-user installation should not necessarily duplicate immutable application bytes.
+
+If two users install the same package:
+
+User A → App X
+User B → App X
+
+Evrosion may share the verified immutable content while keeping:
+
+- Permissions
+- Configuration
+- Private data
+- App identity state
+
+separate per user.
+
+---
+
+E-016.26 — Portable / Run-Once Applications
+
+Evrosion should support temporary execution without permanent installation.
+
+Conceptually:
+
+Open application
+      ↓
+Temporary identity
+      ↓
+Temporary capabilities
+      ↓
+Run
+
+The user may later choose:
+
+«Keep application.»
+
+The same content can then become permanently activated without unnecessary duplication.
+
+---
+
+E-016.27 — CLI Applications Are First-Class
+
+Command-line tools should not be treated as second-class applications.
+
+They may be packaged through the same application model while exposing:
+
+- Commands
+- Developer tools
+- Build tools
+- Shell integration
+
+Capability and dependency rules still apply.
+
+---
+
+E-016.28 — Background Components Must Be Explicit
+
+Applications that need background execution must declare it.
+
+Examples:
+
+- Synchronization daemon
+- Messaging notifications
+- Development service
+- Game updater
+
+Background execution should not appear merely because an installer dropped random startup files into the system.
+
+---
+
+E-016.29 — Store Is Optional Distribution, Not Mandatory Authority
+
+Evrosion may provide an official Marketplace.
+
+However, applications may also come from:
+
+- Developer websites
+- Local files
+- Source builds
+- Enterprise repositories
+- Other package repositories
+- Offline media
+
+The application format and security model must not depend on using the official Marketplace.
+
+---
+
+E-016.30 — Signing Means Provenance
+
+A signature may establish:
+
+«This package was produced by this developer/entity.»
+
+It does not automatically establish:
+
+«This application may do anything it wants.»
+
+Capabilities remain separate.
+
+Unsigned software may still be run by the owner according to Layer/security rules.
+
+---
+
+E-016.31 — Reproducible Native Packaging
+
+E-014 applies to native application packaging.
+
+Given identical:
+
+- Source
+- Dependencies
+- Toolchain
+- Package configuration
+
+developers should be able to reproduce identical package content where feasible.
+
+---
+
+E-016.32 — Simple Developer Packaging
+
+The developer workflow should eventually approach:
+
+ev package
+
+producing:
+
+MyApplication.sion
+
+The developer should not need separate:
+
+- Debian packaging
+- RPM packaging
+- Flatpak manifest
+- AppImage
+- Installation shell scripts
+- Distribution-specific dependency files
+
+to target Evrosion natively.
+
+---
+
+E-016.33 — Native Developer Value Proposition
+
+Developers should prefer native Evrosion because it provides:
+
+- One package format
+- No dependency hell
+- Deterministic dependencies
+- Physical dependency sharing
+- Native performance
+- Automatic sandbox integration
+- Capability declarations
+- Transactional installation
+- Automatic rollback support
+- Incremental updates
+- Reproducible packaging
+- Generated API bindings
+- Strong debugging/tooling
+- Cross-architecture support
+
+Compatibility exists to bootstrap the ecosystem.
+
+Native Evrosion should remain the superior target.
+
+---
+
+E-016.34 — Application Broker
+
+Evrosion should include a small first-party:
+
+«Application Broker»
+
+It identifies application/package formats and chooses an execution strategy.
+
+The broker remains small and carries no giant compatibility runtime itself.
+
+---
+
+E-016.35 — Format Detection
+
+The broker should inspect actual file/package structure where possible rather than trusting filename extension alone.
+
+Potential recognized formats include:
+
+.sion
+PE / .exe
+MSI
+ELF
+.deb
+.rpm
+AppImage
+Mach-O
+.app
+.pkg
+.dmg
+
+Support does not imply every format must be available at launch.
+
+---
+
+E-016.36 — Cheapest Correct Execution Path
+
+The Application Broker should choose the least expensive execution path capable of correctly running the software.
+
+Conceptually:
+
+Native execution
+      ↓ if unavailable
+Compatibility translation
+      ↓ if insufficient
+CPU translation
+      ↓ if insufficient
+Virtual machine
+
+Principle
+
+«Use the cheapest correct execution path.»
+
+---
+
+E-016.37 — Compatibility Is Strictly On-Demand
+
+A normal Evrosion installation should not automatically contain gigantic compatibility environments.
+
+Base installation should not quietly ship:
+
+- Full Linux userspace
+- Wine
+- Proton
+- Mac compatibility frameworks
+- Duplicate 32-bit runtime trees
+- Compatibility daemons
+
+merely because Evrosion supports them.
+
+---
+
+E-016.38 — Zero Compatibility Cost When Unused
+
+If the user runs only native Evrosion software:
+
+Compatibility CPU cost:
+
+«Zero»
+
+Compatibility RAM cost:
+
+«Zero»
+
+Compatibility background processes:
+
+«Zero»
+
+Compatibility storage beyond the tiny broker/metadata:
+
+«Minimal»
+
+This is a hard design objective.
+
+---
+
+E-016.39 — Compatibility Packs
+
+Foreign application support should be installable as modular compatibility packs.
+
+Examples:
+
+Windows Compatibility
+Linux Compatibility
+macOS Compatibility
+x86 Translation
+
+These may be acquired automatically when first required, subject to user control and offline availability.
+
+---
+
+E-016.40 — Shared Compatibility Runtimes
+
+Foreign applications must not each duplicate an entire compatibility runtime.
+
+Avoid:
+
+App A → full Wine copy
+App B → full Wine copy
+App C → full Wine copy
+
+Prefer:
+
+Shared Windows Runtime
+      ↑     ↑     ↑
+    App A App B App C
+
+Application-specific changes live separately.
+
+---
+
+E-016.41 — Copy-on-Write Compatibility Environments
+
+Each foreign application may see its own isolated filesystem/runtime environment.
+
+Physically:
+
+Shared immutable runtime
+         +
+Application-specific CoW overlay
+         =
+Application environment
+
+This gives isolation without massive duplication.
+
+---
+
+E-016.42 — Multiple Compatibility Runtime Versions
+
+Different applications may require different runtime versions.
+
+Example:
+
+Game A → Windows Engine 14.6
+
+Game B → Windows Engine 15.2
+
+Both can coexist.
+
+Shared immutable content between those engines should still be deduplicated where practical.
+
+---
+
+E-016.43 — Compatibility Profiles
+
+Applications may have known-good compatibility profiles.
+
+Conceptually:
+
+Game A
+
+Windows engine: 14.6
+Graphics layer: profile 8
+Known workaround: enabled
+
+Profiles may come from:
+
+- Evrosion project testing
+- Developers
+- Compatibility community
+- User overrides
+
+Exact implementation belongs to E-022.
+
+---
+
+E-016.44 — Foreign Applications Still Become Evrosion Applications
+
+Once imported, foreign software should appear in normal Evrosion interfaces.
+
+Example:
+
+«Photoshop»
+
+rather than:
+
+«wine64 /some/path/photoshop.exe»
+
+Evrosion knows:
+
+- Application identity
+- Type
+- Permissions
+- Data
+- Runtime
+- Compatibility engine
+- Version
+- Provenance
+
+---
+
+E-016.45 — Foreign Application Capability Model
+
+Compatibility must not reintroduce ambient authority.
+
+A Windows program should not automatically gain:
+
+«entire user's home directory.»
+
+A Linux application should not automatically gain:
+
+«entire machine filesystem.»
+
+A compatibility environment may expose a synthetic view containing only resources granted by Evrosion.
+
+---
+
+E-016.46 — Compatibility Portals
+
+Foreign applications should integrate with Evrosion portals/services where feasible.
+
+Examples:
+
+- File selection
+- Clipboard
+- Notifications
+- Printing
+- URLs
+- Drag and drop
+- Camera
+- Microphone
+- Gamepads
+- Accessibility
+
+The compatibility environment translates foreign expectations into native capabilities.
+
+---
+
+E-016.47 — Windows Compatibility Is a Launch Priority
+
+Windows compatibility should be treated as a major early ecosystem requirement.
+
+Initial implementation may reuse:
+
+- Wine
+- Proton
+- DXVK
+- VKD3D-Proton
+- Other suitable open technologies
+
+Evrosion should contribute upstream where feasible rather than unnecessarily rewriting decades of compatibility work.
+
+---
+
+E-016.48 — Initial Windows Bootstrap Architecture
+
+An early implementation may use:
+
+Windows Application
+        ↓
+Wine / Proton-derived layer
+        ↓
+Linux/POSIX compatibility substrate
+        ↓
+Evrosion
+
+This is acceptable as an ecosystem bootstrap mechanism.
+
+However:
+
+«It is not the desired permanent architecture.»
+
+---
+
+E-016.49 — Direct Windows-to-Evrosion Path
+
+The architecture must permit replacing Linux-dependent Windows host components over time.
+
+Long-term:
+
+Windows Application
+       ↓
+Win32 / NT compatibility
+       ↓
+Evrosion Host Adapter
+       ↓
+Native Evrosion services
+
+This removes unnecessary compatibility layers from hot paths.
+
+---
+
+E-016.50 — Translate at the Narrowest Useful Boundary
+
+Foreign API translation should reach native Evrosion mechanisms as early as practical.
+
+Avoid:
+
+Foreign API
+↓
+translation
+↓
+translation
+↓
+translation
+↓
+generic compatibility service
+↓
+native system
+
+Prefer:
+
+Foreign API
+↓
+necessary translation
+↓
+native fast path
+
+---
+
+E-016.51 — Windows Graphics Fast Path
+
+Windows graphics compatibility should map onto native graphics APIs as directly as practical.
+
+Conceptually:
+
+Direct3D
+   ↓
+DXVK / VKD3D-style translation
+   ↓
+Vulkan / Evrosion graphics path
+   ↓
+GPU
+
+No unnecessary compatibility filesystem or desktop layers should sit in the graphics hot path.
+
+---
+
+E-016.52 — Other Windows Fast Paths
+
+Where practical, compatibility should similarly reach native Evrosion paths quickly for:
+
+- Audio
+- Input
+- Gamepads
+- Networking
+- Timers
+- Shared memory
+- Synchronization
+- Files
+
+---
+
+E-016.53 — Do Not Pollute the Kernel With Windows Policy
+
+Windows compatibility may reveal useful missing low-level primitives.
+
+Evrosion may add generic mechanisms where they benefit the overall system.
+
+It should not add APIs such as:
+
+«WindowsMutexSpecialCaseForWine()»
+
+to the kernel.
+
+Instead:
+
+«identify the fundamental synchronization/resource requirement and provide a general primitive.»
+
+---
+
+E-016.54 — 32-Bit Windows Software
+
+Evrosion does not require a native 32-bit kernel to support old 32-bit Windows applications.
+
+The Windows compatibility system may provide 32-bit application execution independently.
+
+Conceptually:
+
+64-bit Evrosion
+      ↓
+Windows compatibility
+      ↓
+32-bit Windows application
+
+---
+
+E-016.55 — Linux Compatibility Is a Launch P

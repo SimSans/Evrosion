@@ -1,0 +1,1049 @@
+E-014 — Build System & Toolchain
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use a:
+
+«Hermetic, Content-Addressed, Reproducible Build Platform»
+
+The build system should be extremely simple for developers while remaining highly controlled and reproducible internally.
+
+Core Principle
+
+«Building Evrosion should be brutally simple for humans even if the machinery underneath is extremely sophisticated.»
+
+---
+
+E-014.1 — Human-Facing "ev" CLI
+
+Developers should interact primarily with one Evrosion tool.
+
+Conceptually:
+
+ev bootstrap
+ev build
+ev run
+ev test
+ev debug
+ev fuzz
+ev image
+ev reproduce
+ev doctor
+
+Developers should not normally need to directly invoke every underlying compiler, linker, emulator, image generator, test runner, or build engine.
+
+The "ev" command becomes the stable developer experience.
+
+---
+
+E-014.2 — Build Engine
+
+Evrosion will initially use:
+
+«Bazel as the top-level build graph/orchestration engine»
+
+Bazel should remain an implementation detail behind the "ev" CLI.
+
+Evrosion itself must not become architecturally dependent on Bazel concepts.
+
+If a clearly superior build engine appears in the future, the internal build implementation may change while developer workflows remain stable.
+
+---
+
+E-014.3 — Cargo Remains Part of the Toolchain
+
+Cargo should remain available for:
+
+- Rust dependency metadata
+- Rust ecosystem integration
+- Crate development
+- Dependency locking
+- Vendoring
+- Offline dependency handling
+
+However, Cargo should not be responsible for orchestrating the entire operating system.
+
+The top-level build platform coordinates:
+
+- Kernel
+- Drivers
+- Services
+- Recovery environment
+- Boot components
+- Filesystem/system images
+- Install media
+- Tests
+- VM execution
+- Release artifacts
+
+---
+
+E-014.4 — Hermetic Builds
+
+Build actions should operate only on explicitly declared inputs.
+
+A build should not secretly depend on:
+
+- Random host libraries
+- Whatever compiler happens to be installed
+- User environment variables
+- Local filesystem state
+- Undeclared tools
+- Internet access during compilation
+
+Principle
+
+«The developer's random machine configuration must never secretly become part of Evrosion.»
+
+---
+
+E-014.5 — Content-Addressed Build Graph
+
+Build actions should be identified from their actual inputs.
+
+Conceptually:
+
+Source
++
+Dependencies
++
+Toolchain
++
+Compiler flags
++
+Configuration
+      ↓
+Content Hash
+      ↓
+Build Result
+
+If the inputs have not changed, the result can be safely reused.
+
+This enables:
+
+- Incremental builds
+- Reliable caching
+- Parallel builds
+- Shared cache
+- Remote execution later
+- Strong reproducibility
+
+---
+
+E-014.6 — Pinned Toolchains
+
+Evrosion should pin important build tools.
+
+This includes:
+
+- Rust version
+- Rust components
+- LLVM
+- Clang
+- LLD
+- QEMU
+- Build rules
+- Image-generation tools
+- Firmware used for VM tests
+- Code generators
+- Dependencies
+
+The repository should define the expected toolchain rather than relying on whichever versions happen to exist on the host.
+
+---
+
+E-014.7 — Linker
+
+Evrosion will initially prefer:
+
+«LLD»
+
+Reasons include:
+
+- High performance
+- LLVM ecosystem integration
+- Strong cross-platform support
+- x86-64 support
+- ARM64 support
+- RISC-V support
+- Suitable cross-linking behavior
+
+The architecture should not permanently depend on LLD.
+
+---
+
+E-014.8 — Reproducible Builds
+
+Official Evrosion builds should aim for:
+
+«Same source + same declared inputs = identical binary output»
+
+Ideally:
+
+SHA256(Build A)
+==
+SHA256(Build B)
+
+Build reproducibility should eliminate unnecessary sources of nondeterminism such as:
+
+- Current timestamps
+- Random identifiers
+- Local absolute paths
+- Directory ordering
+- Host-specific metadata
+- Environment leakage
+
+---
+
+E-014.9 — Release Reproduction
+
+Official releases should eventually be independently reproducible.
+
+Example:
+
+Builder A
+   ↓
+Evrosion image
+   ↓
+Hash ABC123
+
+Builder B
+   ↓
+Evrosion image
+   ↓
+Hash ABC123
+
+Matching results strongly demonstrate that the published binary corresponds to the published source and declared toolchain.
+
+If official release builders produce different outputs from identical inputs:
+
+«Do not silently release. Investigate the difference.»
+
+---
+
+E-014.10 — Build Cache
+
+Evrosion should use content-addressed caching.
+
+Initially:
+
+«Local build cache.»
+
+Later:
+
+«Shared contributor/CI cache.»
+
+Eventually:
+
+«Distributed remote cache and remote execution where useful.»
+
+This allows unchanged components to avoid recompilation.
+
+---
+
+E-014.11 — Remote Execution
+
+The architecture should support future remote/distributed builds.
+
+Large builds may eventually distribute compile and test actions across multiple machines.
+
+This should remain optional.
+
+A developer must still be able to build Evrosion locally.
+
+---
+
+E-014.12 — Offline Development
+
+After the development environment has been bootstrapped, normal builds should be capable of operating without Internet access.
+
+Required resources should be:
+
+- Installed
+- Vendored
+- Mirrored
+- Cached
+
+as appropriate.
+
+No normal build should unexpectedly download arbitrary dependencies halfway through compilation.
+
+This supports Evrosion's Local First philosophy.
+
+---
+
+E-014.13 — Bootstrap
+
+A new development machine should ideally require something close to:
+
+git clone Evrosion
+cd Evrosion
+ev bootstrap
+ev build
+ev run
+
+The bootstrap system should:
+
+- Verify required host capabilities
+- Install or fetch pinned tools where appropriate
+- Configure build caches
+- Prepare dependencies
+- Prepare VM tooling
+- Explain missing requirements
+
+---
+
+E-014.14 — Build Configuration Model
+
+Evrosion builds should be composed from:
+
+«Board + Product + Profile»
+
+---
+
+Board
+
+Describes hardware/platform target.
+
+Examples:
+
+x86_64-pc
+aarch64-pc
+riscv64
+qemu-x86_64
+qemu-aarch64
+
+---
+
+Product
+
+Describes what kind of Evrosion environment is being built.
+
+Examples:
+
+Desktop
+Recovery
+Minimal
+Installer
+Developer
+Server
+
+---
+
+Profile
+
+Describes build behavior.
+
+Examples:
+
+Debug
+Development
+Hardened
+Release
+Sanitized
+Fuzz
+
+Example:
+
+ev build desktop --board x86_64-pc --profile dev
+
+---
+
+E-014.15 — Cross-Compilation
+
+Evrosion should support cross-compilation from the beginning.
+
+A developer on x86-64 should eventually be able to build:
+
+- x86-64
+- ARM64
+- RISC-V
+
+without requiring a native physical machine for compilation.
+
+Physical hardware remains necessary for final compatibility testing.
+
+---
+
+E-014.16 — Compilation Profiles
+
+Different profiles may tune:
+
+- Optimization
+- Debug information
+- Assertions
+- Sanitizers
+- Overflow checks
+- Logging
+- Instrumentation
+- Panic behavior
+- Security hardening
+
+Release performance must never require turning off essential safety checks without evidence.
+
+---
+
+E-014.17 — Static Analysis
+
+The standard development pipeline should include static checks.
+
+Potential tools include:
+
+- Rust compiler warnings
+- Clippy
+- Rustfmt validation
+- Dependency analysis
+- Unsafe-code auditing
+- Architecture-specific checks
+- Custom Evrosion lints later
+
+Privileged code should use stricter policies than ordinary application code.
+
+---
+
+E-014.18 — Unit Testing
+
+Kernel libraries, services, drivers, parsers, algorithms, and system libraries should have unit tests wherever meaningful.
+
+Code should be structured so that logic can be tested independently from real hardware whenever practical.
+
+---
+
+E-014.19 — Integration Testing
+
+Evrosion should provide automated integration testing for interactions between components.
+
+Examples:
+
+- Driver ↔ device model
+- Filesystem ↔ storage service
+- Network stack ↔ driver
+- Service supervisor ↔ crashing service
+- Capability transfer
+- IPC
+- System-generation switching
+
+---
+
+E-014.20 — QEMU as Primary Early Test Platform
+
+QEMU should be a first-class development target.
+
+It provides:
+
+- Fast boot testing
+- Automated virtual hardware
+- Snapshot support
+- Debugger integration
+- Failure simulation
+- CI compatibility
+
+Example workflow:
+
+ev run
+
+may automatically:
+
+Build Evrosion
+      ↓
+Generate image
+      ↓
+Launch QEMU
+      ↓
+Attach logs/debugging
+
+---
+
+E-014.21 — Kernel Debugging
+
+Development tooling should support:
+
+- GDB/LLDB integration
+- Breakpoints
+- Watchpoints
+- Register inspection
+- Memory inspection
+- Symbolized backtraces
+- Kernel logs
+- Crash dumps
+
+A command such as:
+
+ev debug
+
+should handle as much setup as possible automatically.
+
+---
+
+E-014.22 — Miri
+
+Miri should be used where appropriate to detect undefined behavior in Rust code.
+
+It is especially useful for testing:
+
+- Unsafe abstractions
+- Pointer logic
+- Memory validity assumptions
+- Some concurrency issues
+
+Not every kernel path can execute under Miri, but reusable logic should use it where practical.
+
+---
+
+E-014.23 — Loom
+
+Concurrency-heavy components should use Loom where appropriate.
+
+It can systematically explore different concurrency interleavings.
+
+Potential targets include:
+
+- Lock-free structures
+- IPC queues
+- Synchronization primitives
+- Service state machines
+- Shared-resource management
+
+---
+
+E-014.24 — Kani / Formal Checking
+
+Selected critical Rust components may use formal/model-checking tools such as Kani.
+
+Potential targets include:
+
+- Capability rules
+- Low-level containers
+- Security invariants
+- State machines
+- Memory-management algorithms
+- Transaction logic
+
+Formal methods should be focused where they provide meaningful value rather than becoming mandatory bureaucracy for every line of code.
+
+---
+
+E-014.25 — Fuzzing
+
+Evrosion should aggressively fuzz code exposed to untrusted or complex input.
+
+Potential targets include:
+
+- Filesystem parsers
+- Network protocols
+- Driver interfaces
+- Image/media parsers
+- Package formats
+- Boot metadata
+- IPC decoders
+- Compatibility layers
+
+"cargo-fuzz" / libFuzzer-style workflows can be integrated where appropriate.
+
+---
+
+E-014.26 — Failure Injection
+
+Evrosion testing should deliberately break components.
+
+Tests should include:
+
+- Kill driver
+- Kill service
+- Corrupt IPC message
+- Remove network
+- Remove virtual storage device
+- Exhaust memory
+- Fill disk
+- Fail hardware initialization
+- Timeout service
+- Trigger rollback
+
+The goal is to verify the architecture's recovery promises rather than merely test happy paths.
+
+---
+
+E-014.27 — Power-Loss Testing
+
+E-010 and E-012 require deliberate power-failure simulation.
+
+Example:
+
+Start update
+      ↓
+Progress 47%
+      ↓
+Kill VM power immediately
+      ↓
+Boot again
+      ↓
+Verify known-good generation
+      ↓
+Verify user data
+      ↓
+Verify resumable update
+
+Similar tests should cover:
+
+- File copies
+- Installs
+- Driver updates
+- Service updates
+- Filesystem transactions
+- Boot metadata
+
+---
+
+E-014.28 — Memory-Pressure Testing
+
+Automated tests should simulate:
+
+- Very low RAM
+- Allocation failures
+- Compression pressure
+- Swap pressure
+- Job-level OOM
+- Protected critical services
+
+This validates E-005 behavior.
+
+---
+
+E-014.29 — Networking Failure Testing
+
+Automated tests should simulate:
+
+- Packet loss
+- High latency
+- Jitter
+- Link disappearance
+- Wi-Fi restart
+- Interface switching
+- DNS failure
+- VPN failure
+
+This validates E-011 continuity behavior.
+
+---
+
+E-014.30 — Boot/Recovery Testing
+
+CI should test:
+
+- Healthy boot
+- Failed generation
+- Automatic rollback
+- Broken GPU service
+- Broken driver
+- Corrupt boot metadata
+- Recovery environment startup
+- Owner-custom generation
+- Interrupted update
+
+---
+
+E-014.31 — Hardware-in-the-Loop Testing
+
+Virtual machines cannot model every physical hardware behavior.
+
+Later Evrosion infrastructure should include physical test machines.
+
+Potential hardware lab:
+
+Old x86-64 PC
+Modern AMD desktop
+Modern Intel laptop
+NVIDIA GPU machine
+AMD GPU machine
+Intel GPU machine
+ARM64 machine
+Legacy BIOS machine
+Various Wi-Fi/storage hardware
+
+CI may remotely install builds, boot hardware, run tests, collect diagnostics, and recover machines.
+
+---
+
+E-014.32 — Test Tiers
+
+Testing should be layered.
+
+Example:
+
+Fast
+
+Runs constantly:
+
+- Format
+- Compile
+- Lint
+- Unit tests
+
+Medium
+
+Runs frequently:
+
+- Integration tests
+- QEMU boot tests
+- Miri/Loom subsets
+- Selected fuzzing
+
+Heavy
+
+Runs on major changes/releases:
+
+- Long fuzzing
+- Full VM matrix
+- Failure injection
+- Reproducibility
+- Hardware lab
+- Formal checks
+- Performance regression tests
+
+---
+
+E-014.33 — Performance Regression Testing
+
+Evrosion should track performance over time.
+
+Potential metrics include:
+
+- Kernel boot time
+- Desktop-ready time
+- IPC latency
+- Context-switch latency
+- Memory overhead
+- Filesystem throughput
+- Network latency
+- Driver startup
+- Service startup
+- CPU scheduler behavior
+
+Major regressions should be detected automatically.
+
+---
+
+E-014.34 — Build Artifact Metadata
+
+Every artifact should have traceable build identity.
+
+Possible metadata:
+
+- Source commit
+- Toolchain versions
+- Board
+- Product
+- Profile
+- Dependency lock
+- Build configuration
+- Reproducibility information
+
+This assists debugging and release verification.
+
+---
+
+E-014.35 — SBOM
+
+Official releases should produce a Software Bill of Materials.
+
+The SBOM should describe relevant:
+
+- Components
+- Libraries
+- Versions
+- Dependencies
+- Licenses
+- Provenance
+
+This supports security and supply-chain transparency.
+
+---
+
+E-014.36 — Build Provenance
+
+Official builds should produce verifiable provenance describing:
+
+- Source
+- Build process
+- Toolchain
+- Inputs
+- Build environment
+- Resulting artifact
+
+This allows users and organizations to verify how a binary was produced.
+
+---
+
+E-014.37 — Release Artifacts
+
+A release may eventually produce:
+
+Evrosion.img
+Evrosion.iso
+Evrosion.symbols
+Evrosion.sbom
+Evrosion.provenance
+Evrosion.checksums
+Evrosion.signature
+
+Exact packaging remains for later engineering work.
+
+---
+
+E-014.38 — Signing
+
+Build generation and release signing should remain separate concepts.
+
+A successful build does not automatically become an official release.
+
+Release artifacts should only be signed after appropriate:
+
+- Testing
+- Verification
+- Reproducibility checks
+- Approval
+
+Signing architecture will integrate with E-019 updates and E-009 trust.
+
+---
+
+E-014.39 — Dependency Supply Chain
+
+Dependencies should be:
+
+- Version locked
+- Auditable
+- Reproducible
+- Mirrored/vendored where appropriate
+- Integrity verified
+
+A random upstream package disappearing should not make old Evrosion releases impossible to rebuild.
+
+---
+
+E-014.40 — Build Script Isolation
+
+Third-party build scripts must not automatically receive unrestricted access to the host development environment.
+
+Where practical, they should execute inside sandboxed build actions with explicitly declared inputs and outputs.
+
+Principle
+
+«Build-time code is still code and must be treated as part of the supply chain.»
+
+---
+
+E-014.41 — Developer Experience
+
+The build platform should produce useful human-readable errors.
+
+Instead of:
+
+«dependency action 7df991 failed in sandbox namespace 30291»
+
+prefer:
+
+«ARM64 linker missing from the current bootstrap environment.»
+
+«Run: "ev bootstrap repair"»
+
+Technical details remain available when requested.
+
+---
+
+E-014.42 — "ev doctor"
+
+Evrosion should provide a developer diagnostic command.
+
+Conceptually:
+
+ev doctor
+
+It checks:
+
+- Toolchain integrity
+- Host requirements
+- Virtualization support
+- QEMU
+- Build cache
+- Disk space
+- Dependency state
+- Debugging support
+
+And explains problems in human terms.
+
+---
+
+E-014.43 — "ev reproduce"
+
+A dedicated reproducibility command should rebuild a selected artifact under a clean environment and compare it with the expected result.
+
+Conceptually:
+
+ev reproduce release-1.4
+
+Result:
+
+Build reproduced successfully.
+SHA256 matches official artifact.
+
+or:
+
+Mismatch detected.
+3 build actions produced different outputs.
+
+---
+
+E-014.44 — "ev image"
+
+Image creation should be automated.
+
+Conceptually:
+
+ev image desktop
+
+may produce:
+
+- Bootable disk image
+- VM image
+- Installer image
+- Recovery image
+
+without requiring developers to manually partition disks or assemble boot files.
+
+---
+
+E-014.45 — Tooling Remains Replaceable
+
+Bazel, LLVM, LLD, QEMU, and other tools are engineering choices rather than Evrosion architectural requirements.
+
+The "ev" interface and declarative build metadata should insulate developers from unnecessary tooling churn.
+
+Principle
+
+«Tooling serves Evrosion. Evrosion does not become permanently shaped around one tooling vendor or project.»
+
+---
+
+E-014 Final Architecture
+
+                   DEVELOPER
+
+                      ev
+                      │
+        ┌─────────────┼─────────────┐
+        │             │             │
+      build          test          run
+        │             │             │
+        └─────────────┼─────────────┘
+                      ↓
+              EVROSION BUILD PLATFORM
+                      │
+                    Bazel
+                      │
+     ┌────────────────┼─────────────────┐
+     │                │                 │
+   Rust            C/ASM            Images
+   Cargo             LLVM             QEMU
+  rustc              LLD           Generators
+     │                │                 │
+     └────────────────┼─────────────────┘
+                      ↓
+             CONTENT-ADDRESSED CACHE
+                      ↓
+               BUILD ARTIFACTS
+
+Testing:
+
+Source
+  ↓
+Format / Lint
+  ↓
+Compile
+  ↓
+Unit Tests
+  ↓
+Static / Unsafe Analysis
+  ↓
+Miri / Loom / Kani where useful
+  ↓
+Fuzzing
+  ↓
+QEMU Integration
+  ↓
+Failure Injection
+  ↓
+Reproducibility
+  ↓
+Hardware Testing
+  ↓
+Release
+
+---
+
+E-014 Final Summary
+
+Developer interface: "ev"
+
+Top-level build engine: Bazel initially
+
+Rust ecosystem tooling: Cargo retained
+
+Compiler: rustc
+
+Primary backend: LLVM
+
+Linker: LLD initially
+
+VM/testing: QEMU
+
+Build model: Hermetic + content-addressed
+
+Toolchains: Fully pinned
+
+Dependencies: Locked and offline-capable
+
+Reproducibility: Bit-for-bit target for official builds
+
+Cache: Local initially, remote later
+
+Cross-compilation: First-class
+
+Configuration: Board + Product + Profile
+
+Static analysis: Required
+
+Fuzzing: First-class
+
+Miri/Loom/Kani: Used where valuable
+
+Failure injection: First-class
+
+Power-loss testing: First-class
+
+Hardware CI: Later first-class infrastructure
+
+Release evidence: SBOM + provenance + hashes + signatures
+
+---
+
+Governing Principles
+
+«Building Evrosion should be brutally simple even if the system underneath is extremely sophisticated.»
+
+«The source repository must define exactly what gets built, with what tools, and why.»
+
+«The developer's random machine state must not secretly become part of Evrosion.»
+
+«Identical declared inputs should produce identical outputs.»
+
+«Test failure and recovery paths as aggressively as normal operation.»
+
+«A build system is part of the security architecture.»
+
+«Offline development must remain possible.»
+
+«Build tools are replaceable implementation details, not permanent Evrosion architecture.»
+
+E-014 — DECIDED AND CLOSED.

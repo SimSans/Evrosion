@@ -1,0 +1,8 @@
+[alias]
+ev = "run --locked --profile host-tools --package ev --"
+
+# Host tools use the host target. Bare-metal target selection belongs to the
+# image builder in Slice 2; a global build.target would break host tools.
+
+[target.x86_64-unknown-none]
+rustflags = ["-C", "relocation-model=static", "-C", "code-model=kernel", "-C", "force-frame-pointers=yes", "-C", "link-arg=--no-pie"]

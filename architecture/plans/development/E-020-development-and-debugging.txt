@@ -1,0 +1,1925 @@
+E-020 — Development & Debugging Architecture
+
+Status: ARCHITECTURAL DIRECTION DECIDED AND CLOSED
+
+Evrosion will use a:
+
+«Capability-Secured Diagnostics Fabric with Structured State, Loss-Aware Tracing, Exception Routing, Failure Capsules, and Replay-Assisted Debugging»
+
+The goal is not merely to support debuggers.
+
+Evrosion should be:
+
+«Diagnosable by construction.»
+
+Every architectural subsystem should naturally expose enough structured information to understand:
+
+- What happened
+- Where it happened
+- Why it happened
+- Which workload caused it
+- Which component handled it
+- How long it took
+- Which authority was involved
+- Which software build was executing
+- Which system generation was active
+- Whether information was lost
+- What recovery action followed
+
+Debugging capability must never silently become universal authority.
+
+---
+
+E-020.1 — Debug Authority Is Capability-Controlled
+
+Debugging another process is itself privileged authority.
+
+A debugger receives explicit capability to its target.
+
+Conceptually:
+
+Target Job
+    ↓
+Debug Capability
+    ↓
+Debugger
+
+Debugging must not rely on ambient root authority.
+
+---
+
+E-020.2 — Fine-Grained Debug Rights
+
+Debug authority may include separate rights such as:
+
+INSPECT
+TRACE
+READ_MEMORY
+WRITE_MEMORY
+READ_REGISTERS
+WRITE_REGISTERS
+SUSPEND
+RESUME
+SINGLE_STEP
+BREAKPOINT
+WATCHPOINT
+CONTROL
+
+Not every diagnostic tool requires all of these.
+
+A profiler may receive:
+
+INSPECT + TRACE
+
+without receiving memory modification authority.
+
+---
+
+E-020.3 — Job-Level Debugging
+
+E-004 Jobs should become natural debugging boundaries.
+
+Example:
+
+Browser Job
+├── Main process
+├── Renderer
+├── Network helper
+├── Codec worker
+└── GPU helper
+
+Authorized Job debugging may expose the workload's component processes according to delegated rights.
+
+This is preferable to forcing developers to manually discover unrelated PIDs.
+
+---
+
+E-020.4 — No Debug Authority Leakage
+
+Debugging:
+
+Browser Job
+
+must not automatically grant access to:
+
+Credential Vault
+Other applications
+Kernel
+Trusted Control Plane
+Other users
+
+Authority remains capability-scoped.
+
+---
+
+E-020.5 — Absolute Access Preserves Owner Control
+
+Layer 3 / Absolute Access may deliberately acquire broad debugging authority.
+
+Example:
+
+Secure Attention
+      ↓
+Owner authorizes kernel inspection
+      ↓
+Kernel Debug Capability
+
+The owner remains final authority.
+
+---
+
+E-020.6 — Debug Authority Classes
+
+Different debug classes should remain separate.
+
+Conceptually:
+
+ProcessDebug
+JobDebug
+ServiceDebug
+DriverDebug
+KernelInspect
+KernelDebug
+HardwareDebug
+FaultInjection
+
+Possessing one does not automatically imply the others.
+
+---
+
+E-020.7 — Diagnostics Has Three Primary Forms
+
+Evrosion diagnostics should distinguish:
+
+«STATE»
+
+«EVENTS»
+
+«TRACES»
+
+These solve different problems and should not be collapsed into one giant logging system.
+
+---
+
+E-020.8 — Structured State
+
+Subsystems expose typed current state.
+
+Example:
+
+Network Service
+
+connected = true
+interface = wifi0
+signal = -54 dBm
+default_route = ...
+dns_health = healthy
+active_sessions = 38
+
+This state exists independently of log text.
+
+---
+
+E-020.9 — Subsystems Own Their State
+
+Authoritative diagnostic state remains with the component responsible for it.
+
+Example:
+
+Network → network state
+Storage → storage state
+Lifecycle Engine → lifecycle state
+Driver Manager → hardware/driver state
+
+The diagnostics fabric queries/federates these sources.
+
+---
+
+E-020.10 — No Giant Global State Database
+
+Evrosion must avoid creating:
+
+One Central Database
+↑
+every system component synchronously writes everything
+
+Such a design would become:
+
+- Bottleneck
+- Failure domain
+- Lock contention source
+- Irreplaceable magic
+
+Diagnostics aggregates state.
+
+It does not own every subsystem's truth.
+
+---
+
+E-020.11 — Structured Events
+
+Events/logs should be structured first.
+
+Example:
+
+component = ev.network.wifi
+severity = warning
+reason = AUTH_TIMEOUT
+device = wifi0
+job = ...
+time = ...
+
+Human-readable explanation may accompany it:
+
+«Wi-Fi authentication timed out.»
+
+---
+
+E-020.12 — Machine and Human Representations
+
+Events should support both:
+
+reason = DEVICE_RESET_TIMEOUT
+
+and:
+
+«The graphics device did not recover before the reset deadline.»
+
+This follows F-013.
+
+---
+
+E-020.13 — Bounded Logging
+
+A misbehaving component must not fill the machine's storage by emitting unlimited logs.
+
+Logging requires:
+
+Rate limits
+Buffer limits
+Retention limits
+Storage quotas
+Repetition suppression
+
+---
+
+E-020.14 — Suppression Is Observable
+
+If 50,000 repeated events are suppressed:
+
+Evrosion should retain information such as:
+
+Suppressed events: 49,843
+Reason: producer rate limit
+
+Diagnostic loss itself is diagnostic information.
+
+---
+
+E-020.15 — High-Frequency Tracing
+
+Tracing handles information too frequent for ordinary logs.
+
+Possible tracepoints include:
+
+Thread scheduling
+IPC request
+IPC completion
+Storage operation
+Page fault
+Driver operation
+GPU submission
+Audio deadline
+Network batch
+Lifecycle transition
+
+---
+
+E-020.16 — Shared-Memory Trace Fast Path
+
+Trace producers should write to bounded shared-memory buffers/rings.
+
+Normal trace emission should not synchronously call a logging daemon.
+
+Conceptually:
+
+Producer
+   ↓
+Shared Trace Buffer
+   ↓
+Trace Collector
+
+Control/configuration uses IPC.
+
+High-rate data does not.
+
+---
+
+E-020.17 — Bounded Ring Buffers
+
+Tracing should generally support bounded circular buffers.
+
+Example:
+
+Newest trace event
+       ↓
+Ring buffer
+       ↓
+Oldest data overwritten when full
+
+This allows Evrosion to preserve:
+
+«The last N seconds before failure.»
+
+---
+
+E-020.18 — Trace Loss Is Explicit
+
+A trace may report:
+
+Events dropped: 724
+Reason: buffer overflow
+
+Never silently pretend an incomplete trace is complete.
+
+---
+
+E-020.19 — Trace Categories
+
+Tracepoints should belong to selectable categories.
+
+Examples:
+
+scheduler
+ipc
+memory
+storage
+network
+drivers
+graphics
+audio
+security
+lifecycle
+
+Additional levels may include:
+
+normal
+verbose
+debug
+slow
+
+---
+
+E-020.20 — Disabled Tracepoints Must Be Cheap
+
+High-detail tracing cannot impose large permanent production overhead.
+
+When disabled, tracepoints should approach minimal cost.
+
+Expensive instrumentation belongs to deliberate development modes.
+
+---
+
+E-020.21 — Diagnostics Measures Its Own Cost
+
+Evrosion must be capable of showing:
+
+Trace CPU cost
+Trace memory
+Events/sec
+Buffer utilization
+Dropped events
+Trace bandwidth
+Persistent storage use
+
+Principle:
+
+«Evrosion must be capable of measuring the cost of measuring Evrosion.»
+
+---
+
+E-020.22 — Always-On Flight Recorder
+
+Critical components may maintain tiny bounded low-overhead event histories.
+
+This is not full tracing.
+
+It records only carefully selected important events.
+
+Examples:
+
+Service restart
+Driver fault
+IPC timeout
+Scheduler deadline miss
+Lifecycle transition
+GPU reset
+Security denial
+
+---
+
+E-020.23 — Flight Recorder Freezing
+
+When a significant fault occurs:
+
+Failure detected
+      ↓
+Freeze relevant flight recorders
+      ↓
+Attach recent history to crash/failure artifact
+
+This captures events that happened before tracing could manually be enabled.
+
+---
+
+E-020.24 — Flight Recording Is Bounded
+
+Flight recorders use fixed resource limits.
+
+They must not become permanent unlimited surveillance or logging systems.
+
+---
+
+E-020.25 — Debuggability by Construction
+
+All major Evrosion platform tooling should automatically provide baseline diagnostics.
+
+A new service should not begin life completely opaque.
+
+---
+
+E-020.26 — IDL-Generated Instrumentation
+
+E-008/E-015 interface-generation tooling should automatically generate standard diagnostic metadata for service calls.
+
+Potential information includes:
+
+Request identity
+Work Context
+Start/end timestamps
+Protocol version
+Deadline
+Cancellation
+Result status
+Capability failure
+Latency
+
+Developers may add richer tracing, but minimum instrumentation exists automatically.
+
+---
+
+E-020.27 — Standard Service Inspection Schema
+
+Supervised services should expose a baseline structured state contract.
+
+Potential standard fields:
+
+identity
+version
+health
+uptime
+restart_count
+resource_usage
+dependency_health
+last_failure
+current_job
+
+---
+
+E-020.28 — Standard Driver Inspection
+
+Drivers should similarly expose baseline state from E-006:
+
+device
+driver
+version
+host
+capabilities
+firmware
+health
+restart count
+last fault
+
+---
+
+E-020.29 — Causal System Tracing
+
+E-008 Work Contexts should become first-class causal trace identities.
+
+Example:
+
+Browser request #8472
+        ↓
+Storage Service
+        ↓
+Filesystem
+        ↓
+NVMe Driver
+
+Evrosion should understand that these operations belong to the same causal task.
+
+---
+
+E-020.30 — Causal Paths
+
+Instead of merely displaying raw events chronologically, developer tools should reconstruct:
+
+Browser
+  52 µs execution
+   ↓
+IPC queue
+  17 µs
+   ↓
+Storage Service
+  84 µs
+   ↓
+Filesystem
+  121 µs
+   ↓
+Device wait
+  311 µs
+
+This allows developers to answer:
+
+«Why was this operation slow?»
+
+---
+
+E-020.31 — Causal Attribution
+
+Where practical, a trace should distinguish:
+
+Execution time
+Queue time
+IPC wait
+Lock wait
+Scheduling delay
+Device wait
+Network wait
+GPU wait
+
+This could become one of Evrosion's strongest development features.
+
+---
+
+E-020.32 — Exception Objects
+
+CPU/process faults should enter the debugging system through structured exception objects.
+
+Conceptually:
+
+CPU Exception
+      ↓
+Kernel
+      ↓
+Exception Object
+
+An authorized userspace handler receives the object.
+
+---
+
+E-020.33 — Exception Target Suspension
+
+While an exception is actively handled, the target thread remains stopped where required.
+
+This allows inspection before execution continues or the workload terminates.
+
+---
+
+E-020.34 — Ordered Exception Handling
+
+Preferred exception route:
+
+Exception
+    ↓
+Attached Debugger
+(first chance)
+    ↓ if unhandled
+Application/Component Crash Handler
+    ↓ if unhandled
+System Crash Service / Supervisor
+
+Handlers do not race for the same fault.
+
+---
+
+E-020.35 — Single-Owner Exception Authority
+
+At any time, only the current handler owns the authority necessary to disposition the exception.
+
+The exception token/object must not be arbitrarily duplicable.
+
+This prevents multiple handlers from simultaneously modifying a stopped target.
+
+---
+
+E-020.36 — Exception Disposition
+
+A handler may return outcomes such as:
+
+Handled → resume
+Unhandled → continue propagation
+Terminate target
+Keep suspended while debugger owns exception
+
+Exact semantics remain a kernel/API implementation matter.
+
+---
+
+E-020.37 — Debug Authority Revocation
+
+Debug authority must remain revocable.
+
+If authority disappears while a target is stopped:
+
+Debugger loses further control immediately
+
+The target cannot remain permanently hostage to a debugger that no longer has authority.
+
+---
+
+E-020.38 — Revocation Disposition
+
+After debug revocation, the debug broker/kernel applies the defined safe disposition.
+
+Examples:
+
+For deliberate nonfatal suspension:
+
+Resume
+
+For an active fault:
+
+Continue exception propagation
+
+This behavior must be deterministic and documented.
+
+---
+
+E-020.39 — Userspace Crash Artifacts
+
+A crashing process should produce a structured local artifact where possible.
+
+Potential contents:
+
+Component identity
+Package identity
+Version
+Build ID
+Job
+Process
+Thread
+Exception type
+Fault address
+Registers
+Stack
+Loaded modules
+Relevant mappings
+Recent events
+Flight-recorder slice
+Relevant trace slice
+System generation
+Driver/runtime versions
+Lifecycle state
+
+---
+
+E-020.40 — Crash Artifacts Are Bounded
+
+Evrosion should not automatically produce enormous complete memory dumps for every crash.
+
+Normal crash artifacts prioritize:
+
+- Fault location
+- Execution state
+- Provenance
+- Relevant history
+- Structured diagnostics
+
+Full dumps are explicit debugging options.
+
+---
+
+E-020.41 — Crash Artifacts Are Local First
+
+Normal behavior:
+
+Crash
+ ↓
+Local artifact
+
+Not:
+
+Crash
+ ↓
+Automatic upload
+
+Sharing remains owner-controlled.
+
+---
+
+E-020.42 — Privacy-Aware Dumps
+
+Memory dumps may contain:
+
+- Passwords
+- Authentication tokens
+- Private documents
+- Messages
+- Cryptographic material
+
+Exporting crash information should therefore support:
+
+- Redaction
+- Scope control
+- User review
+- Minimal-data modes
+
+---
+
+E-020.43 — Secret Vault Isolation
+
+The E-009 Credential Vault should be designed so that arbitrary application dumps do not simply expose the Vault's internal secret material.
+
+Applications only possess scoped outputs/tokens according to normal authority.
+
+---
+
+E-020.44 — Build IDs
+
+Every debug-relevant executable/library should have a stable Build ID.
+
+Example:
+
+Crash:
+Build ID = 83AB...
+
+The debugging environment can resolve that exact build.
+
+---
+
+E-020.45 — Build Manifest
+
+A Build ID should map to a richer Build Manifest.
+
+Conceptually:
+
+Build ID
+├── Exact binary
+├── Debug symbols
+├── Source revision/digests
+├── Compiler/toolchain identity
+├── Build profile
+├── Package/component identity
+├── Target architecture
+├── API Level
+├── Provenance
+└── SBOM references
+
+---
+
+E-020.46 — Exact Build Reproduction
+
+Combined with E-014, developers should be able to determine:
+
+«Which exact source/toolchain configuration produced this crashing binary?»
+
+This eliminates enormous ambiguity during debugging.
+
+---
+
+E-020.47 — Symbols Are Separate From Installed Binaries
+
+Release systems may use stripped binaries plus Build IDs.
+
+Debug symbols may reside:
+
+- Locally
+- In development caches
+- In official symbol stores
+- In third-party developer infrastructure
+
+User systems need not retain all symbols.
+
+---
+
+E-020.48 — No Mandatory Central Symbol Monopoly
+
+Third-party developers may provide their own symbol/source mappings.
+
+Local custom builds may resolve entirely locally.
+
+Evrosion does not require uploading private source code to a central service merely to debug software.
+
+---
+
+E-020.49 — Kernel Panic Recording
+
+Kernel crashes require a separate minimal mechanism.
+
+Normal userspace services cannot be assumed alive.
+
+Conceptually:
+
+Kernel panic
+    ↓
+Emergency recorder
+    ↓
+Reserved persistent storage
+    ↓
+Reboot / Recovery
+
+---
+
+E-020.50 — Kernel Panic Path Is Minimal
+
+The panic path should avoid:
+
+- Heap allocation
+- Complex locks
+- General filesystem operations
+- Network access
+- Userspace dependency
+- Complex serializers
+
+Use preallocated memory and bounded structures.
+
+---
+
+E-020.51 — Kernel Crash Contents
+
+Potential emergency information:
+
+Panic reason
+CPU identity
+Registers
+Fault address
+Kernel build ID
+Critical thread state
+Recent kernel trace tail
+Current generation
+
+Capture is best-effort.
+
+---
+
+E-020.52 — Persistent Crash Area
+
+Where practical, platforms should provide a small persistent crash-storage mechanism.
+
+Potential implementations:
+
+- Reserved disk area
+- Dedicated storage object
+- Firmware-backed persistent region
+- Preserved RAM across warm reboot
+
+Exact mechanism is platform-specific.
+
+---
+
+E-020.53 — Crash Storage Is Checksummed
+
+Emergency crash records should contain integrity information.
+
+Recovery must distinguish:
+
+Valid record
+Partial record
+Corrupted record
+
+---
+
+E-020.54 — Rotating/Redundant Crash Records
+
+A partially written new crash record must not destroy the previous valid record.
+
+Use:
+
+Slot A
+Slot B
+
+or another bounded rotational/journaled design where practical.
+
+---
+
+E-020.55 — Rich Reconstruction Happens After Reboot
+
+The emergency kernel recorder captures minimal raw state.
+
+Normal Recovery/userspace later performs:
+
+- Symbolization
+- Source resolution
+- Trace decoding
+- Human explanation
+- Failure Capsule generation
+
+Keep panic handling simple.
+
+---
+
+E-020.56 — Kernel Debugging
+
+Early Evrosion development should support standard debugger interoperability.
+
+Primary early target:
+
+GDB / LLDB
+     ↓
+Remote debug protocol/stub
+     ↓
+Evrosion kernel
+
+This is especially important in QEMU.
+
+---
+
+E-020.57 — "ev debug kernel"
+
+E-014's tool interface should eventually support:
+
+ev debug kernel
+
+which may automatically:
+
+- Build selected profile
+- Start QEMU
+- Enable debug channel
+- Load symbols
+- Attach debugger
+
+The normal development loop should be brutally easy.
+
+---
+
+E-020.58 — Remote Debug Transports
+
+Possible transports include:
+
+Serial
+Virtio
+USB debugging
+Authenticated network connection
+Hardware debug transport
+
+The logical debugging interface should remain transport-independent.
+
+---
+
+E-020.59 — Remote Debugging Is Never an Open Backdoor
+
+Network debug access requires:
+
+Explicit enablement
++
+Debug capability
++
+Authenticated peer
++
+Encrypted transport where networked
+
+Never expose an unauthenticated production debug listener.
+
+---
+
+E-020.60 — Production User Debugging Remains Available
+
+Release Evrosion should still allow owners to debug their own applications/processes through normal capability authorization.
+
+Debuggability is part of ownership.
+
+---
+
+E-020.61 — Dangerous Kernel Debugging Has Stronger Authority
+
+Raw kernel inspection/modification is categorically more powerful than user-process debugging.
+
+It requires separate authority.
+
+An owner may deliberately enable it in Absolute Access.
+
+---
+
+E-020.62 — Developer Kernels
+
+Extremely invasive debugging can use an owner-trusted developer kernel.
+
+This avoids permanently weakening normal production kernels.
+
+E-009/E-012 owner-controlled boot trust makes this possible.
+
+---
+
+E-020.63 — Development Profiles
+
+E-014 profiles integrate directly with debugging.
+
+Examples:
+
+Debug
+Developer
+Sanitized
+Fuzz
+Hardened
+Release
+
+Each profile enables appropriate instrumentation.
+
+---
+
+E-020.64 — Release Is Still Observable
+
+Release builds retain low-cost essentials such as:
+
+Build IDs
+Structured state
+Critical events
+Crash artifacts
+Flight recorder
+Lifecycle history
+Bounded tracepoints
+
+Real-world failures must remain diagnosable.
+
+---
+
+E-020.65 — Expensive Instrumentation Is Optional
+
+Development profiles may enable:
+
+- Sanitizers
+- Additional invariants
+- Heap tracking
+- Lock tracking
+- Extensive tracing
+- Debug assertions
+- Poisoning
+- Race detection
+
+These are not permanently imposed on production.
+
+---
+
+E-020.66 — Sanitizers
+
+Evrosion's build/test system should support relevant sanitizer configurations where toolchain/platform support permits.
+
+Potential examples:
+
+AddressSanitizer
+ThreadSanitizer
+UndefinedBehaviorSanitizer
+MemorySanitizer
+
+They remain development tools rather than architectural dependencies.
+
+---
+
+E-020.67 — Rust Does Not Eliminate Debugging Tools
+
+Rust reduces many memory-safety defects but does not eliminate:
+
+- Unsafe-code defects
+- FFI bugs
+- Logical races
+- Hardware errors
+- Protocol errors
+- Driver bugs
+- Incorrect capability logic
+
+Sanitizers/fuzzing remain valuable.
+
+---
+
+E-020.68 — Unified "ev" Developer Interface
+
+The preferred human-facing interface should eventually include:
+
+ev run
+ev debug
+ev inspect
+ev trace
+ev profile
+ev crash
+ev record
+ev replay
+ev test
+ev fuzz
+
+Underlying tools remain replaceable.
+
+---
+
+E-020.69 — Example Usage
+
+Conceptually:
+
+ev debug app MyApp
+ev debug service ev.network
+ev inspect job 42
+ev inspect device gpu0
+ev trace --category ipc,storage
+ev profile Game.sion
+ev crash show <id>
+
+Exact CLI syntax remains implementation-defined.
+
+---
+
+E-020.70 — IPC Debugging
+
+Because Evrosion is component-oriented, IPC diagnostics are first-class.
+
+Developers should be able to inspect:
+
+Caller
+Callee
+Protocol
+Method
+Work Context
+Queue delay
+Execution latency
+Deadline
+Result
+Cancellation
+
+---
+
+E-020.71 — Capability Debugging
+
+Security tools should answer:
+
+«Why was this operation denied?»
+
+Example:
+
+App requests file WRITE
+      ↓
+Capability rights:
+READ
+      ↓
+WRITE missing
+      ↓
+DENIED
+
+---
+
+E-020.72 — Capability History
+
+Authorized diagnostics may inspect:
+
+Grant
+Transfer
+Attenuation
+Lease
+Revocation
+
+where auditing policy permits.
+
+This makes capability-based security understandable rather than mysterious.
+
+---
+
+E-020.73 — Scheduler Debugging
+
+E-004 scheduling state should be inspectable.
+
+Potential information:
+
+Job
+Thread
+Scheduling Context
+Budget
+Period
+Deadline
+Priority
+Donation
+Missed deadlines
+Queue latency
+
+---
+
+E-020.74 — Deadline Explanation
+
+Evrosion should eventually answer:
+
+«Why did this audio callback miss its deadline?»
+
+Example:
+
+Runnable at T0
+Expected start T0 + 40 μs
+Actually scheduled T0 + 820 μs
+
+Cause:
+higher-priority dependency chain
+
+---
+
+E-020.75 — Memory Debugging
+
+E-005 diagnostic information may include:
+
+Memory Object
+Owner Job
+Size
+Resident pages
+Mappings
+Pager
+Compression
+Swap state
+Fault activity
+
+Development modes may add allocation-level tracking.
+
+---
+
+E-020.76 — Driver Debugging
+
+Driver tooling should expose E-006 information.
+
+Example:
+
+ev inspect device gpu0
+
+may report:
+
+hardware identity
+driver package
+driver host
+MMIO resources
+interrupts
+DMA mappings
+firmware
+capabilities
+health
+restart history
+last failure
+
+---
+
+E-020.77 — Lifecycle Debugging
+
+E-019 transactions should be inspectable.
+
+Example:
+
+Transaction 812
+
+Acquire       ✓
+Verify        ✓
+Stage         ✓
+Activation    ✓
+Health        ✗
+Rollback      ✓
+
+Developer tooling can inspect the exact failing gate.
+
+---
+
+E-020.78 — Graphics and Media Diagnostics
+
+E-017/E-018 state should integrate into the same diagnostics fabric.
+
+Examples:
+
+GPU reset
+Frame pacing
+Direct scanout
+XRUN
+Codec failure
+Audio timing domain
+Clock drift
+
+No unrelated graphics/audio debug universe is required.
+
+---
+
+E-020.79 — Fault Injection Is First-Class
+
+Evrosion should deliberately test failures rather than merely test successful operation.
+
+Examples:
+
+Allocation fails
+Service crashes
+Driver crashes
+Storage write fails
+Packet is dropped
+GPU resets
+Memory pressure spikes
+Device disappears
+Lifecycle phase loses power
+
+---
+
+E-020.80 — Fault Injection Requires Authority
+
+Ordinary software must not be able to intentionally sabotage the operating system through test interfaces.
+
+Fault injection requires explicit:
+
+FaultInjection capability
+
+Some injection mechanisms may only exist in Developer/Fuzz profiles.
+
+---
+
+E-020.81 — Fault Injection Is Structured
+
+Instead of ad-hoc magic flags:
+
+fault:
+  component = storage
+  operation = next_write
+  result = failure
+
+or equivalent structured configuration should be used.
+
+This makes tests reproducible.
+
+---
+
+E-020.82 — Power-Loss Testing
+
+E-010 and E-019 durability claims must be aggressively tested through arbitrary interruption.
+
+Automated VM testing should terminate execution during:
+
+Copy
+Move
+Install
+Update
+State migration
+Generation activation
+Garbage collection
+
+Then reboot and verify invariants.
+
+---
+
+E-020.83 — Recovery Testing
+
+Tests should validate:
+
+Detect
+↓
+Contain
+↓
+Explain
+↓
+Recover
+
+not merely verify that failure was noticed.
+
+---
+
+E-020.84 — Record/Replay
+
+Evrosion should support record/replay debugging for appropriate workloads.
+
+Conceptually:
+
+ev record MyApp
+
+then:
+
+ev replay <recording>
+
+Possible capabilities include:
+
+- Repeat same failing execution
+- Reverse execution where implementation supports it
+- Reverse watchpoints
+- Deterministic inspection
+
+---
+
+E-020.85 — Replay Is Not a Universal OS Guarantee
+
+Evrosion explicitly does not promise deterministic replay for arbitrary:
+
+- GPU execution
+- DMA devices
+- Real networks
+- Multiple physical machines
+- Uncontrolled external devices
+- Entire live desktop environments
+
+Such a promise would impose enormous complexity.
+
+---
+
+E-020.86 — Process/Job Replay Boundary
+
+Normal replay should operate on a controlled:
+
+Process
+
+or:
+
+Job
+
+boundary.
+
+The system records nondeterministic inputs that cross that boundary where practical.
+
+---
+
+E-020.87 — Stable Boundary Recording
+
+Replay may capture:
+
+Kernel results
+Timing queries
+Randomness
+Signals/events
+Relevant scheduling choices
+IPC inputs/results
+
+rather than recording every machine instruction.
+
+Exact implementation can evolve.
+
+---
+
+E-020.88 — IPC During Replay
+
+When recorded software communicates outside its replay boundary:
+
+Recorded Job
+    ↓
+External Service
+
+the recording system may:
+
+- Record service response/input required for replay
+- Replay a deterministic service stub
+- Explicitly mark the dependency as non-replayable
+
+It must not silently assume the live service will behave identically later.
+
+---
+
+E-020.89 — VM-Level Replay
+
+For broader system failures:
+
+QEMU / VM
+
+may be the appropriate replay boundary.
+
+This is especially useful for:
+
+- Kernel development
+- Lifecycle bugs
+- Driver simulations
+- Power-loss bugs
+
+---
+
+E-020.90 — Failure Capsules
+
+Serious failures may generate a portable:
+
+«Failure Capsule»
+
+This is richer than an ordinary crash dump.
+
+---
+
+E-020.91 — Failure Capsule Contents
+
+A Failure Capsule may contain:
+
+Failure identity
+Component/Job identity
+Build IDs
+Build Manifests
+System Generation
+Relevant package versions
+Exception state
+Structured diagnostics
+Flight-recorder history
+Selected trace slice
+Lifecycle transaction state
+Fault-injection configuration
+Hardware profile
+Reproduction metadata
+
+Sensitive user content is excluded unless deliberately requested.
+
+---
+
+E-020.92 — Failure Capsules Are Portable
+
+A developer should be able to take a capsule to another Evrosion development machine and perform:
+
+ev crash inspect capsule
+
+or potentially:
+
+ev reproduce capsule
+
+where enough information exists.
+
+---
+
+E-020.93 — Reproduction Is Best-Effort
+
+A capsule may not reproduce failures dependent on:
+
+- Exact hardware
+- External servers
+- Timing races
+- Proprietary firmware
+
+Evrosion should clearly distinguish:
+
+reproducible
+partially reproducible
+diagnostic only
+
+rather than pretending perfect reproduction.
+
+---
+
+E-020.94 — AI-Friendly Diagnostics
+
+Failure Capsules and structured diagnostics should be suitable for authorized analysis by development AI tools.
+
+Instead of giving an AI:
+
+«18 MB of random log text,»
+
+Evrosion can provide:
+
+Failure
+Causal path
+Affected component
+Relevant state
+Recent changes
+Trace slice
+Build provenance
+
+AI remains subject to ordinary debug/data capabilities.
+
+---
+
+E-020.95 — AI Does Not Gain Debug Authority Automatically
+
+An AI debugging tool receives only the authority deliberately granted by the developer/owner.
+
+Using AI must never implicitly mean:
+
+AI now reads all process memory
+
+E-009 remains authoritative.
+
+---
+
+E-020.96 — Developer Mode Is Policy, Not Another OS
+
+Developer capabilities may expose:
+
+- Extra tracing
+- Fault injection
+- Symbols
+- Kernel diagnostics
+- Test components
+- Development services
+
+But this is still Evrosion.
+
+Do not build a separate incompatible “Developer Edition.”
+
+---
+
+E-020.97 — QEMU Is a First-Class Development Target
+
+Early development should heavily optimize for:
+
+ev build
+ev run
+ev debug
+
+against QEMU.
+
+This enables:
+
+- Fast boot loops
+- Kernel debugging
+- Snapshots
+- Failure injection
+- Virtual devices
+- Automated testing
+- Power interruption testing
+
+---
+
+E-020.98 — Real Hardware Remains Essential
+
+Virtual machines cannot reproduce:
+
+- Broken firmware
+- Odd PCI devices
+- Real GPU behavior
+- Laptop power management
+- Real timing
+- USB edge cases
+- Hardware DMA bugs
+
+Evrosion eventually requires hardware-in-the-loop testing.
+
+---
+
+E-020.99 — Debug Protocols Remain Replaceable
+
+GDB/LLDB compatibility is valuable.
+
+It must not become a permanent architectural dependency.
+
+Evrosion's internal debug contracts belong to Evrosion.
+
+Adapters expose those capabilities to external tools.
+
+---
+
+E-020.100 — Diagnostics Security
+
+Observability must respect E-009.
+
+A diagnostic query may itself require capabilities.
+
+Example:
+
+Application health
+→ broadly readable
+
+Application private memory
+→ restricted
+
+Capability graph
+→ privileged
+
+Credential Vault internals
+→ highly restricted
+
+---
+
+E-020.101 — Observability Does Not Mean Universal Visibility
+
+F-007 means the machine should be explainable.
+
+It does not mean every process may inspect every other process.
+
+Principle:
+
+«The system should be understandable to authorized observers without destroying isolation.»
+
+---
+
+E-020.102 — Diagnostic Data Retention
+
+Diagnostics should have explicit retention policies.
+
+High-volume trace data may be ephemeral.
+
+Crash artifacts may persist longer.
+
+Security-sensitive diagnostics may have stronger access restrictions.
+
+Users retain control.
+
+---
+
+E-020.103 — No Mandatory Debug Cloud
+
+Fundamental debugging must work:
+
+- Offline
+- Locally
+- Without an account
+- Without Evrosion servers
+- Without AI
+
+Cloud services may enhance development but never become required infrastructure.
+
+---
+
+E-020.104 — Debug Tool Failures Are Observable
+
+If tracing stops or debugging fails, Evrosion should explain why.
+
+Examples:
+
+Trace producer buffer full
+Debug authority missing
+Target exited
+Symbol source unavailable
+Remote peer authentication failed
+
+not unexplained generic failures.
+
+---
+
+E-020 Final Architecture
+
+                         TARGET
+               Process / Job / Service
+                         │
+                 DEBUG CAPABILITY
+                         │
+         ┌───────────────┼────────────────┐
+         │               │                │
+      Debugger        Inspector        Profiler
+         │               │                │
+         └───────────────┼────────────────┘
+                         ↓
+                DIAGNOSTICS FABRIC
+                         │
+         ┌───────────────┼────────────────┐
+         │               │                │
+       STATE           EVENTS           TRACES
+         │               │                │
+ Typed current      Structured       Shared-memory
+    state              events          ring buffers
+         │               │                │
+         └───────────────┼────────────────┘
+                         ↓
+                  CAUSAL ANALYSIS
+                         ↓
+                 Developer Tooling
+
+Exception architecture:
+
+CPU / Policy Fault
+       ↓
+     Kernel
+       ↓
+Exception Object
+       ↓
+Debugger
+       ↓ if unhandled
+Component Crash Handler
+       ↓ if unhandled
+System Crash Service
+       ↓
+Supervisor / Recovery
+
+Failure recording:
+
+Failure
+   ↓
+Freeze Flight Recorder
+   ↓
+Collect structured state
+   ↓
+Resolve Build IDs
+   ↓
+Attach causal trace
+   ↓
+Create Failure Capsule
+
+Kernel failure:
+
+Kernel Panic
+     ↓
+Minimal Preallocated Recorder
+     ↓
+Checksummed Persistent Slot
+     ↓
+Reboot / Recovery
+     ↓
+Rich post-boot reconstruction
+
+Replay:
+
+Recorded Process / Job
+        ↓
+Capture nondeterministic boundary inputs
+        ↓
+Replay
+        ↓
+Debugger / Reverse Analysis
+
+---
+
+E-020 Final Summary
+
+Debug security: Capability-based
+
+Ambient root debugging: No
+
+Primary boundaries: Process / Job / Service / Driver
+
+Kernel debugging: Separate stronger authority
+
+Diagnostics forms: State + Events + Traces
+
+Global state database: No
+
+Structured state ownership: Subsystems
+
+Tracing transport: Shared-memory/ring fast path
+
+Trace storage: Bounded
+
+Trace loss: Explicit
+
+Flight recorder: Always-on, bounded, low overhead
+
+Causal tracing: First-class
+
+IDL instrumentation: Generated automatically
+
+Exceptions: Structured objects
+
+Exception handling: Ordered/single-owner
+
+Debug revocation: Defined safe disposition
+
+Userspace crash artifacts: Local structured reports
+
+Kernel crash handling: Independent minimal recorder
+
+Crash storage: Bounded/checksummed/redundant
+
+Build identity: Build ID + Build Manifest
+
+Symbols: Separable from installed binaries
+
+Remote debugging: Explicitly enabled/authenticated/encrypted
+
+Production debugging: Available to owner
+
+Sanitizers/fuzzing: First-class development profiles
+
+Fault injection: First-class and capability-controlled
+
+Power-loss testing: Mandatory for durability promises
+
+Replay: Process/Job/controlled-VM scope
+
+Universal deterministic replay: Explicitly not promised
+
+Failure Capsules: First-class portable diagnostics
+
+AI diagnostics: Structured and capability-controlled
+
+Developer UX: Unified through "ev"
+
+Cloud requirement: None
+
+Guiding objective: Diagnosable by construction
+
+---
+
+Governing Principles
+
+«Debug authority is a capability, not ambient root.»
+
+«Observability does not imply universal visibility.»
+
+«State, events, and traces solve different problems. Do not collapse them into one logging system.»
+
+«Subsystems own authoritative state. Diagnostics federates it.»
+
+«High-frequency diagnostics use bounded shared-memory paths, not synchronous logging calls.»
+
+«Dropped diagnostic information is itself diagnostic information.»
+
+«Every Evrosion service should become diagnosable by construction.»
+
+«Causal execution paths are first-class diagnostic objects.»
+
+«A slow request should be explainable across service boundaries, not merely visible as unrelated timestamps.»
+
+«Release builds remain diagnosable without carrying full development overhead.»
+
+«Exceptions are structured objects with ordered, singular handling authority.»
+
+«Revoked debug authority must never leave a target indefinitely hostage.»
+
+«Kernel crash recording must work without relying on userspace.»
+
+«A crash must identify the exact binary, source/toolchain provenance, and system generation that produced it.»
+
+«Remote debugging must never create an unauthenticated production backdoor.»
+
+«Fault injection exists to prove Evrosion's recovery claims, not merely document them.»
+
+«Deterministic replay is a powerful scoped tool, not universal magic.»
+
+«Failure Capsules should make difficult failures portable, inspectable, and as reproducible as reality permits.»
+
+«Crash diagnostics remain local unless the owner chooses to share them.»
+
+«Debugging must respect secrets, capabilities, and user ownership.»
+
+«The diagnostic system itself must be observable and measurable.»
+
+«Evrosion should be diagnosable by construction.»
+
+E-020 — DECIDED AND CLOSED.

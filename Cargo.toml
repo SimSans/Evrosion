@@ -1,0 +1,36 @@
+[workspace]
+members = ["tools/ev", "boot/image-builder", "kernel", "libs/boot-contract", "libs/test-protocol", "libs/userspace-contract", "libs/userspace-runtime", "services/root-supervisor", "services/echo", "services/block", "services/recovery", "services/cap-client", "services/cap-server", "services/ipc-discipline", "libs/store", "libs/file", "services/file", "libs/graphics", "libs/input", "libs/picker", "libs/app-identity", "libs/zion", "libs/app-registry", "libs/diagnostics", "libs/grant-policy", "services/desktop", "services/provider-test", "services/ipc-bench", "libs/userspace-graphics", "apps/hello"]
+default-members = ["tools/ev", "libs/boot-contract", "libs/test-protocol"]
+resolver = "3"
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "GPL-3.0-only"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+
+[profile.dev]
+panic = "abort"
+
+[profile.dev.package.ev-kernel]
+opt-level = 1
+
+[profile.release]
+panic = "abort"
+debug = 2
+strip = false
+
+# Only the explicitly selected host frontend uses optimized SHA-256. Nested
+# Kernel builds keep the existing dev/release profiles and userspace release
+# builds keep their existing profile. Every fingerprint still reads all bytes.
+[profile.host-tools]
+inherits = "dev"
+
+[profile.host-tools.package.sha2]
+opt-level = 3

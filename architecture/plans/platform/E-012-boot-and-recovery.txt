@@ -1,0 +1,973 @@
+E-012 — Boot & Recovery Architecture
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use a:
+
+«Seamless, Verified, Health-Gated Generation Boot & Recovery Architecture»
+
+Boot and recovery should be designed around:
+
+- Smooth firmware-to-OS transition
+- Verified system state
+- Health validation
+- Automatic rollback
+- Independent recovery
+- User-data preservation
+- Component-level recovery
+- Power-loss resilience
+- Owner-controlled trust
+- Elimination of endless boot loops
+
+---
+
+E-012.1 — Unified Boot Architecture
+
+UEFI and legacy BIOS should act as different entry paths into the same Evrosion boot architecture.
+
+Conceptually:
+
+UEFI ───────┐
+            │
+            ↓
+      Evrosion Boot Manager
+            │
+            ↓
+       Evrosion Kernel
+            ↑
+            │
+Legacy BIOS ┘
+
+Platform-specific boot code should be kept small and isolated.
+
+Once Evrosion receives control, the rest of the boot process should be shared.
+
+---
+
+E-012.2 — UEFI Boot
+
+On modern systems, Evrosion should use a native UEFI bootloader.
+
+UEFI should provide:
+
+- Memory map
+- Graphics framebuffer
+- Firmware tables
+- Boot configuration
+- Secure Boot information
+- Platform information
+
+The loader should pass this information to the kernel through a structured Boot Handoff Object.
+
+---
+
+E-012.3 — Legacy BIOS Boot
+
+Legacy BIOS should remain supported where practical for older x86-64 systems.
+
+A small compatibility boot path should translate the legacy environment into the same internal Evrosion boot representation used by UEFI.
+
+Legacy BIOS should not dictate Evrosion's internal architecture.
+
+---
+
+E-012.4 — Boot Handoff Object
+
+The bootloader should create a structured object containing information such as:
+
+- Memory map
+- Framebuffer
+- Firmware type
+- Hardware tables
+- Selected system generation
+- Boot reason
+- Security/verification state
+- Recovery state
+- Kernel parameters
+- Previous boot result
+
+The kernel receives this object rather than relying on firmware-specific assumptions.
+
+---
+
+E-012.5 — Seamless Visual Handoff
+
+Evrosion should preserve the firmware/boot framebuffer wherever possible.
+
+On UEFI systems:
+
+Firmware logo
+      ↓
+Evrosion takes ownership of framebuffer
+      ↓
+Calm Evrosion boot screen
+      ↓
+Kernel inherits same framebuffer
+      ↓
+Basic display path
+      ↓
+GPU driver
+      ↓
+Desktop compositor
+
+Display mode changes should be avoided unless technically necessary.
+
+Principle
+
+«Do not blank or reset the screen merely because another boot stage has taken control.»
+
+---
+
+E-012.6 — Firmware Logo Integration
+
+Where firmware exposes boot graphics information, Evrosion may visually transition from the manufacturer's firmware logo into the Evrosion environment.
+
+Possible transition:
+
+OEM logo
+   ↓
+fade / wash
+   ↓
+Evrosion blue environment
+
+On OEM systems designed specifically for Evrosion, firmware and OS branding may eventually be coordinated for an even smoother power-on experience.
+
+---
+
+E-012.7 — Legacy Display Transition
+
+Legacy BIOS cannot provide the same standardized graphical handoff as UEFI.
+
+Evrosion should therefore:
+
+- Take control as early as practical
+- Select a graphical mode once
+- Avoid repeated mode changes
+- Preserve the framebuffer through later boot stages
+
+The transition may not be perfectly seamless from physical power-on, but Evrosion itself should avoid unnecessary flashing and text-mode changes.
+
+---
+
+E-012.8 — Honest Boot UI
+
+Evrosion's boot animation should correspond to real system state.
+
+Example:
+
+            Evrosion
+
+Security               ✓
+Storage                ✓
+Hardware               ✓
+System Generation      ✓
+Recovery               ✓
+
+             Ready
+
+These should represent genuine health/initialization stages rather than decorative fake progress.
+
+---
+
+E-012.9 — Layer-Based Boot Detail
+
+Layer 1
+
+Simple:
+
+Storage       ✓
+Hardware      ✓
+System        ✓
+
+Layer 2
+
+May show:
+
+- Driver initialization
+- Networking
+- Storage health
+- Generation status
+- Recovery status
+
+Layer 3
+
+May expose:
+
+- Kernel build
+- Generation ID
+- Trust state
+- Boot timings
+- Driver hosts
+- Verification hashes
+- Boot reason
+- Failed components
+- Recovery actions
+
+The same structured boot state powers every layer.
+
+---
+
+E-012.10 — System Generations
+
+Boot integrates directly with E-010 System Generations.
+
+Example:
+
+Generation 144
+Known-good
+
+Generation 145
+Current
+
+Generation 146
+Preparing
+
+Only complete and valid generations should be considered bootable.
+
+---
+
+E-012.11 — New Generations Begin as Pending
+
+A newly installed system generation should not immediately become trusted as known-good.
+
+Example:
+
+Generation 145
+Status: Pending Validation
+
+It must first successfully boot and satisfy health requirements.
+
+---
+
+E-012.12 — Health-Gated Boot
+
+A successful boot means more than:
+
+«Kernel started.»
+
+Evrosion should verify that a minimum useful system becomes healthy.
+
+Possible gates include:
+
+Kernel                    ✓
+Memory system             ✓
+Storage                   ✓
+Security                  ✓
+Service supervisor        ✓
+Recovery controller       ✓
+Basic input               ✓
+Basic display             ✓
+Critical services         ✓
+
+Only then should a generation be marked:
+
+«Known Good»
+
+---
+
+E-012.13 — Boot Attempt Counter
+
+Pending generations should have controlled boot-attempt limits.
+
+Example:
+
+Generation 145
+Boot attempts remaining: 2
+
+If the generation repeatedly fails before becoming healthy:
+
+145 fails
+   ↓
+Retry if appropriate
+   ↓
+145 fails again
+   ↓
+Mark unhealthy
+   ↓
+Restore known-good generation
+
+This prevents permanent boot loops.
+
+---
+
+E-012.14 — Boot Health Records
+
+Each boot should produce a structured Boot Health Record.
+
+Example:
+
+Boot #872
+
+Generation: 145
+Trust: Verified
+
+Kernel              Started
+Storage             Started
+Security            Started
+Graphics            Failed
+Desktop             Not reached
+
+Result:
+Unsuccessful
+
+This gives recovery systems actual evidence rather than guesswork.
+
+---
+
+E-012.15 — Explain Automatic Recovery
+
+If Evrosion rolls back automatically, the user should receive a useful explanation.
+
+Example:
+
+«Evrosion 145 failed to start correctly because the graphics service repeatedly failed.»
+
+«Generation 144 was restored automatically.»
+
+«Your files were not affected.»
+
+No vague:
+
+«"Automatic repair failed."»
+
+---
+
+E-012.16 — Recover the Smallest Broken Component
+
+Evrosion should not immediately roll back the whole OS whenever one component fails.
+
+Recovery order should prefer:
+
+Individual component
+      ↓
+Driver
+      ↓
+Service
+      ↓
+Subsystem
+      ↓
+System generation
+
+Examples:
+
+Wi-Fi driver fails:
+
+«Roll back Wi-Fi driver.»
+
+Desktop service fails:
+
+«Restore previous desktop service.»
+
+Boot-critical architecture fails:
+
+«Roll back system generation.»
+
+Principle
+
+«Recover the smallest broken thing possible.»
+
+---
+
+E-012.17 — Generation Rollback
+
+If a generation itself cannot reach minimum health:
+
+Generation 145
+       ↓ fails
+Generation 144
+       ↓
+Known-good boot
+
+User data remains independent.
+
+Rollback should primarily affect system state rather than personal data.
+
+---
+
+E-012.18 — Boot-Critical Redundancy
+
+Evrosion should maintain redundant copies of small boot-critical components where useful.
+
+Conceptually:
+
+Boot Bundle A
+Boot Bundle B
+
+Large operating-system generations should instead rely primarily on CoW/versioned storage.
+
+This provides resilience without requiring two complete copies of the entire OS.
+
+---
+
+E-012.19 — Copy-on-Write Generations
+
+System generations should share unchanged blocks where possible.
+
+Example:
+
+Generation 144
+      │
+      ├── unchanged blocks
+      │
+Generation 145
+      └── only changed blocks stored separately
+
+This allows cheap rollback without doubling storage usage.
+
+---
+
+E-012.20 — Independent Recovery Environment
+
+Evrosion should maintain a small recovery environment independent from the ordinary desktop and most standard system services.
+
+It should provide enough functionality for:
+
+- Input
+- Basic display
+- Storage access
+- Filesystem verification
+- Generation selection
+- Rollback
+- Driver rollback
+- Service rollback
+- Hardware diagnostics
+- Data backup
+- Network recovery where possible
+- External recovery media
+- Absolute Access recovery tools
+
+---
+
+E-012.21 — Recovery Must Not Depend on the Broken System
+
+The recovery environment should remain usable even when:
+
+- Desktop is broken
+- Normal graphics stack is broken
+- Networking is broken
+- Driver update failed
+- System generation is invalid
+- Normal service supervisor cannot start
+
+This continues the earlier recovery rule:
+
+«At least one recovery path should live outside the component most likely to fail.»
+
+---
+
+E-012.22 — Recovery Environment Integrity
+
+The recovery environment itself should be:
+
+- Small
+- Cryptographically verifiable
+- Updated conservatively
+- Isolated from normal system generations
+- Designed for long-term reliability
+
+It should not become another fragile dependency.
+
+---
+
+E-012.23 — Recovery Redundancy
+
+Important recovery metadata and boot state should have protection against corruption.
+
+Possible mechanisms include:
+
+- Checksums
+- Transactional updates
+- Redundant metadata copies
+- Reconstructable generation information
+
+If boot metadata becomes corrupt, recovery should attempt to rediscover valid generations and reconstruct the boot configuration.
+
+---
+
+E-012.24 — User Data Preservation
+
+Recovery should preserve personal data by default.
+
+Preferred escalation:
+
+Verify boot metadata
+       ↓
+Repair boot components
+       ↓
+Try known-good generation
+       ↓
+Rollback broken driver/service
+       ↓
+Repair system dataset
+       ↓
+Reinstall system components
+       ↓
+Preserve user data
+
+Destructive wipe/reformat should be the final option.
+
+Principle
+
+«A broken operating system should not imply destroyed personal data.»
+
+---
+
+E-012.25 — Reinstallation Without Wipe
+
+Evrosion should support reinstalling/reconstructing the operating-system portion of the machine without unnecessarily deleting:
+
+- Documents
+- Photos
+- Projects
+- Game saves
+- User datasets
+- Personal backups
+
+System state and personal data are intentionally separated to make this possible.
+
+---
+
+E-012.26 — Verified Boot
+
+Normal Evrosion boot should verify trusted system components.
+
+Possible chain:
+
+Firmware trust
+      ↓
+Boot Manager
+      ↓
+Kernel
+      ↓
+System Generation
+      ↓
+Critical Components
+
+Verification detects unauthorized modification before trusting the system.
+
+---
+
+E-012.27 — Measured Boot
+
+Where compatible security hardware exists, boot measurements may integrate with E-009.
+
+Measurements may cover:
+
+- Firmware
+- Bootloader
+- Kernel
+- Selected generation
+- Critical configuration
+
+These measurements may support:
+
+- Compromise detection
+- Hardware-backed secrets
+- Enterprise verification
+- Recovery decisions
+
+---
+
+E-012.28 — Rollback Protection
+
+Evrosion should prevent silent boot into known-dangerously-old system components where rollback protection is active.
+
+This prevents attackers from replacing a patched system with an older but still legitimately signed vulnerable version.
+
+Absolute Access may deliberately override such protections.
+
+---
+
+E-012.29 — Owner-Controlled Trust
+
+Verified Boot exists to protect the owner.
+
+It must not become a mechanism for Evrosion itself to own the machine.
+
+Supported modes should include:
+
+Official Verified Boot
+
+Evrosion-trusted signed generation.
+
+Owner-Trusted Boot
+
+Owner installs their own trust keys and may boot custom:
+
+- Kernels
+- Bootloaders
+- System generations
+- Experimental builds
+
+Explicit Unverified Boot
+
+The owner deliberately bypasses verification after clear warning.
+
+---
+
+E-012.30 — Never Silently Downgrade Trust
+
+If verification fails, Evrosion must not silently continue in an unverified state.
+
+Instead:
+
+Verification fails
+      ↓
+Try another verified generation
+      ↓
+Recovery
+
+If the owner wants to bypass verification:
+
+Secure Attention
+      ↓
+Explicit warning
+      ↓
+Owner approval
+      ↓
+Unverified boot
+
+---
+
+E-012.31 — Owner-Custom Generations
+
+Absolute Access should preferably create custom system generations rather than destroying the original known-good state.
+
+Example:
+
+Generation 145
+Official / Sealed
+
+      ↓ fork
+
+Generation 145-custom
+Owner Modified
+
+The user retains unrestricted control while preserving a recovery path.
+
+---
+
+E-012.32 — Interrupted Updates
+
+A partially downloaded or constructed generation should never automatically become bootable.
+
+Example:
+
+Generation 146
+Download: 63%
+
+POWER FAILURE
+
+Next boot:
+
+«Generation 145 remains active.»
+
+Generation 146 remains incomplete and may resume later using E-010 Durable Operations.
+
+---
+
+E-012.33 — Bootable State Is Explicit
+
+Generation states may conceptually include:
+
+- Downloading
+- Constructing
+- Verifying
+- Ready
+- Pending Boot Validation
+- Known Good
+- Unhealthy
+- Archived
+- Custom
+
+Only appropriate states may be selected automatically for boot.
+
+---
+
+E-012.34 — Minimum Interactive Boot
+
+Evrosion should not wait for every optional subsystem before presenting a usable machine.
+
+The minimum healthy interactive environment may require only:
+
+Kernel
+Storage
+Security
+Basic input
+Basic display
+Service supervisor
+Recovery controller
+Session/login
+
+Other components start later as needed.
+
+---
+
+E-012.35 — Lazy Service Startup
+
+E-007 lazy activation applies directly to boot.
+
+Evrosion should not start:
+
+- Bluetooth
+- Printer services
+- Unused network services
+- Optional cloud services
+- AI
+- Other unnecessary background components
+
+merely because the machine turned on.
+
+This improves:
+
+- Boot speed
+- Reliability
+- RAM usage
+- Power consumption
+- Attack surface
+
+---
+
+E-012.36 — Boot Performance
+
+Boot should be parallelized where dependencies permit.
+
+The system should understand:
+
+- Which operations depend on each other
+- Which can run simultaneously
+- Which can wait until after login
+- Which can be skipped based on cached known-good hardware state
+
+Boot optimization must never compromise integrity or recovery.
+
+---
+
+E-012.37 — Hardware State Caching
+
+Where safe, Evrosion may retain previously verified hardware information to avoid unnecessarily rediscovering everything from zero on every boot.
+
+Changes must still be detected.
+
+This can improve startup time without hiding actual hardware state.
+
+---
+
+E-012.38 — Basic Graphics Fallback
+
+If the normal GPU driver cannot initialize:
+
+GPU driver fails
+      ↓
+Try restart
+      ↓
+Try previous driver
+      ↓
+Try generic/basic display
+      ↓
+Recovery UI
+
+The machine should remain controllable wherever possible.
+
+---
+
+E-012.39 — Input Fallback
+
+Recovery should preserve a minimal input path independent from the normal desktop.
+
+If ordinary input routing fails:
+
+- Recovery keyboard path
+- Secure Attention
+- Emergency controls
+
+should remain available where the underlying hardware still functions.
+
+---
+
+E-012.40 — Watchdog Integration
+
+Boot integrates with the recovery watchdog architecture.
+
+If boot becomes stuck:
+
+- Boot stage timeout
+- Kernel watchdog
+- Service health timeout
+- Recovery escalation
+
+may determine that the attempt failed.
+
+The system should not remain frozen indefinitely.
+
+---
+
+E-012.41 — Manual Generation Selection
+
+Advanced users should be able to deliberately select:
+
+- Current generation
+- Previous generation
+- Custom generation
+- Recovery environment
+
+Layer 3 should expose detailed controls.
+
+---
+
+E-012.42 — External Recovery Media
+
+Evrosion should support independent recovery media.
+
+This may be used when internal recovery components are damaged.
+
+External recovery should support:
+
+- System repair
+- Generation reconstruction
+- User-data backup
+- Storage diagnostics
+- Boot repair
+- OS reinstall without unnecessary user-data deletion
+
+---
+
+E-012.43 — Boot Observability
+
+Evrosion should record useful boot information such as:
+
+- Total boot time
+- Stage timings
+- Generation
+- Trust state
+- Driver initialization
+- Critical service status
+- Failure reason
+- Recovery actions
+- Rollback events
+
+This feeds E-007 observability and later debugging architecture.
+
+---
+
+E-012.44 — Recovery UX
+
+Recovery should explain what is happening in human terms.
+
+Example:
+
+«The latest system version did not start correctly.»
+
+«Evrosion restored the previous working version.»
+
+«Your files were not changed.»
+
+Layer 3 may expose the full technical reason.
+
+---
+
+E-012 Final Architecture
+
+FIRMWARE
+   │
+   ├── UEFI
+   └── Legacy BIOS Adapter
+   │
+   ↓
+EVROSION BOOT MANAGER
+   │
+   ├── Verification
+   ├── Generation Selection
+   ├── Boot Attempt Tracking
+   ├── Recovery Selection
+   └── Framebuffer Handoff
+   │
+   ↓
+EVROSION KERNEL
+   │
+   ↓
+MINIMUM CRITICAL SYSTEM
+   │
+   ├── Storage
+   ├── Security
+   ├── Service Supervisor
+   ├── Recovery Controller
+   ├── Input
+   └── Basic Display
+   │
+   ↓
+BOOT HEALTH VALIDATION
+   │
+   ├── Healthy → Mark Generation Known-Good
+   │
+   └── Failed → Component Recovery / Generation Rollback
+   │
+   ↓
+NORMAL EVROSION SESSION
+
+Alongside:
+
+Independent Recovery Environment
+Known-Good System Generations
+Boot Health Records
+Verified / Measured Boot
+Owner-Controlled Trust
+Durable Update State
+User-Data-Preserving Repair
+
+---
+
+E-012 Summary
+
+Evrosion boot/recovery will provide:
+
+«Unified UEFI and legacy BIOS architecture»
+
+«Smooth framebuffer-preserving startup»
+
+«Honest boot health indicators»
+
+«Verified system generations»
+
+«Boot health validation»
+
+«Automatic rollback»
+
+«No endless boot loops»
+
+«Component-level recovery before whole-system rollback»
+
+«Independent sealed recovery environment»
+
+«User-data-preserving repair»
+
+«Owner-controlled boot trust»
+
+«Custom and unverified boot through Absolute Access»
+
+«Power-loss-safe update behavior»
+
+«Boot observability»
+
+«Fast minimum-interactive startup»
+
+---
+
+Governing Principles
+
+«A new system is not trusted merely because it started. It must prove that it is healthy.»
+
+«Recover the smallest broken component possible.»
+
+«Boot failure should never automatically imply data loss.»
+
+«Never trap the machine in an endless boot loop when a known-good system exists.»
+
+«Do not silently reduce security when verification fails.»
+
+«Secure Boot protects the owner; it does not replace the owner.»
+
+«Preserve the framebuffer and visual state wherever possible so power-on feels like one continuous transition rather than a chain of unrelated boot stages.»
+
+«The recovery system must remain available when the normal system is not.»

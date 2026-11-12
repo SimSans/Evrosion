@@ -1,0 +1,31 @@
+[package]
+name = "ev-provider-test"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+license.workspace = true
+[[bin]]
+name = "ev-provider-test"
+path = "src/main.rs"
+required-features = ["executable"]
+test = false
+bench = false
+
+[features]
+executable = []
+consumer = ["executable"]
+provider-a = ["executable"]
+provider-b = ["executable"]
+
+[dependencies]
+ev-userspace-contract = { path = "../../libs/userspace-contract" }
+ev-userspace-runtime = { path = "../../libs/userspace-runtime" }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_unsafe = "deny"
+
+[lints.clippy]
+all = "warn"
+undocumented_unsafe_blocks = "deny"

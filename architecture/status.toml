@@ -1,0 +1,6 @@
+# Review these declarations when advancing a milestone or contract maturity.
+# They drive exception expiry; changing them is not evidence of system tests.
+milestone = "M5"
+boot_contract_maturity = "Internal"
+release_ci_production_grade = false
+reproducibility_production_grade = false

@@ -1,0 +1,468 @@
+{
+  "schema_version": 1,
+  "description": "Evrosion supersession registry required by R-010.21. It records supersessions that accepted canonical sources have already declared. It creates none: an entry that cannot cite an accepted declaring source does not belong here. Published technical editions retain clause identities and requirements; the source map records actual edition hashes and original source lineage. This registry describes how earlier wording resolves.",
+  "rules": {
+    "authority": "Each entry's authority comes from the cited declaring sources, never from this file. Unresolved or unaccepted resolutions belong in the explicit proposal process, not here.",
+    "scope": "A narrow amendment changes only the stated scope. Everything else in the affected source remains in force.",
+    "history": "Superseded technical requirements remain identifiable. Public edition content is checked against architecture/plans/source-map.json; source lineage is recorded separately.",
+    "kind_vocabulary_status": "rename, narrow-amendment, clarification, full-supersession, deprecation and historical-alias are the kinds the owner's reconciliation directive requires. extension and finalization are proposed in the explicit proposal process and await acceptance.",
+    "kinds": {
+      "rename": "Same concept, new name; the old name becomes a historical alias.",
+      "narrow-amendment": "One clause, reading or scope changes; the rest of the source stands.",
+      "extension": "Obligations are added; the original clause is unchanged.",
+      "clarification": "Meaning is confirmed where the text could be misread; no behaviour changes.",
+      "finalization": "A later passage of the same document settles an earlier provisional status.",
+      "full-supersession": "The whole decision is replaced.",
+      "deprecation": "Still valid for a declared window, with a named replacement.",
+      "historical-alias": "An old identifier or label maps to the current one."
+    },
+    "effective_status": {
+      "EFFECTIVE": "In force now.",
+      "WITHDRAWN": "The declaring source was itself superseded; kept for history."
+    }
+  },
+  "entries": [
+    {
+      "id": "SUP-001",
+      "kind": "rename",
+      "old": ".sion",
+      "new": ".zion",
+      "scope": "Name and file extension of the single native Evrosion package format.",
+      "effective_rule": "Use .zion in living documentation, code, tests and examples. .sion in older imports names the same format. Never implement two formats, and never add .sion compatibility because an old plan contains the old spelling.",
+      "reason": "The owner renamed the format after the E-series was written; R-008 and R-010 record it as a naming migration, not a second format.",
+      "authority": [
+        {
+          "source": "architecture/plans/release-project/Evrosion_R-007_to_R-011_Superfile_v1.md",
+          "section": "R-008.17",
+          "statement": "That name has been superseded by the user's later decision: .sion -> .zion. This is a naming migration, not two package formats."
+        },
+        {
+          "source": "architecture/plans/release-project/Evrosion_R-007_to_R-011_Superfile_v1.md",
+          "section": "R-010.22",
+          "statement": "Current canonical extension: .zion. Older archived docs may retain .sion with clear supersession annotation. Do not create compatibility for .sion solely because an old planning document contains the old spelling."
+        },
+        {
+          "source": "architecture/plans/release-project/Evrosion_R-007_to_R-011_Superfile_v1.md",
+          "section": "0 (technical integration notes), items 6-7; R-008.33 law 17; R-010.33 law 22",
+          "statement": "Historical references to .sion refer to the format now canonically named .zion. Do not implement two formats."
+        }
+      ],
+      "affected": [
+        "E-016",
+        "E-020",
+        "E-021",
+        "E-024",
+        "E-025",
+        "PRE-M0",
+        "full-architecture-audit-v1"
+      ],
+      "recorded_in": [
+        "architecture/glossary.md",
+        "architecture/ROADMAP.md",
+        "architecture/release/README.md",
+        "architecture/adr/ADR-0003-preservation-and-bundled-compatibility.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "Historical .sion wording remains identifiable in the published plans.",
+      "notes": "No package format is implemented; M0 establishes no Stable format."
+    },
+    {
+      "id": "SUP-002",
+      "kind": "historical-alias",
+      "old": "MyOS",
+      "new": "Evrosion",
+      "scope": "Project name in the earliest imported sources.",
+      "effective_rule": "Read MyOS as Evrosion. It is the same project, not a separate system.",
+      "reason": "The project was renamed after the foundation documents were written.",
+      "authority": [
+        {
+          "source": "architecture/ARCHITECTURE_INDEX.md",
+          "section": "Source completeness and reference notes",
+          "statement": "Earlier source documents retain the name MyOS. They are cataloged here as Evrosion project plans without rewriting the historical text."
+        }
+      ],
+      "affected": [
+        "F-001-F-014 (foundational-requirements)",
+        "U-000-U-018 (universal-rules)",
+        "UX-001-UX-011 (startup-login-and-customization)"
+      ],
+      "recorded_in": [
+        "architecture/ARCHITECTURE_INDEX.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "Historical MyOS wording remains identifiable in the published plans.",
+      "notes": ""
+    },
+    {
+      "id": "SUP-003",
+      "kind": "historical-alias",
+      "old": "A-001 (heading inside the migration/Windows amendment)",
+      "new": "ADR-0003.MIGRATION",
+      "scope": "The amendment's local label for data-preserving installation and migration.",
+      "effective_rule": "Refer to the requirement as ADR-0003.MIGRATION. Audit action A-001 (Root Authority Custody) is a different item and is unchanged.",
+      "reason": "The amendment's local A-001/A-002 headings collide with the existing audit-action namespace.",
+      "authority": [
+        {
+          "source": "architecture/adr/ADR-0003-preservation-and-bundled-compatibility.md",
+          "section": "Context",
+          "statement": "They do not replace A-001 Root Authority Custody or A-002 in the audit register. Use ADR-0003.MIGRATION and ADR-0003.WINDOWS for the product requirements."
+        }
+      ],
+      "affected": [
+        "architecture/plans/amendments/Evrosion_Data_Migration_and_Windows_Compatibility_Amendment_v1.md"
+      ],
+      "recorded_in": [
+        "architecture/release/README.md",
+        "docs/status/AMENDMENT_INTEGRATION.md",
+        "architecture/ARCHITECTURE_INDEX.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "The amendment keeps its original headings; cite file and section when quoting them.",
+      "notes": ""
+    },
+    {
+      "id": "SUP-004",
+      "kind": "historical-alias",
+      "old": "A-002 (heading inside the migration/Windows amendment)",
+      "new": "ADR-0003.WINDOWS",
+      "scope": "The amendment's local label for out-of-box Windows compatibility.",
+      "effective_rule": "Refer to the requirement as ADR-0003.WINDOWS. Audit action A-002 (non-godlike AI broker) is a different item and is unchanged.",
+      "reason": "Same namespace collision as SUP-003.",
+      "authority": [
+        {
+          "source": "architecture/adr/ADR-0003-preservation-and-bundled-compatibility.md",
+          "section": "Context",
+          "statement": "Use ADR-0003.MIGRATION and ADR-0003.WINDOWS for the product requirements; cite the preserved amendment and section when quoting its local labels."
+        }
+      ],
+      "affected": [
+        "architecture/plans/amendments/Evrosion_Data_Migration_and_Windows_Compatibility_Amendment_v1.md"
+      ],
+      "recorded_in": [
+        "architecture/release/README.md",
+        "docs/status/AMENDMENT_INTEGRATION.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "The amendment keeps its original headings.",
+      "notes": ""
+    },
+    {
+      "id": "SUP-005",
+      "kind": "narrow-amendment",
+      "old": "Any reading of E-025.80 ('Compatibility Comes Later') and E-025.118 as making supported Windows compatibility optional for the eventual ordinary-user product",
+      "new": "E-025.80 and E-025.118 govern early implementation ordering only. Ordinary-user releases must bundle an operational Windows Compatibility Runtime for their declared supported software (ADR-0003.WINDOWS).",
+      "scope": "The ordinary-user release obligation only. Early staging, native-platform prerequisites, M0-M5 and the 0.1 developer-preview gate are unchanged.",
+      "effective_rule": "Windows compatibility stays out of M0-M5 and 0.1, and is required, bundled and activated on demand for ordinary-user releases.",
+      "reason": "The owner accepted a product amendment making out-of-box Windows compatibility part of user-facing releases.",
+      "authority": [
+        {
+          "source": "architecture/adr/ADR-0003-preservation-and-bundled-compatibility.md",
+          "section": "Consequences and supersession",
+          "statement": "E-025.80 and E-025.118 still govern early staging. Any reading of 'later' as 'optional forever for the ordinary-user product' is superseded by this ADR."
+        },
+        {
+          "source": "architecture/plans/amendments/Evrosion_Data_Migration_and_Windows_Compatibility_Amendment_v1.md",
+          "section": "Roadmap / Documentation Amendment, required changes 4, 6 and 7",
+          "statement": "Change Windows compatibility language from purely optional/later ecosystem work to staged during early developer milestones and built-in first-class infrastructure for user-facing releases. Do not silently alter the current M0 completion criteria. Do not force either feature into Evrosion 0.1."
+        }
+      ],
+      "affected": [
+        "E-025.80",
+        "E-025.118",
+        "E-022"
+      ],
+      "recorded_in": [
+        "architecture/ROADMAP.md",
+        "architecture/release/README.md",
+        "docs/status/AMENDMENT_INTEGRATION.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "E-025 retains its original text.",
+      "notes": "Accepted is not implemented: the Windows runtime is DEFERRED and no compatibility engine is selected."
+    },
+    {
+      "id": "SUP-006",
+      "kind": "clarification",
+      "old": "Possible reading that bundling a Windows runtime (SUP-005) requires it to run alongside native software",
+      "new": "E-022.1 on-demand activation and native independence remain binding. A bundled provider can stay inactive while only native apps run.",
+      "scope": "Activation and dependency model of the bundled compatibility runtime.",
+      "effective_rule": "Ship the provider; activate foreign services on demand; native apps never depend on it or pay for it (INV-EVO-004).",
+      "reason": "Prevents SUP-005 from being read as overturning E-022.1.",
+      "authority": [
+        {
+          "source": "architecture/adr/ADR-0003-preservation-and-bundled-compatibility.md",
+          "section": "Decision 3; Consequences and supersession",
+          "statement": "Bundling does not require always-running foreign services or foreign kernel policy. E-022.1's on-demand activation remains binding."
+        },
+        {
+          "source": "architecture/ROADMAP.md",
+          "section": "Accepted clarification of older statements",
+          "statement": "E-022.1's native independence and on-demand activation remain unchanged. A bundled provider can remain inactive while only native apps are running."
+        }
+      ],
+      "affected": [
+        "E-022.1"
+      ],
+      "recorded_in": [
+        "architecture/ROADMAP.md",
+        "docs/status/AMENDMENT_INTEGRATION.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "E-022 unchanged.",
+      "notes": ""
+    },
+    {
+      "id": "SUP-007",
+      "kind": "extension",
+      "old": "E-010, E-012.25 and E-019 durable-state, reinstall-without-wipe and lifecycle rules, which did not address migration from a foreign OS",
+      "new": "The same rules also cover preservation-first migration from a foreign OS: journaled, verified, resumable, retaining the source until health checks pass and the owner explicitly authorizes reclamation (ADR-0003.MIGRATION).",
+      "scope": "Adds Migration Source State and migration obligations. No existing durable-state rule is weakened or replaced.",
+      "effective_rule": "System Generations, Durable User State and Migration Source State stay distinct; destructive reclamation needs explicit owner authority.",
+      "reason": "The owner accepted a product amendment requiring data-preserving installation.",
+      "authority": [
+        {
+          "source": "architecture/adr/ADR-0003-preservation-and-bundled-compatibility.md",
+          "section": "Consequences and supersession",
+          "statement": "E-012.25's reinstall-without-wipe and E-010/E-019 durable-state rules are extended to foreign-OS migration, not replaced."
+        },
+        {
+          "source": "docs/status/AMENDMENT_INTEGRATION.md",
+          "section": "Conflicts and identifier decisions, item 5",
+          "statement": "Data preservation extends the existing E-010/E-012/E-019 lifecycle rules. No kernel invariant, stable ABI, compatibility engine or journal format changed."
+        }
+      ],
+      "affected": [
+        "E-010",
+        "E-012.25",
+        "E-019"
+      ],
+      "recorded_in": [
+        "architecture/ROADMAP.md",
+        "architecture/designs/INSTALLATION_AND_COMPATIBILITY.md",
+        "architecture/glossary.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "E-010, E-012 and E-019 unchanged.",
+      "notes": "Accepted is not implemented: the installer is DEFERRED."
+    },
+    {
+      "id": "SUP-008",
+      "kind": "narrow-amendment",
+      "old": "PRE-M0 compiler pin nightly-2026-07-06",
+      "new": "nightly-2026-07-10 for the workspace and nested loader build",
+      "scope": "Rust toolchain date only. bootloader and bootloader_api stay exactly 0.11.17; no upstream crate sources are patched.",
+      "effective_rule": "Use the pin in rust-toolchain.toml. Change it only through a tested lock/toolchain change.",
+      "reason": "The original pin cannot compile the loader's locked x86_64 0.15.5 dependency, which needs nightly-2026-07-10 or later.",
+      "authority": [
+        {
+          "source": "architecture/adr/ADR-0001-m0-kernel-and-toolchain.md",
+          "section": "Decision",
+          "statement": "Use nightly-2026-07-10 for the workspace and nested loader build. This narrowly supersedes the original compiler date; no upstream crate sources are patched."
+        }
+      ],
+      "affected": [
+        "PRE-M0 §27 (M0 technical choices)"
+      ],
+      "recorded_in": [
+        "architecture/ARCHITECTURE_INDEX.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "PRE-M0 retains the original pin; the initial compiler failure is kept in local build diagnostics.",
+      "notes": ""
+    },
+    {
+      "id": "SUP-009",
+      "kind": "narrow-amendment",
+      "old": "E-014 'Top-level build engine: Bazel initially'",
+      "new": "For M0 bring-up, the build backend is a Cargo workspace with locked dependencies, hidden behind ev.",
+      "scope": "M0 bring-up backend only. E-014's hermetic, content-addressed and reproducible requirements, the stable ev frontend, and E-014.3 (Cargo should not orchestrate the entire operating system) remain in force.",
+      "effective_rule": "Cargo is a replaceable M0 backend, not permanent architecture. When the backend should change is an open question.",
+      "reason": "The PRE-M0 package chose a smaller backend for bring-up; E-014 itself treats Bazel as an engineering choice rather than an architectural requirement.",
+      "authority": [
+        {
+          "source": "architecture/plans/roadmap/PRE-M0-implementation-package-v1.md",
+          "section": "27. M0 technical choices; 42. Initial implementation checklist",
+          "statement": "Build backend: Cargo workspace and locked dependencies, hidden behind ev - replaceable implementation. Cargo is an M0 backend behind the ev frontend, not permanent architecture."
+        },
+        {
+          "source": "architecture/ARCHITECTURE_INDEX.md",
+          "section": "Suggested reading order",
+          "statement": "The package records Cargo as the M0 backend behind ev, refining the earlier E-014 build direction for bringup."
+        }
+      ],
+      "affected": [
+        "E-014"
+      ],
+      "recorded_in": [
+        "architecture/ARCHITECTURE_INDEX.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "E-014 unchanged.",
+      "notes": "Hermetic production builds are not yet established; EXC-0002 covers host QEMU/OVMF until production-grade release CI."
+    },
+    {
+      "id": "SUP-010",
+      "kind": "finalization",
+      "old": "E-013 opening status 'Secondary-language policy: PARTIALLY DECIDED'",
+      "new": "E-013 final summary: 'Secondary languages: Fully permitted through defined interfaces'",
+      "scope": "Secondary-language policy status within E-013 only.",
+      "effective_rule": "Rust is the primary systems language; secondary languages are permitted through defined, language-neutral interfaces.",
+      "reason": "The chapter records an initial status that its own final summary settles.",
+      "authority": [
+        {
+          "source": "architecture/plans/development/E-013-programming-languages.txt",
+          "section": "E-013 Final Summary",
+          "statement": "Secondary languages: Fully permitted through defined interfaces."
+        },
+        {
+          "source": "architecture/ARCHITECTURE_INDEX.md",
+          "section": "Source completeness and reference notes",
+          "statement": "Some chapters contain an initial status followed by a later finalization. Read the whole chapter when determining its design status; E-013 is one example."
+        }
+      ],
+      "affected": [
+        "E-013"
+      ],
+      "recorded_in": [
+        "architecture/ARCHITECTURE_INDEX.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "E-013 unchanged.",
+      "notes": "The imported E-013 file is truncated after the final summary; the lost closing text cannot be recovered from the repository."
+    },
+    {
+      "id": "SUP-011",
+      "kind": "extension",
+      "old": "Reading an E-025 milestone completion (for example M0) as readiness to publish",
+      "new": "M0 Engineering Complete, Public M0 Ready and 0.1 Ready are separate gates.",
+      "scope": "Adds distinct public-release gates. E-025's milestone exit criteria are unchanged.",
+      "effective_rule": "M0 PASS is an engineering result only. Publishing needs R-011's separate legal, security, GitHub, documentation and honesty gates.",
+      "reason": "R-011 separates engineering completion from public readiness.",
+      "authority": [
+        {
+          "source": "architecture/plans/release-project/Evrosion_R-007_to_R-011_Superfile_v1.md",
+          "section": "R-011.6; R-011.44 law 1",
+          "statement": "M0 Engineering Complete, Public M0 Ready and 0.1 Ready are separate gates."
+        }
+      ],
+      "affected": [
+        "E-025"
+      ],
+      "recorded_in": [
+        "architecture/release/README.md",
+        "architecture/adr/ADR-0002-m0-acceptance.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "E-025 unchanged.",
+      "notes": ""
+    },
+    {
+      "id": "SUP-012",
+      "kind": "narrow-amendment",
+      "old": "ADR-0014 permanent retention of closed authority-domain slots and unreachable lineage nodes",
+      "new": "ADR-0029 explicit generation-safe domain reuse and bounded unreachable-lineage collection",
+      "scope": "Internal authority-domain and lineage metadata only. Object descriptors, scheduler identities, physical resources and original M1 evidence are unchanged.",
+      "effective_rule": "Use checked domain generations and preserve all handle-reachable ancestry during explicit collection. No implicit process/resource reclamation or detached raw-node token may bypass these requirements.",
+      "reason": "Repeated M2 authority binding must not permanently consume empty domains and unreachable lineage; naive reuse would revive stale identities or sever revocation.",
+      "authority": [
+        {
+          "source": "architecture/adr/ADR-0029-generation-safe-authority-reuse.md",
+          "section": "Context and scoped supersession",
+          "statement": "supersedes ADR-0014's permanent retention of closed authority-domain slots and unreachable lineage nodes only"
+        },
+        {
+          "source": "architecture/plans/amendments/engineering-direction-2026-10-16.md",
+          "section": "4: Level B",
+          "statement": "You may choose a better mechanism than an older proposal if the behavioral guarantees remain intact."
+        }
+      ],
+      "recorded_in": [
+        "architecture/designs/ROOT_AUTHORITY_CUSTODY.md",
+        "docs/status/M2_PROGRESS.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "ADR-0014 and imported plan requirements remain identifiable; the public edition does not revise historical M0/M1 evidence."
+    },
+    {
+      "id": "SUP-013",
+      "kind": "narrow-amendment",
+      "old": "ROOT_AUTHORITY_CUSTODY single per-incarnation revocation node",
+      "new": "ADR-0030 atomically revoked group of pinned per-object branches",
+      "scope": "Internal lineage representation only; all-descendant invalidation, sealed custody, one ACTIVE incarnation and quiescence-before-replacement guarantees unchanged.",
+      "effective_rule": "Pin each per-object revocation branch with a private generation-checked handle; validate and revoke the entire group under the exclusive Authority borrow before replacement.",
+      "reason": "Existing lineage nodes each belong to one object. Private branches preserve verified lookup/collection semantics without destroying permanent roots or caching reusable node indices.",
+      "authority": [
+        {
+          "source": "architecture/adr/ADR-0030-pinned-incarnation-authority-branches.md",
+          "section": "Problem and scoped refinement",
+          "statement": "refines the single incarnation revocation node"
+        },
+        {
+          "source": "architecture/plans/amendments/engineering-direction-2026-10-16.md",
+          "section": "4: Level B",
+          "statement": "You may choose a better mechanism than an older proposal if the behavioral guarantees remain intact."
+        }
+      ],
+      "recorded_in": [
+        "architecture/designs/ROOT_AUTHORITY_CUSTODY.md",
+        "docs/status/M2_PROGRESS.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "Imported plan requirements are preserved; the current design records the scoped refinement without revising historical evidence."
+    },
+    {
+      "id": "SUP-014",
+      "kind": "narrow-amendment",
+      "old": "ADR-0011 permanent retention of exited scheduler descriptors",
+      "new": "Explicit generation-safe scheduler process/thread/Job reclamation",
+      "scope": "Scheduler metadata only; physical quiescence and live resource accounting remain required.",
+      "effective_rule": "Reclaim only current terminated/quiescent metadata; preserve generations, wait sequence, clock and consumed ancestor CPU.",
+      "reason": "Sustained service restart must not exhaust metadata or alias old authority and execution identities.",
+      "authority": [
+        {
+          "source": "architecture/adr/ADR-0036-generation-safe-service-retirement.md",
+          "section": "Decision",
+          "statement": "Reclaim explicitly retired scheduler and object metadata with checked generations."
+        },
+        {
+          "source": "architecture/plans/amendments/engineering-direction-2026-10-16.md",
+          "section": "4: Level B",
+          "statement": "You may choose a better mechanism than an older proposal if the behavioral guarantees remain intact."
+        }
+      ],
+      "recorded_in": [
+        "architecture/adr/ADR-0036-generation-safe-service-retirement.md",
+        "docs/status/M2_PROGRESS.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "Original technical requirements are preserved; public technical editions do not revise historical M0/M1 evidence."
+    },
+    {
+      "id": "SUP-015",
+      "kind": "narrow-amendment",
+      "old": "ADR-0014 permanent retention of dead object descriptors",
+      "new": "Generation-tagged object identity and unreferenced dead-object collection",
+      "scope": "Object metadata only; no live/escaped node may reference a collected descriptor.",
+      "effective_rule": "Compare complete generation-tagged identity; collect only explicitly dead node-free descriptors after separate lineage collection.",
+      "reason": "Sustained service restart must not exhaust metadata or alias old authority and execution identities.",
+      "authority": [
+        {
+          "source": "architecture/adr/ADR-0036-generation-safe-service-retirement.md",
+          "section": "Decision",
+          "statement": "Reclaim explicitly retired scheduler and object metadata with checked generations."
+        },
+        {
+          "source": "architecture/plans/amendments/engineering-direction-2026-10-16.md",
+          "section": "4: Level B",
+          "statement": "You may choose a better mechanism than an older proposal if the behavioral guarantees remain intact."
+        }
+      ],
+      "recorded_in": [
+        "architecture/adr/ADR-0036-generation-safe-service-retirement.md",
+        "docs/status/M2_PROGRESS.md"
+      ],
+      "effective_status": "EFFECTIVE",
+      "history_preserved": "Original technical requirements are preserved; public technical editions do not revise historical M0/M1 evidence."
+    }
+  ]
+}

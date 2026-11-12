@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "interface": "ev.internal.file",
+  "version": 1,
+  "maturity": "Internal",
+  "authority": "actual_receive_endpoint_fixes_stable_object_and_read_or_replace_rights",
+  "wire": {
+    "bytes": 256,
+    "header_bytes": 32,
+    "payload_bytes": 224,
+    "endianness": "little",
+    "request_magic": "EVFRQ001",
+    "response_magic": "EVFRS001",
+    "methods": {"read": 1, "replace": 2},
+    "responses": {"read": 1, "replaced": 2, "replayed": 3, "error": 255},
+    "counter": "per_object_u64_nonzero_not_max_for_replace",
+    "client_has_no_global_operation_object_sector_or_generation_selector": true
+  },
+  "durable_retry": {
+    "store_assigns_global_operation": true,
+    "counter_and_receipt_in_same_atomic_file_envelope": true,
+    "retention": "only_latest_nonzero_counter_and_exact_payload",
+    "older_counter": "stale_no_reexecution",
+    "io_error": "may_have_committed_retry_same_counter_and_payload_after_explicit_recovery"
+  },
+  "transport": {
+    "max_outstanding": 1,
+    "automatic_retry": false,
+    "buffer_ownership": "external_transport_must_prevent_concurrent_reuse",
+    "first_fixture": "prebound_shared_frame_private_server_snapshot_no_admitted_timeout"
+  }
+}

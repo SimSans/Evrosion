@@ -1,0 +1,55 @@
+[package]
+name = "ev-kernel"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "evrosion-kernel"
+path = "src/main.rs"
+test = false
+bench = false
+
+[features]
+qemu-test-exit = []
+test-m4-display = ["qemu-test-exit"]
+test-m4-desktop = ["qemu-test-exit"]
+test-m5-native = ["test-m4-desktop", "dep:ev-diagnostics"]
+test-m5-provider = ["qemu-test-exit"]
+test-m5-ipc-bench=["qemu-test-exit"]
+test-panic = ["qemu-test-exit"]
+test-no-framebuffer = ["qemu-test-exit"]
+test-unexpected-fault = ["qemu-test-exit"]
+test-ap-timeout = ["qemu-test-exit"]
+test-context-corruption = ["qemu-test-exit"]
+test-preempt-stall = ["qemu-test-exit"]
+test-runtime-kernel-fault = ["qemu-test-exit"]
+test-user-wait-stall = ["qemu-test-exit"]
+test-reclaim-active-root = ["qemu-test-exit"]
+test-fx-corruption = ["qemu-test-exit"]
+test-m3-pio-write = ["qemu-test-exit"]
+test-m3-pio-verify = ["qemu-test-exit"]
+test-m3-store = ["test-m3-pio-write"]
+test-m3-generation = ["test-m3-store"]
+test-m3-owner = ["test-m3-generation"]
+test-m3-file = ["test-m3-store"]
+test-m3-progress = ["test-m3-generation"]
+
+[dependencies]
+ev-diagnostics = { path = "../libs/diagnostics", optional = true }
+ev-picker = { path = "../libs/picker" }
+ev-boot-contract = { path = "../libs/boot-contract" }
+ev-test-protocol = { path = "../libs/test-protocol" }
+sha2 = { version = "=0.10.9", default-features = false, features = ["force-soft"] }
+
+[dependencies.ev-userspace-contract]
+path = "../libs/userspace-contract"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_unsafe = "deny"
+
+[lints.clippy]
+all = "warn"
+undocumented_unsafe_blocks = "deny"

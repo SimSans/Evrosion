@@ -1,0 +1,975 @@
+E-010 — Storage & Filesystem Architecture
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use a:
+
+«Transactional, Integrity-First, Dataset-Based Storage Architecture»
+
+Storage should be designed so that:
+
+- System updates are atomic
+- User data survives OS recovery
+- Corruption is detectable
+- Snapshots and rollback are native concepts
+- Long operations survive crashes and power loss where technically possible
+- Filesystems remain isolated from the kernel
+- Old hardware remains usable
+- External and legacy filesystems remain supported
+- Users continue interacting with normal files and folders
+
+---
+
+E-010.1 — System Data and User Data Are Separate
+
+Evrosion should clearly separate:
+
+- Boot/recovery state
+- Operating-system generations
+- Machine configuration
+- User data
+- Application data
+- Temporary data
+- Swap
+- Recovery snapshots
+
+Conceptually:
+
+Evrosion Storage Pool
+│
+├── Boot / Recovery
+│
+├── System Generations
+│    ├── Previous Known-Good
+│    └── Current
+│
+├── Machine State
+├── User Data
+├── Application Data
+├── Temporary
+└── Swap
+
+Principle
+
+«Repairing the operating system should not require destroying personal data.»
+
+---
+
+E-010.2 — System Generations
+
+Evrosion system state should exist in versioned generations.
+
+Example:
+
+Generation 143
+Generation 144 ← known-good
+Generation 145 ← new candidate
+
+Updates should construct a new generation rather than modifying the working system destructively in place.
+
+Activation occurs only after the new generation has been prepared and verified.
+
+If the new version fails:
+
+«Boot the previous known-good generation.»
+
+User data remains independent.
+
+---
+
+E-010.3 — Copy-on-Write by Default
+
+The native Evrosion storage system should use Copy-on-Write where appropriate.
+
+Instead of overwriting existing data:
+
+Old blocks
+   ↓ remain valid
+
+New blocks written elsewhere
+   ↓
+Metadata updated
+   ↓
+Atomic commit
+
+Benefits include:
+
+- Snapshots
+- Crash consistency
+- Rollback
+- Cheap cloning
+- Reflinks
+- Transactional updates
+
+---
+
+E-010.4 — CoW Is Not Mandatory for Every Workload
+
+Evrosion should not blindly force one storage strategy onto every workload.
+
+High-write workloads such as:
+
+- Databases
+- VM images
+- Large mutable datasets
+- Certain game workloads
+
+may benefit from specialized storage profiles.
+
+Evrosion should eventually support multiple storage behaviors while preserving integrity guarantees as much as possible.
+
+Principle
+
+«CoW by default, specialized behavior when evidence justifies it.»
+
+---
+
+E-010.5 — Datasets
+
+Evrosion should expose first-class logical Datasets.
+
+Datasets may independently define:
+
+- Snapshot policy
+- Encryption
+- Compression
+- Quotas
+- Reservations
+- Backup policy
+- Recovery policy
+- Integrity settings
+
+Datasets should share free space dynamically rather than requiring rigid fixed-size partitions wherever possible.
+
+---
+
+E-010.6 — Stable Storage Objects
+
+Humans continue using normal paths such as:
+
+Documents/Evrosion/design.txt
+
+Internally, storage entities should have stable identities.
+
+Conceptually:
+
+"design.txt"
+      ↓
+File Object
+
+Renaming or moving the file does not change the underlying object's identity.
+
+This integrates with E-009 capabilities.
+
+Applications may receive authority over the File Object itself rather than broad authority over arbitrary pathname ranges.
+
+---
+
+E-010.7 — Integrity Checksums
+
+Evrosion-native storage should checksum important data and metadata.
+
+Checksums allow Evrosion to detect:
+
+- Bit rot
+- Silent corruption
+- Miswritten blocks
+- Damaged metadata
+
+If redundant copies exist:
+
+Detect bad block
+     ↓
+Find valid copy
+     ↓
+Repair bad copy
+
+If no redundant copy exists, Evrosion should report corruption honestly.
+
+Principle
+
+«Detection is guaranteed where checksums exist. Repair requires another valid copy.»
+
+---
+
+E-010.8 — Online Scrubbing
+
+Evrosion should periodically verify stored data rather than waiting for corruption to become visible.
+
+Background scrub should:
+
+- Verify checksums
+- Identify damaged regions
+- Repair from redundancy where possible
+- Avoid disrupting normal work unnecessarily
+- Record health information
+
+Storage repair should be as localized as possible.
+
+---
+
+E-010.9 — Filesystems Outside the Kernel
+
+Filesystem implementations should remain outside the privileged kernel where practical.
+
+The kernel supplies:
+
+- Memory protection
+- Paging primitives
+- Device-access control
+- IPC
+- Capability enforcement
+
+Filesystem services provide:
+
+- Files
+- Directories
+- Metadata
+- Transactions
+- Storage policy
+
+A filesystem crash should ideally mean:
+
+«restart/recover filesystem service»
+
+rather than:
+
+«crash the whole machine.»
+
+---
+
+E-010.10 — Storage Pipeline
+
+Conceptually:
+
+Application
+     ↓
+File / Object API
+     ↓
+Filesystem Service
+     ↓
+Dataset / Storage Manager
+     ↓
+Storage Driver
+     ↓
+Hardware
+
+E-008 IPC allows high-performance paths using:
+
+- Fast RPC
+- Shared rings
+- Memory Objects
+- Zero-copy transfer
+
+---
+
+E-010.11 — Sealed System Generations
+
+Normal Evrosion system generations should be cryptographically verifiable.
+
+A known-good generation may be:
+
+- Read-only
+- Integrity-verified
+- Cryptographically sealed
+
+Absolute Access still permits modification.
+
+A preferred approach is:
+
+Official Generation 145
+       ↓ fork
+Custom Generation 145-user
+
+The owner can modify anything while preserving the known-good original for recovery.
+
+---
+
+E-010.12 — Atomic System Updates
+
+System updates should follow:
+
+Current generation
+      ↓
+Construct new generation separately
+      ↓
+Verify
+      ↓
+Health-check
+      ↓
+Seal
+      ↓
+Atomically activate
+
+Power loss during construction leaves the current generation intact.
+
+A failed new generation can be rolled back.
+
+---
+
+E-010.13 — Snapshots
+
+Snapshots should be inexpensive and first-class.
+
+Possible automatic snapshot points:
+
+- Before OS update
+- Before major driver update
+- Before system configuration change
+- Before major application installation
+- Periodic user-data recovery points
+
+Users may also create manual snapshots.
+
+---
+
+E-010.14 — Snapshot Retention
+
+Snapshots consume storage as data diverges.
+
+Evrosion should manage them intelligently.
+
+Possible classes:
+
+- Recent automatic snapshot
+- Known-good system snapshot
+- User-pinned snapshot
+- Temporary recovery snapshot
+- Old reclaimable snapshot
+
+Evrosion should explain retained space clearly.
+
+Example:
+
+«47 GB is currently retained by recovery snapshots.»
+
+---
+
+E-010.15 — Recovery Reserve
+
+Evrosion should maintain a small protected storage reserve.
+
+Its purpose is to ensure enough free space remains for:
+
+- Metadata updates
+- Recovery
+- Rollback
+- Emergency writes
+- Filesystem repair
+
+The reserve should not become an artificial ownership restriction.
+
+Layer 3 may allow the owner to consume it deliberately after warning.
+
+---
+
+E-010.16 — Transparent Compression
+
+Evrosion should support transparent compression.
+
+Compression decisions may consider:
+
+- CPU performance
+- Storage speed
+- Data compressibility
+- Battery state
+- Workload type
+
+Obviously incompressible data should not waste CPU unnecessarily.
+
+Compression may significantly improve performance on slow storage by reducing physical I/O.
+
+---
+
+E-010.17 — Reflinks
+
+Evrosion should support Copy-on-Write cloning/reflinks.
+
+Duplicating a large file should not require physically copying every block immediately.
+
+Example:
+
+100 GB source
+      ↓ reflink
+100 GB logical clone
+
+Only modified regions later consume additional physical storage.
+
+---
+
+E-010.18 — Encryption
+
+Encryption should operate through a hierarchical key architecture.
+
+Conceptually:
+
+Owner / Recovery Key
+       ↓
+User Key
+       ↓
+Dataset Key
+       ↓
+Storage Encryption
+
+Different users or datasets may therefore have separate encryption domains.
+
+---
+
+E-010.19 — Hardware-Backed Storage Keys
+
+Where available, Evrosion should integrate storage encryption with:
+
+- TPM
+- Secure elements
+- Hardware-backed key stores
+
+Older hardware remains supported through secure software fallback.
+
+Swap and sensitive temporary storage should also be encrypted where practical.
+
+---
+
+E-010.20 — Snapshots Are Not Backups
+
+A local snapshot does not protect against:
+
+- Drive death
+- Theft
+- Fire
+- Catastrophic controller failure
+- Physical destruction
+
+Backups require another failure domain.
+
+Evrosion should keep this distinction clear.
+
+---
+
+E-010.21 — Incremental Backup / Replication
+
+Snapshots should support efficient incremental replication.
+
+Conceptually:
+
+Snapshot A
+    ↓
+Changes since A
+    ↓
+Snapshot B
+    ↓
+Send only changed data
+
+Destinations may include:
+
+- External drive
+- NAS
+- Another Evrosion machine
+- Server
+- Optional cloud storage
+
+Cloud remains optional.
+
+---
+
+E-010.22 — Deduplication
+
+Global automatic deduplication should not initially be enabled by default.
+
+It can introduce:
+
+- RAM overhead
+- CPU overhead
+- Metadata complexity
+- Fragmentation
+- Security considerations
+
+Explicit reflinking provides much of the practical benefit without requiring constant global deduplication.
+
+Deduplication may remain an optional advanced feature.
+
+---
+
+E-010.23 — External Filesystems
+
+Evrosion should support external and legacy filesystems through isolated filesystem services.
+
+Potential examples:
+
+- FAT
+- exFAT
+- NTFS
+- ext4
+- Btrfs
+- Other useful formats
+
+Example:
+
+USB Device
+    ↓
+Filesystem Detector
+    ↓
+NTFS Service
+    ↓
+Evrosion File API
+
+A malformed USB filesystem should ideally crash its parser/service rather than the entire OS.
+
+---
+
+E-010.24 — Filesystem Capability Differences
+
+External filesystems may not support all Evrosion-native features.
+
+For example, FAT may lack:
+
+- Rich permissions
+- Snapshots
+- Native capabilities
+- Checksumming
+- Per-file encryption
+- Extended metadata
+
+Evrosion should expose these limitations honestly rather than pretending all storage systems provide identical guarantees.
+
+---
+
+E-010.25 — Network Storage
+
+Network storage should integrate through storage services.
+
+Potential protocols may include:
+
+- SMB
+- NFS
+- WebDAV
+- Future protocols
+
+Remote storage must retain explicit remote failure semantics.
+
+A disconnected server is not equivalent to a local NVMe device.
+
+---
+
+E-010.26 — Native Evrosion Filesystem
+
+Long-term, Evrosion should develop a native filesystem/storage format designed around these principles.
+
+However:
+
+«A native filesystem must not become a prerequisite for early Evrosion development.»
+
+Early versions may use a proven existing filesystem behind the Evrosion storage API.
+
+Later:
+
+Existing filesystem
+      ↓
+Evrosion Storage API
+
+Native Evrosion filesystem developed
+      ↓
+Becomes default when ready
+
+Applications should not care which on-disk filesystem provides the storage objects.
+
+---
+
+E-010.27 — Durable Operations
+
+Long-running storage operations should survive process crashes and, wherever technically possible, complete power loss.
+
+This includes:
+
+- File copies
+- File moves
+- Downloads
+- Installations
+- Game installations
+- Backups
+- Extraction
+- Synchronization
+- Updates
+- Large maintenance operations
+
+Principle
+
+«Long-running work should survive the process performing it and, where technically possible, survive loss of power.»
+
+---
+
+E-010.28 — Persistent Operation Journal
+
+Evrosion should maintain a durable operation journal.
+
+Example:
+
+Operation #8392
+
+Type: File Transfer
+Source: Game.pkg
+Destination: Games/GameX
+
+Total: 103 GB
+Verified: 71.4 GB
+
+Last durable checkpoint:
+Chunk 18,291
+
+The journal records enough information to determine what was safely completed.
+
+---
+
+E-010.29 — Chunked Operations
+
+Large transfers should be divided into independently verifiable chunks/extents.
+
+For each checkpoint:
+
+Transfer chunk
+     ↓
+Write
+     ↓
+Verify
+     ↓
+Ensure durable storage
+     ↓
+Record checkpoint
+
+If power disappears, already-verified chunks do not need to be transferred again.
+
+---
+
+E-010.30 — Durable Means Actually Durable
+
+Evrosion must distinguish between:
+
+«Data copied into a cache»
+
+and:
+
+«Data confirmed to persistent storage.»
+
+Storage devices may contain volatile write caches.
+
+Therefore Evrosion must use appropriate flush/FUA or equivalent mechanisms when establishing important durability checkpoints.
+
+Principle
+
+«Never claim progress is durable until the storage layer has confirmed durability.»
+
+---
+
+E-010.31 — Resuming After Power Failure
+
+Example:
+
+103 GB transfer
+      ↓
+71 GB completed
+      ↓
+POWER FAILURE
+      ↓
+Boot Evrosion
+      ↓
+Read operation journal
+      ↓
+Verify durable chunks
+      ↓
+Resume near 71 GB
+
+The user should lose only uncommitted work since the last durable checkpoint, not the entire operation.
+
+---
+
+E-010.32 — Staging Objects
+
+Incomplete operations should normally write into staging objects rather than immediately replacing the final destination.
+
+Conceptually:
+
+destination.pending
+       ↓
+transfer
+       ↓
+verify
+       ↓
+complete
+       ↓
+atomic publish
+
+A partially completed result should not masquerade as the final valid file.
+
+---
+
+E-010.33 — Safe File Moves
+
+Moves within the same native dataset may often be transactional metadata operations.
+
+Moves across storage devices should follow:
+
+Copy destination
+      ↓
+Verify destination
+      ↓
+Commit destination
+      ↓
+Only then delete source
+
+Principle
+
+«Never destroy the source until the destination is safely committed.»
+
+If power fails during the copy, the original remains.
+
+---
+
+E-010.34 — Resumable Installations
+
+Application/game installation should be represented as multiple durable phases.
+
+Example:
+
+Download       ✓
+Verify         ✓
+Unpack         64%
+Configure      pending
+Activate       pending
+
+A reboot or power failure should allow continuation from the latest valid phase.
+
+The currently working application version should remain untouched until final activation where practical.
+
+---
+
+E-010.35 — Resumable Downloads
+
+Evrosion should preserve already-downloaded verified data.
+
+If the remote protocol/server supports resumption:
+
+«Continue from existing progress.»
+
+If the server does not support resumption:
+
+Evrosion cannot force it to resume, but locally downloaded data should not be discarded unnecessarily.
+
+---
+
+E-010.36 — Removable Media Interruption
+
+If an external drive disappears during an operation:
+
+Copying backup
+      ↓
+Drive removed
+      ↓
+Operation paused
+
+When the drive returns:
+
+Identify destination
+      ↓
+Verify existing checkpoints
+      ↓
+Continue
+
+The operation should not automatically restart from zero.
+
+---
+
+E-010.37 — Durable Operations as a System Primitive
+
+Durable operation tracking should not belong only to the file manager.
+
+The same infrastructure may support:
+
+- Downloads
+- Copies
+- Moves
+- Installations
+- Updates
+- Backups
+- Driver packages
+- Large synchronization jobs
+- Maintenance operations
+
+Applications should eventually be able to use the same reliable infrastructure rather than independently reinventing partial-file handling.
+
+---
+
+E-010.38 — Crash Recovery
+
+After unexpected shutdown, Evrosion should determine:
+
+- Which transactions committed
+- Which operations were incomplete
+- Which staging objects remain
+- Which chunks are verified
+- Whether repair is required
+- Whether an operation can resume
+
+The system should prefer:
+
+«resume / rollback / repair»
+
+over:
+
+«discard everything and start over.»
+
+---
+
+E-010.39 — Power-Loss Limit
+
+There is one physical limitation.
+
+If data exists only in volatile RAM when electricity disappears, Evrosion cannot preserve those exact bytes unless hardware provides:
+
+- Battery backup
+- UPS
+- Persistent memory
+- Power-loss-protected storage
+
+Therefore Evrosion guarantees progress only through completed durable checkpoints.
+
+Principle
+
+«Minimize lost work rather than promising physically impossible zero-loss recovery.»
+
+---
+
+E-010.40 — User Experience
+
+Layer 1 might show:
+
+«Your file transfer was interrupted by an unexpected shutdown.»
+
+«Continuing from 71%.»
+
+Layer 2 may show:
+
+- Total progress
+- Verified progress
+- Current stage
+- Destination
+- Recovery status
+
+Layer 3 may expose:
+
+- Operation journal
+- Chunk map
+- Hash state
+- Flush state
+- Transaction IDs
+- Storage barriers
+- Staging objects
+- Recovery controls
+
+---
+
+E-010 Final Architecture
+
+APPLICATIONS
+     │
+     ↓
+Namespace / File API
+     │
+     ↓
+Capability-Controlled File Objects
+     │
+     ↓
+Filesystem Service
+     │
+     ↓
+Dataset Layer
+     │
+     ├── Snapshots
+     ├── Encryption
+     ├── Compression
+     ├── Integrity
+     ├── Quotas
+     └── Recovery Policy
+     │
+     ↓
+Storage Manager
+     │
+     ├── Pools
+     ├── Devices
+     ├── Redundancy
+     ├── Health
+     └── Durable Operation Journal
+     │
+     ↓
+Storage Drivers
+     │
+     ↓
+Hardware
+
+Supported by:
+
+System Generations
+CoW Transactions
+Checksums
+Scrubbing
+Snapshots
+Reflinks
+Encryption
+Recovery Reserve
+Incremental Backup
+Durable Operations
+Checkpointed Transfers
+Atomic Publication
+
+---
+
+E-010 Summary
+
+Evrosion storage will be:
+
+«Transactional»
+
+«Integrity-checked»
+
+«Snapshot-capable»
+
+«Copy-on-Write by default»
+
+«Dataset-based»
+
+«Capability-controlled»
+
+«Encrypted»
+
+«Compressible»
+
+«Recoverable»
+
+«Externally compatible»
+
+«Separated between system and user state»
+
+«Designed for atomic updates»
+
+«Designed for resumable long-running operations»
+
+«Designed to survive unexpected power loss with minimal lost progress»
+
+---
+
+Governing Principles
+
+«System state is replaceable. User data is durable.»
+
+«Never require wiping personal data merely to repair the operating system.»
+
+«Never destroy the source until the destination has been safely committed.»
+
+«Never report progress as durable until the storage layer confirms it.»
+
+«Interrupted work should resume from the last verified checkpoint whenever technically possible.»
+
+«Corruption should be detected, isolated, and repaired where redundancy permits.»
+
+«Snapshots provide recovery; backups provide survival. They are not the same thing.»
+
+«Storage failure should degrade the smallest possible part of the system rather than destroying everything around it.»

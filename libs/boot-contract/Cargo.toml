@@ -1,0 +1,12 @@
+[package]
+name = "ev-boot-contract"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[dependencies]
+bootloader_api = "=0.11.17"
+
+[lints]
+workspace = true

@@ -1,0 +1,281 @@
+E-003 — Hardware & Platform Targets
+
+
+Status: DECIDED — INITIAL TARGET STRATEGY
+
+Core Principle
+
+«Support old hardware, not dead architectures.»
+
+Evrosion should make a serious effort to run on older functional computers without wasting major engineering effort on architectures that are effectively disappearing.
+
+Evrosion should scale down to available hardware rather than imposing unnecessarily high minimum requirements.
+
+---
+
+Primary Architecture
+
+x86-64
+
+x86-64 will be Evrosion's primary PC architecture.
+
+This includes:
+
+- Modern desktops
+- Modern laptops
+- Older x86-64 PCs
+- Virtual machines
+- Low-end systems
+- High-end systems
+
+Age alone should not disqualify hardware.
+
+If an older x86-64 computer remains technically useful, Evrosion should attempt to support it.
+
+---
+
+ARM64
+
+ARM64 is an intended first-class Evrosion architecture.
+
+It does not need to be brought up simultaneously with the first x86-64 kernel, but Evrosion's architecture must avoid x86-specific assumptions from the beginning.
+
+ARM64 support should eventually cover relevant:
+
+- Laptops
+- Desktops
+- Development boards
+- Future consumer PCs
+- Virtual machines
+- Other suitable hardware
+
+---
+
+RISC-V
+
+RISC-V should be treated as an important future architecture.
+
+Initial Evrosion development does not need to prioritize it over x86-64 or ARM64.
+
+However, the architecture should remain portable enough that a future RISC-V port does not require fundamental redesign.
+
+---
+
+Native x86-32
+
+Native x86-32 is NOT a planned Evrosion target.
+
+Evrosion will not spend major core-development effort supporting 32-bit-only x86 processors.
+
+Reasons include:
+
+- Very small remaining active user base
+- Rapidly declining hardware relevance
+- Additional maintenance burden
+- Additional compiler/toolchain burden
+- Memory-model limitations
+- Extra testing requirements
+- Extra driver/platform work
+- Better use of limited development resources elsewhere
+
+Supporting old computers remains important.
+
+Supporting every obsolete architecture does not.
+
+---
+
+32-bit Software Compatibility
+
+Rejecting a native x86-32 Evrosion port does not necessarily mean rejecting 32-bit software.
+
+Evrosion may support 32-bit applications on x86-64 systems through appropriate compatibility mechanisms.
+
+This belongs primarily to E-022 — Compatibility Architecture.
+
+---
+
+Firmware
+
+UEFI
+
+UEFI should be the primary modern boot environment.
+
+It should receive first-class support.
+
+Legacy BIOS
+
+Legacy BIOS should also be supported where technically practical because many still-useful older x86-64 computers rely on it.
+
+Legacy BIOS support should not dictate Evrosion's internal architecture.
+
+A dedicated boot path or compatibility bootloader may bridge older firmware into the normal Evrosion startup environment.
+
+---
+
+Initial Device Classes
+
+Evrosion should eventually support:
+
+- Desktop PCs
+- Laptops
+- Virtual machines
+- Servers where appropriate
+- Additional form factors where useful
+
+Initial development should prioritize:
+
+1. Virtual machines
+2. x86-64 desktop-class hardware
+3. x86-64 laptops
+4. Broader hardware support
+5. ARM64
+6. Other architectures/platforms
+
+This staging is a development order, not a permanent limitation.
+
+---
+
+Virtual Machines
+
+Virtual machines should be first-class development targets.
+
+They provide:
+
+- Fast testing
+- Reproducible hardware configurations
+- Safer kernel debugging
+- Snapshot/recovery capability
+- Automated testing
+- Cross-platform development
+- Easier CI
+
+Evrosion should eventually work well under major virtualization environments where practical.
+
+---
+
+Hardware Capability Tiers
+
+Evrosion should adapt to available hardware capabilities.
+
+A modern machine may provide:
+
+- IOMMU/SMMU
+- Strong DMA isolation
+- Hardware virtualization
+- Multiple CPU cores
+- Modern GPU acceleration
+- Large amounts of RAM
+- Fast NVMe storage
+
+An older system may lack several of these features.
+
+Evrosion should still operate where practical while honestly representing reduced guarantees.
+
+For example:
+
+Modern machine
+
+Full driver isolation and advanced security mechanisms.
+
+Older machine without IOMMU
+
+Drivers may still be process-isolated, but DMA isolation may be weaker.
+
+Evrosion should explain this rather than refusing to run or pretending the same guarantees exist.
+
+---
+
+Low-End Hardware
+
+Evrosion should avoid arbitrary hardware requirements.
+
+Examples:
+
+- Low RAM should trigger lighter operation rather than automatic rejection where feasible.
+- Slow storage should alter caching/background behavior.
+- Integrated graphics should receive appropriate rendering paths.
+- Low-core-count CPUs should not be overwhelmed with excessive background services.
+- Optional AI should never be required for normal OS operation.
+
+Principle
+
+«Evrosion scales down to the machine instead of demanding that the machine scale up to Evrosion.»
+
+---
+
+Hardware Minimums
+
+Exact minimum hardware requirements are not yet decided.
+
+They should eventually be based on genuine technical constraints rather than arbitrary product segmentation.
+
+Possible hard limits may include:
+
+- Required CPU features
+- Minimum address-space capability
+- Minimum practical RAM
+- Required storage capacity
+- Required interrupt/timer functionality
+- Supported firmware/boot mechanisms
+
+These will be determined through implementation and testing.
+
+---
+
+Portability Rule
+
+Evrosion's core architecture must avoid unnecessary architecture-specific assumptions.
+
+Architecture-specific functionality should be isolated behind appropriate platform abstractions.
+
+This includes areas such as:
+
+- CPU initialization
+- Interrupt controllers
+- Page tables
+- Context switching
+- Timers
+- IOMMU/SMMU
+- Firmware interaction
+- Boot entry
+- SMP startup
+
+Rust remains the primary systems language, while architecture-specific assembly is used only where necessary.
+
+---
+
+E-003 Final Decision
+
+Planned
+
+- x86-64
+- ARM64
+- RISC-V in the future
+- UEFI
+- Legacy BIOS where practical
+- Desktops
+- Laptops
+- Virtual machines
+- Broader form factors over time
+- Old but useful hardware
+- Adaptive hardware capability tiers
+
+Not Planned
+
+- Native x86-32 Evrosion
+
+Potential Compatibility Support
+
+- 32-bit applications on x86-64
+- Legacy software through compatibility layers
+- Legacy hardware where technically viable
+
+Governing Principles
+
+«Support old hardware, not dead architectures.»
+
+«Age is not a reason to reject a computer. Technical usefulness is what matters.»
+
+«Evrosion scales down to the hardware rather than imposing unnecessary artificial minimums.»
+
+«The first supported architecture must never become a permanent architectural assumption.»

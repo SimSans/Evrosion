@@ -1,0 +1,64 @@
+[2J[001;001H[=3h[2J[001;001H[2J[001;001H[8;042;160t[2J[001;001H[2J[001;001H[8;056;240t[2J[001;001HBdsDxe: loading Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+BdsDxe: starting Boot0002 "UEFI QEMU HARDDISK QM00001 " from PciRoot(0x0)/Pci(0x1F,0x2)/Sata(0x0,0xFFFF,0x0)
+INFO : Framebuffer info: FrameBufferInfo { byte_len: 4096000, width: 1280, height: 800, pixel_format: Bgr, bytes_per_pixel: 4, stride: 1280 }
+INFO : UEFI bootloader started
+INFO : Using framebuffer at 0x80000000
+INFO : Reading configuration from disk was successful
+INFO : Trying to load ramdisk via Disk
+INFO : Ramdisk not found.
+TRACE: exiting boot services
+TRACE: switching to new level 4 table
+INFO : New page table at: PhysFrame[4KiB](0x101000)
+INFO : Elf file loaded at Pointer {
+    addr: 0x00000000095fb000,
+    metadata: 43453504,
+}
+INFO : virtual_address_offset: 0x0
+INFO : Handling Segment: Ph64(ProgramHeader64 { type_: Ok(Load), flags: Flags(5), offset: 1000, virtual_addr: ffffffff80000000, physical_addr: ffffffff80000000, file_size: fd775, mem_size: fd775, align: 1000 })
+INFO : Handling Segment: Ph64(ProgramHeader64 { type_: Ok(Load), flags: Flags(4), offset: ff000, virtual_addr: ffffffff800fe000, physical_addr: ffffffff800fe000, file_size: 1ce2f9d, mem_size: 1ce2f9d, align: 1000 })
+INFO : Handling Segment: Ph64(ProgramHeader64 { type_: Ok(Load), flags: Flags(6), offset: 1de2000, virtual_addr: ffffffff81de1000, physical_addr: ffffffff81de1000, file_size: 550, mem_size: 131b4, align: 1000 })
+INFO : Mapping bss section
+INFO : Entry point at: 0xffffffff80060440
+INFO : Creating GDT at PhysAddr(0x16d000)
+INFO : Map framebuffer
+INFO : Map physical memory
+INFO : Allocate bootinfo
+INFO : Create Memory Map
+INFO : Create bootinfo
+INFO : Jumping to kernel entry point at VirtAddr(0xffffffff80060440)
+EVROSION_BOOT protocol=1 build=38b85b3ddf4afbb6b9929931fca6f95fceccdd48f5eec3bea6554e13b9b49918
+EVROSION_FRAMEBUFFER present=true width=1280 height=800 stride=1280 format=bgr
+EVROSION_MEMORY regions=124 usable_bytes=213774336
+Evrosion kernel entered.
+EVROSION_M1_BOOTSTRAP status=PASS page_size=4096 allocated=2 total=52190 remaining=52188 first=0x1000 second=0x2000
+EVROSION_M1_PAGING status=PASS roots=2 map_unmap=true remap=true zeroed=true permissions=true restored=true root_a=0x3000 root_b=0x7000 virtual=0xffff800000000000
+EVROSION_M1_FAULTS status=PASS readonly=true noexecute=true unmapped=true recovered=3
+EVROSION_M1_USER status=PASS roots=2 cpl=3 private=true kernel_denied=true wx=true stack=true io_denied=true traps=15 root_a=0xe000 root_b=0x12000
+EVROSION_M1_TIMER status=PASS ticks=8 deadline=8 masked_bound=true interrupts_off=true
+EVROSION_M1_TOPOLOGY status=PASS enabled=1 bsp=0 lapic=0xfee00000
+EVROSION_M1_SMP status=SKIP reason=single_cpu
+EVROSION_M1_SCHEDULER status=PASS scope=policy threads=2 jobs=2 dispatches=36 signal=true deadline=true stale_rejected=true
+EVROSION_M1_THREADS status=PASS threads=2 dispatches=36 switches=72 guards=4 registers=true stacks=true signal=true deadline=true exited=true
+EVROSION_M1_PREEMPT status=PASS threads=2 quanta=8 dispatches=10 progress=true restored=true
+EVROSION_M1_CAPS status=PASS scope=tables attenuation=true transfer=true revocation=true stale=true denial=true lifetime=true
+EVROSION_M1_IPC status=PASS scope=mailbox bounded=true escrow=true delivery=true deadline=true death_return=true
+EVROSION_M2_BINDING status=PASS scope=fixture grants=2 measured=true resolved=true atomic=true attenuated=true revoked=true
+EVROSION_M2_LIFETIME status=PASS scope=authority cycles=64 reclaimed=128 old_space_denied=true stale_handles_denied=true
+EVROSION_M2_SCOPES status=PASS scope=authority cycles=64 revoked=128 roots_preserved=true peers_preserved=true stale_revoke_denied=true
+EVROSION_M2_INCARNATION status=PASS scope=prepared bindings=2 held=true stale_events_denied=true limits=true revoked=true
+EVROSION_M2_EXECUTABLE status=PASS scope=loader segments=2 pages=5 frames=9 cpl3=5 measured=true zeroed=true wx=true guarded=true reclaimed=true
+EVROSION_M2_ACTIVATION status=PASS scope=fixture attempts=2 admitted=1 rejected=1 cpl3=1 rechecked=true stale_denied=true inhibited=true peers_preserved=true frames=18 reclaimed=true
+EVROSION_M2_SUPERVISOR status=PASS scope=bootstrap images=2 ready=2 faults=1 denied=4 readonly=true measured=true authority=true stopped=true reclaimed=true
+EVROSION_M2_SERVICES status=PASS scope=launch graphs=2 children=2 requests=5 replies=4 cancelled=1 faults=1 control_denied=8 service_denied=8 event_denied=6 delegated=4 observed=true held=true isolated=true measured=true reclaimed=true
+EVROSION_M2_RPC status=PASS scope=transport successes=7 accepted=8 blocks=8 wakes=8 denied=2 expired=2 timeouts=1 busy=true late=1 stale=true reclaimed=true
+EVROSION_M2_RESTART status=PASS scope=service cycles=64 faults=64 peer_replies=128 victim_replies=64 starts=66 stale=true root_preserved=true frames=true metadata=true reclaimed=true
+EVROSION_M2_CUSTODY status=PASS scope=graph incarnations=4 replacements=3 root_faults=4 graphs=4 service_starts=8 service_replies=8 accepted_transfers=4 rejected_transfers=4 invalidated_transfers=4 recovery=1 unique=true authority=true graph=true budget=true stale=true frames=true metadata=true independent=true
+EVROSION_M2_RECOVERY_CASES status=PASS scope=failure cases=11 faults=6 exits=4 watchdogs=4 interruptions=6 integrity=3 attempts=33 charged=24 held=20 admitted=16 active=15 graphs=14 starts=28 replies=28 transfers=14 rejected=14 invalidated=14 recovery=11 retired=true frames=true unique=true budget=true selection=true grants=true
+EVROSION_M2_CAPRPC status=PASS scope=transport worlds=5 accepted=8 blocks=8 wakes=8 delivered=6 returned=4 refunded=2 no_refund=2 timeouts=2 faults=2 late=1 stale=1 wrong_object=1 rejected=3 busy=true exits=5 frames=true metadata=true
+EVROSION_M2_IPC_DISCIPLINE status=PASS scope=threads worlds=2 calls=10 blocks=10 wakes=10 delivered=10 replies=10 contexts=10 spawned=6 exits=2 mutex_acquired=1 mutex_released=1 no_wait=1 cycles=1 extended=1 depth=1 wrong_thread=1 max_depth=8 stacks=true frames=true metadata=true
+EVROSION_M5_NATIVE_KERNEL_MEMORY protocol=1 build=38b85b3ddf4afbb6b9929931fca6f95fceccdd48f5eec3bea6554e13b9b49918 physical_start=157265920 physical_end=200719424 virtual_start=18446744071562067968 virtual_end=18446744071593480192
+EVROSION_M5_NATIVE_MEMORY protocol=1 build=38b85b3ddf4afbb6b9929931fca6f95fceccdd48f5eec3bea6554e13b9b49918 phase=before total_frames=52190 remaining_frames=52138
+EVROSION_M5_NATIVE_COMMON_PREFIX protocol=1 build=38b85b3ddf4afbb6b9929931fca6f95fceccdd48f5eec3bea6554e13b9b49918 mode=0 root_process=1 root_thread=1 root_image_sha256=8d77a7f077505b092c092916f34f9254222d6cda265b33c7c506348b3c6d52c9 root_epoch=501 root_incarnation=1 root_manifest_sha256=dce1d1061c46c2eb2cd8ca9a1e68a0c31ac5550b2cc8275e5cd22e10b9248b0e block_process=2 block_thread=2 block_image_sha256=b6e09048e8c5138ceace410e206aea6f9c63d16b2e44c1d9da010e4b2b0fc330 system_endpoint=31 root_frames=85 block_frames=18
+EVROSION_NATIVE_SYSTEM protocol=1 build=38b85b3ddf4afbb6b9929931fca6f95fceccdd48f5eec3bea6554e13b9b49918 report=1 root_process=1 root_thread=1 bytes=45565359534d30310200800101000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b080000000000003808000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+EVROSION_M4_DESKTOP_STEP protocol=1 build=38b85b3ddf4afbb6b9929931fca6f95fceccdd48f5eec3bea6554e13b9b49918 step=frame frame=1 width=1280 height=800 app_process=0 shell_process=6 display_process=3 grants=0 producer=shell surface_sha256=2abdf3434dc340715e89a02a53ebccbfaae93c651200a1cb445d432ddcee646e held_ticks=0
+EVROSION_M5_NATIVE_CRITICAL_READY protocol=1 build=38b85b3ddf4afbb6b9929931fca6f95fceccdd48f5eec3bea6554e13b9b49918 process=6 thread=6 image_sha256=a0cfba665f04e88bbc2b8ea9c84446b0011e5e573dc87cd6ec945bc578974df3 tick=2232

@@ -1,0 +1,11 @@
+* text=auto eol=lf
+*.raw -text
+*.bin -text
+*.png -text
+*.jpg -text
+*.woff2 -text
+
+# Preserve upstream notices and exact protocol fixtures byte for byte.
+/LICENSES/** -text
+/tests/fixtures/** -text
+/third_party/bootloader-uefi.Cargo.lock -text

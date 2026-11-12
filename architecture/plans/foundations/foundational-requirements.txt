@@ -1,0 +1,958 @@
+Foundation
+MyOS Foundational Requirements
+
+«These four requirements form the foundation of the MyOS project.
+
+They describe what MyOS must fundamentally accomplish and why. They intentionally do not lock in implementation details that have not yet been researched or decided.
+
+A technical implementation may change during development, but it must not silently violate these foundational requirements. Any deliberate change requires an explicit architectural decision.»
+
+---
+
+F-001 — Human–Computer Relationship
+
+Status
+
+FOUNDATIONAL — DECIDED
+
+Objective
+
+MyOS must fundamentally change the relationship between a person and their computer.
+
+The operating system should make computers radically easier to use without reducing the underlying capabilities of the machine.
+
+The user should not be required to become a computer expert merely to operate, maintain, understand, or control their own computer.
+
+Problem
+
+Modern operating systems frequently expose users to unnecessary complexity.
+
+Examples include:
+
+- Searching the Internet to discover how to perform ordinary system tasks.
+- Searching YouTube for explanations of basic operating-system behavior.
+- Receiving cryptic error messages instead of useful explanations.
+- Being required to understand drivers, services, permissions, configuration files, package systems, or command-line tools to solve ordinary problems.
+- Encountering permission barriers without understanding why they exist.
+- Being forced to navigate unrelated technical concepts simply to accomplish an intended task.
+- Having the OS know how to solve a problem but exposing the user to the problem instead of handling it.
+
+At the same time, these same systems can make technically capable users fight against the operating system when they want direct control.
+
+MyOS must address both sides of this problem.
+
+Fundamental Principle
+
+«The computer belongs to the person using it. The operating system exists to serve that person, not to make them fight their own machine.»
+
+MyOS should hide unnecessary complexity without removing capability.
+
+Required behavior
+
+For ordinary tasks, MyOS should allow the user to express or perform an intended action without requiring knowledge of the underlying implementation.
+
+The system should:
+
+1. Determine what the user is trying to accomplish.
+2. Identify the appropriate system capability.
+3. Perform the necessary underlying operations.
+4. Provide useful feedback.
+5. Explain problems in understandable terms.
+6. Provide recovery where possible.
+7. Expose deeper technical information when requested.
+8. Allow escalation into greater control when appropriate.
+
+Example
+
+The user wants Wi-Fi.
+
+The user should not need to understand:
+
+- kernel modules;
+- network interfaces;
+- firmware;
+- PCI identifiers;
+- driver packages;
+- service managers;
+- configuration files.
+
+The user should be able to use Wi-Fi.
+
+If something goes wrong, MyOS should investigate and explain it.
+
+Layer 1 might say:
+
+«Wi-Fi isn't working. MyOS is looking for the problem.»
+
+Layer 2 might say:
+
+«Your Wi-Fi hardware was detected, but its driver is missing. I found a compatible driver.»
+
+Layer 3 can expose the underlying device, driver, firmware, logs, interfaces, and configuration.
+
+The underlying system is the same.
+
+Only the depth of interaction changes.
+
+No "YouTube dependency"
+
+A core design goal is:
+
+«A person should not routinely need an external tutorial to understand how to accomplish ordinary tasks in MyOS.»
+
+This does not mean MyOS must contain every possible piece of knowledge.
+
+It means the OS itself should provide:
+
+- discoverability;
+- explanations;
+- diagnostics;
+- contextual help;
+- recovery;
+- escalation;
+- direct access to technical information.
+
+External documentation remains useful for advanced subjects, but it should not be a prerequisite for ordinary operation.
+
+Explainability
+
+When MyOS automatically performs a meaningful operation, the system should be capable of explaining:
+
+- what happened;
+- why it happened;
+- what was changed;
+- whether the change succeeded;
+- what the user can do next;
+- how to undo it when possible.
+
+The amount of information depends on the user's layer.
+
+Capability preservation
+
+Simplification must never mean silently deleting capability merely because most users do not need it.
+
+Instead:
+
+«Hide complexity. Do not remove capability.»
+
+A beginner should see a simple experience.
+
+An advanced user should be able to expose additional controls.
+
+An expert should eventually be able to reach the underlying machine.
+
+Architectural consequences
+
+F-001 implies that MyOS will need:
+
+- Strong discoverability.
+- Consistent system-wide UX.
+- Machine-readable system state.
+- Structured diagnostics.
+- Contextual explanations.
+- Recoverable operations.
+- Progressive disclosure.
+- Clear layer transitions.
+- A consistent capability model.
+- Interfaces between high-level user intent and low-level system operations.
+
+These are architectural consequences, not yet final implementation choices.
+
+Non-goals
+
+F-001 does not mean:
+
+- Every operation must be automated.
+- Experts must be prevented from using technical interfaces.
+- Technical interfaces should be eliminated.
+- The OS should guess silently when the consequences are dangerous.
+- AI must be used to accomplish ordinary tasks.
+- The OS must hide information from users permanently.
+
+The goal is appropriate complexity, not the elimination of complexity.
+
+Acceptance criteria
+
+A future implementation should be tested against scenarios such as:
+
+A — Ordinary task
+
+A nontechnical user performs a common computer task without needing external instructions.
+
+B — Failure
+
+A common task fails.
+
+MyOS explains the failure in understandable language and provides a recovery path where possible.
+
+C — Technical escalation
+
+The same problem can be investigated at a deeper technical level without requiring a completely different operating system.
+
+D — Capability preservation
+
+An advanced user can reach functionality hidden from Layer 1.
+
+E — Consistency
+
+Different system components use the same basic pattern:
+
+intent → action → feedback → explanation/recovery → escalation
+
+Success condition
+
+MyOS succeeds at F-001 when a person can use the machine naturally without needing to understand the machine's internal complexity, while an experienced user can progressively expose that complexity when they want it.
+
+---
+
+F-002 — Absolute Ownership
+
+Status
+
+FOUNDATIONAL — DECIDED
+
+Objective
+
+The owner of a computer must ultimately control the computer.
+
+MyOS may protect users from accidental damage during normal operation, but it must not confuse protection with ownership.
+
+Problem
+
+Modern operating systems often create confusing situations where the person who owns and physically controls a computer encounters restrictions on their own machine.
+
+Security mechanisms are necessary, but the distinction between:
+
+«"The system is protecting me from an unauthorized party"»
+
+and:
+
+«"The system is preventing me from deliberately controlling my own machine"»
+
+must be explicit.
+
+MyOS must solve this distinction.
+
+Fundamental Principle
+
+«The person who owns the computer ultimately controls the computer.»
+
+Absolute Access
+
+MyOS shall provide an explicit mode of operation called Absolute Access or an equivalent final name.
+
+Entering this mode represents a deliberate acceptance of substantially greater responsibility.
+
+The user is explicitly informed that they can:
+
+- damage the operating system;
+- delete critical files;
+- disable essential services;
+- alter kernel configuration;
+- break drivers;
+- destroy networking;
+- damage the boot configuration;
+- make the machine unbootable;
+- destroy data;
+- otherwise intentionally or accidentally render the system unusable.
+
+The OS should make these consequences clear.
+
+Warnings are not restrictions
+
+This distinction is fundamental.
+
+In normal operation:
+
+«Protection may prevent an unsafe action.»
+
+In Absolute Access:
+
+«The OS warns the user about the consequences but does not secretly override a deliberate decision.»
+
+For example:
+
+«⚠️ This file is required for the system to boot.
+Deleting it will probably make the system unbootable.
+Absolute Access is enabled.
+
+[Cancel] [Delete Anyway]»
+
+If the user deliberately chooses Delete Anyway, MyOS should honor the decision.
+
+The exact authorization mechanism remains to be designed.
+
+Ownership versus security
+
+Absolute Ownership does not mean MyOS should have no security architecture.
+
+Security remains necessary for:
+
+- malware;
+- remote attackers;
+- unauthorized applications;
+- compromised accounts;
+- network threats;
+- accidental actions;
+- privilege escalation;
+- data theft.
+
+The difference is that the legitimate owner must have an explicit path to full control.
+
+Layer 3 relationship
+
+Absolute Access is primarily associated with Layer 3.
+
+Layer 3 is not simply:
+
+«"Layer 2 with more settings."»
+
+It represents a different relationship:
+
+«"I accept responsibility for this machine. Give me control."»
+
+The OS should therefore assume that a Layer 3 user may intentionally perform destructive operations.
+
+AI and Absolute Ownership
+
+The same principle applies to AI.
+
+AI must never receive unrestricted authority merely because it is an AI.
+
+The OS controls AI capabilities.
+
+However, a user in Absolute Access may explicitly authorize an AI system to perform actions that would otherwise be prohibited.
+
+The OS must make the scope of that authorization clear.
+
+The AI still does not become the owner.
+
+The user remains the authority.
+
+Required safeguards before destructive operations
+
+Absolute Access does not eliminate warnings.
+
+Before particularly destructive operations, MyOS should provide enough information for the user to understand:
+
+- what will happen;
+- what resources will be affected;
+- whether the action is reversible;
+- whether a snapshot/backup exists;
+- whether the system may become unbootable;
+- whether data will be lost;
+- what recovery options exist.
+
+After the user deliberately confirms, the system must respect the decision.
+
+Recovery
+
+Recovery mechanisms should exist independently of the ownership principle.
+
+For example:
+
+- snapshots;
+- recovery environments;
+- boot recovery;
+- system rollback;
+- external recovery media.
+
+These are offered as tools.
+
+They are not excuses for secretly preventing the user's action.
+
+Non-goals
+
+F-002 does not mean:
+
+- No security.
+- No warnings.
+- No authentication.
+- No sandboxing.
+- No protection against malware.
+- No safe defaults.
+- No recovery.
+- Every application automatically receives root-level access.
+
+It means the legitimate owner has an explicit path to ultimate control.
+
+Acceptance criteria
+
+A — Protected normal operation
+
+A dangerous system operation is protected against accidental execution in ordinary modes.
+
+B — Absolute Access transition
+
+The user can deliberately enter Absolute Access after understanding the consequences.
+
+C — Destructive action
+
+The user can deliberately perform a destructive system action in Absolute Access.
+
+D — No hidden override
+
+MyOS does not silently reverse or prevent a deliberately authorized Layer 3 action merely because it considers the action unsafe.
+
+E — Clear responsibility
+
+The user is clearly informed when they are leaving normal protection and accepting responsibility.
+
+F — Recovery
+
+Recovery tools remain available when technically possible.
+
+Success condition
+
+MyOS succeeds at F-002 when the owner can genuinely control the machine while still having understandable warnings, recovery mechanisms, and strong protection during ordinary use.
+
+---
+
+F-003 — Progressive Responsibility
+
+Status
+
+FOUNDATIONAL — DECIDED
+
+Objective
+
+MyOS must provide different levels of complexity and responsibility without fragmenting the operating system into separate editions or separate underlying systems.
+
+The user's chosen layer determines how much complexity, automation, information, and responsibility they receive.
+
+Fundamental Principle
+
+«The OS should meet the user where they are.»
+
+The three layers represent different relationships with the same computer.
+
+---
+
+Layer 1 — Simple / Automatic
+
+User relationship
+
+«"I just want to use my computer."»
+
+Objective
+
+Make the computer behave as close to an appliance as possible without removing underlying capability.
+
+The system should handle ordinary complexity automatically.
+
+Examples:
+
+- Hardware detection.
+- Driver setup.
+- Updates.
+- Basic networking.
+- Device configuration.
+- Application launching.
+- Common troubleshooting.
+- Routine maintenance.
+- Recovery.
+
+The user should primarily interact with tasks and outcomes, not implementation details.
+
+Example
+
+User:
+
+«"I want Wi-Fi."»
+
+MyOS:
+
+- Detects hardware.
+- Determines required support.
+- Obtains/configures it.
+- Connects.
+- Reports success.
+
+The user should not need to know what a driver is.
+
+Layer 1 restrictions
+
+Layer 1 protects the user from dangerous system changes.
+
+The user should not accidentally:
+
+- delete system files;
+- alter kernel configuration;
+- disable essential services;
+- destroy boot configuration;
+- grant unrestricted AI access.
+
+Layer 1 is intentionally constrained.
+
+---
+
+Layer 2 — Advanced / Full Control
+
+User relationship
+
+«"I want to understand and control my computer."»
+
+Layer 2 exposes substantially more functionality.
+
+The user can:
+
+- manage files;
+- configure networking;
+- manage devices;
+- use terminal tools;
+- inspect processes;
+- customize the system;
+- manage storage;
+- install software;
+- inspect diagnostics;
+- control workspaces;
+- use development tools;
+- override automatic behavior where appropriate.
+
+However, the OS continues to provide:
+
+- explanations;
+- warnings;
+- diagnostics;
+- safer alternatives;
+- recovery;
+- protected boundaries.
+
+Example
+
+Instead of simply saying:
+
+«"Wi-Fi isn't working."»
+
+Layer 2 can show:
+
+«Wireless adapter detected: Intel AX210
+Driver: Missing
+Firmware: Required
+Recommended action: Install compatible driver
+
+[Install & Fix] [Show Technical Details] [Configure Manually]»
+
+The user can choose how much assistance they want.
+
+---
+
+Layer 3 — Absolute Access
+
+User relationship
+
+«"I want to own my computer completely."»
+
+Layer 3 provides the deepest technical access.
+
+The user can access:
+
+- system files;
+- processes;
+- kernel configuration;
+- drivers;
+- hardware;
+- networking;
+- boot configuration;
+- system internals;
+- low-level diagnostics;
+- other system resources subject to the final architecture.
+
+The user accepts responsibility for the consequences.
+
+The OS can warn.
+
+It does not secretly paternalize.
+
+---
+
+Layer transitions
+
+Layer transitions must be deliberate and understandable.
+
+Potential transitions:
+
+Layer 1
+   │
+   │ "Advanced Mode"
+   ▼
+Layer 2
+   │
+   │ "Absolute Access"
+   ▼
+Layer 3
+
+The exact UX is TBD.
+
+The important requirement is that users understand when they are moving into a more powerful and potentially dangerous mode.
+
+Layer does not equal intelligence
+
+A user does not need to be a programmer to use Layer 2.
+
+Layer 2 exists for people who want more control.
+
+Layer 3 exists for people who are prepared to accept the consequences of unrestricted control.
+
+The OS should not attempt to determine whether someone is "smart enough" for Layer 3.
+
+The user makes the decision.
+
+Same underlying OS
+
+The three layers must not become three separate operating systems.
+
+They should operate over:
+
+- the same kernel;
+- the same hardware;
+- the same storage;
+- the same applications where appropriate;
+- the same system state;
+- the same underlying capabilities.
+
+Only the interaction and authorization depth changes.
+
+Consistency across layers
+
+The same operation should remain conceptually consistent.
+
+Example:
+
+Layer 1
+
+«"Wi-Fi isn't working. Fix it."»
+
+Layer 2
+
+«"Show me why Wi-Fi isn't working."»
+
+Layer 3
+
+«"Give me the hardware, driver, firmware, interfaces, kernel information and configuration."»
+
+The underlying system should produce the diagnosis at increasing levels of detail.
+
+Progressive disclosure
+
+MyOS should avoid forcing technical information onto users who don't want it.
+
+But it must also avoid permanently hiding information from users who do want it.
+
+Therefore:
+
+«Hide by default. Reveal by choice. Never remove capability solely because it is complex.»
+
+AI interaction
+
+AI permissions should follow the same model.
+
+Layer 1
+
+AI is strongly constrained.
+
+Layer 2
+
+AI receives broader capabilities subject to authorization.
+
+Layer 3
+
+The user may deliberately grant extremely broad or unrestricted capabilities.
+
+The OS remains responsible for enforcing whatever authorization was selected.
+
+Non-goals
+
+F-003 does not mean:
+
+- Three separate OS distributions.
+- Three unrelated security systems.
+- Layer 1 users are incapable.
+- Layer 3 users are necessarily programmers.
+- Layer 2 should be frustratingly locked down.
+- Layer 3 should be intentionally hostile or ugly.
+- Users must permanently choose one layer.
+
+The user should be able to move between layers.
+
+Acceptance criteria
+
+A — Beginner operation
+
+A user can remain entirely within Layer 1 and perform ordinary tasks without understanding OS internals.
+
+B — Advanced operation
+
+A user can switch to Layer 2 and gain substantial control without reinstalling or changing operating systems.
+
+C — Absolute control
+
+A user can explicitly enter Layer 3 and access the underlying system.
+
+D — Consistent state
+
+Changing layers does not create separate copies of the user's environment or machine.
+
+E — Progressive information
+
+The same system problem can be viewed at different levels of technical detail.
+
+F — Responsibility
+
+Moving toward Layer 3 increases both capability and responsibility.
+
+Success condition
+
+MyOS succeeds at F-003 when a single operating system can feel extremely simple to a beginner, sufficiently powerful to an advanced user, and completely open to an expert without forcing any of them into a separate operating system.
+
+---
+
+F-004 — Self-Configuring Hardware & System
+
+Status
+
+FOUNDATIONAL — DECIDED
+
+Objective
+
+MyOS must be capable of adapting itself to the hardware and system environment on which it is installed.
+
+The user should not need to understand drivers, firmware, hardware identifiers, package dependencies, or configuration systems merely to make ordinary hardware work.
+
+Problem
+
+Every PC is different.
+
+MyOS cannot reasonably ship every possible:
+
+- driver;
+- firmware component;
+- hardware-specific configuration;
+- optional package;
+- device-specific dependency.
+
+At the same time, requiring the user to search the Internet for the correct driver contradicts the Layer 1 philosophy.
+
+Therefore MyOS needs an architecture capable of determining what the machine requires.
+
+Fundamental Principle
+
+«The user should not need to know what their computer needs. MyOS should know.»
+
+Required system behavior
+
+The system must eventually be capable of:
+
+1. Discovering hardware.
+2. Identifying hardware.
+3. Building a machine-readable hardware inventory.
+4. Determining available support.
+5. Determining missing or broken support.
+6. Resolving compatible drivers/firmware/components.
+7. Acquiring required components.
+8. Verifying their integrity and trust.
+9. Installing/configuring them.
+10. Activating them.
+11. Testing them.
+12. Detecting failure.
+13. Rolling back failed changes where possible.
+14. Explaining the result to the user.
+
+---
+
+Hardware discovery
+
+MyOS must inspect the machine and determine what hardware is present.
+
+Potential categories include:
+
+- CPU.
+- GPU.
+- RAM.
+- Storage.
+- Storage controllers.
+- Network adapters.
+- Wi-Fi.
+- Bluetooth.
+- Audio.
+- USB controllers.
+- Displays.
+- Input devices.
+- Cameras.
+- Sensors.
+- Other peripherals.
+
+The exact hardware discovery architecture is TBD.
+
+Machine-readable hardware inventory
+
+Hardware information should be represented in a structured form that can be consumed by:
+
+- kernel components;
+- driver management;
+- system configuration;
+- diagnostics;
+- UI;
+- package management;
+- AI services where authorized.
+
+The inventory should not depend on parsing human-readable error messages.
+
+F-005 — Compatibility Without Surrender
+
+Status: FOUNDATIONAL — DECIDED
+
+Evrosion should make it possible to run existing software and interact with existing hardware and standards wherever technically feasible.
+
+- Compatibility is a feature.
+- Evrosion should support established standards and protocols where useful.
+- Evrosion should not compromise its fundamental architecture merely to preserve compatibility.
+- Compatibility layers should remain layers rather than dictating the design of the entire operating system.
+- When compatibility conflicts with Evrosion's core principles, the conflict should be explicit and engineered around where possible.
+- The goal is to give users access to existing software and technology without making Evrosion dependent on legacy design.
+
+---
+
+F-006 — Graceful Degradation
+
+Status: FOUNDATIONAL — DECIDED
+
+When something fails, Evrosion should lose as little functionality as reasonably possible.
+
+- A component failure should not unnecessarily become a system-wide failure.
+- Services should be isolated where practical.
+- The system should continue operating in a reduced but useful state when full functionality is unavailable.
+- Example: if a GPU driver fails, Evrosion should attempt to fall back to basic rendering rather than becoming unusable.
+- Example: if networking disappears, offline functionality should continue.
+- Example: if one service crashes, unrelated services should remain operational.
+- Failure should produce a clear explanation, containment, recovery attempt, and available next steps.
+
+---
+
+F-007 — Observable System
+
+Status: FOUNDATIONAL — DECIDED
+
+Evrosion must always be able to explain what the machine is doing and why, at an appropriate level of detail.
+
+- The system should maintain coherent, structured information about its current state.
+- Users should be able to understand what the computer is doing without searching through unrelated logs or technical documentation.
+- The system should be able to answer questions such as:
+  - What is happening?
+  - Why is it happening?
+  - What component is responsible?
+  - What changed?
+  - Is anything wrong?
+  - What will happen next?
+- Layer 1 provides simple explanations.
+- Layer 2 provides detailed system information.
+- Layer 3 provides raw technical state and diagnostics.
+- Observability must be built into the architecture rather than added as an afterthought.
+
+---
+
+F-008 — Accessibility Is Fundamental
+
+Status: FOUNDATIONAL — DECIDED
+
+Accessibility is a fundamental property of Evrosion, not an optional feature added later.
+
+- Evrosion should accommodate different ways of seeing, hearing, moving, reading, communicating, and interacting with the computer.
+- Accessibility should be integrated into the core interaction model.
+- Users should be able to use the same underlying system through different interaction methods.
+- Accessibility features should not create a separate or artificially limited version of the operating system.
+- Accessibility should coexist with full capability and user ownership.
+- The system should allow accessibility preferences to apply consistently across the OS and applications wherever technically feasible.
+
+---
+
+F-009 — Modular by Design
+
+Status: FOUNDATIONAL — DECIDED
+
+Evrosion should be constructed from clearly separated and replaceable components wherever practical.
+
+- Components should have clear responsibilities and boundaries.
+- A failed component should be replaceable or recoverable where possible.
+- Components should be independently understandable and diagnosable.
+- Updates should be independently deployable where safe and appropriate.
+- Experimental or optional components should not unnecessarily threaten the stability of the entire system.
+- The architecture should be capable of evolving without requiring the entire operating system to be rebuilt.
+- Modularity should support debugging, development, recovery, customization, and long-term evolution.
+
+---
+
+F-010 — No Irreplaceable Magic
+
+Status: FOUNDATIONAL — DECIDED
+
+Evrosion must not depend on a single mysterious component, service, AI system, company, or cloud backend for fundamental operation when a local or independent alternative is technically possible.
+
+- If the AI disappears, Evrosion still works.
+- If the Internet disappears, Evrosion still works.
+- If a cloud provider disappears, Evrosion should not become unusable.
+- If a vendor disappears, the user's computer should not become a brick.
+- Critical system functions should have recovery or replacement paths wherever reasonably possible.
+- Important system behavior should be understandable and inspectable rather than dependent on unexplained magic.
+- External services may enhance Evrosion but should not secretly become the foundation of ownership.
+
+---
+
+F-011 — Local First
+
+Status: FOUNDATIONAL — DECIDED
+
+Evrosion should prefer local computation, local state, and local control whenever practical.
+
+- The computer should perform work locally when it can do so effectively.
+- Cloud services should be optional rather than mandatory for core functionality.
+- User data should remain local by default unless the user deliberately chooses otherwise.
+- Local operation should remain useful even when disconnected from external services.
+- Cloud resources may provide additional capability, synchronization, backup, collaboration, or computation when explicitly enabled.
+- The system should clearly distinguish local operations from operations requiring external services.
+
+---
+
+F-012 — Evolvability
+
+Status: FOUNDATIONAL — DECIDED
+
+Evrosion must be designed to evolve without becoming obsolete or requiring destructive redesigns.
+
+- The architecture should anticipate future hardware, software, standards, and interaction models.
+- New capabilities should be incorporable without unnecessarily breaking existing functionality.
+- System interfaces should be designed with controlled evolution in mind.
+- Deprecated components should have migration paths where practical.
+- Users should not be forced into unnecessary destructive upgrades simply because the OS has evolved.
+- Evrosion should be capable of improving continuously while preserving the user's existing environment and ownership.
+
+---
+
+F-013 — Human-Readable by Default, Machine-Readable Underneath
+
+Status: FOUNDATIONAL — DECIDED
+
+Evrosion should present information in a form humans can understand while maintaining precise structured information underneath.
+
+- Human-facing explanations should be clear and meaningful.
+- Machine-readable state should remain precise, structured, and queryable.
+- The human interface should be derived from actual system state rather than disconnected summaries.
+- Diagnostics, automation, developer tools, recovery systems, and authorized AI should be able to consume the same underlying structured state.
+- The system should not require humans to understand machine representations merely to understand their computer.
+- Advanced users should be able to access the underlying technical representation when they choose.
+
+---
+
+F-014 — No Artificial Walls
+
+Status: FOUNDATIONAL — DECIDED
+
+Evrosion should not impose unnecessary artificial limitations on what the owner can do with their own computer.
+
+- Hardware capability should not be unnecessarily restricted by software.
+- Advanced functionality should not be hidden permanently simply because it is complex.
+- Customization should not be artificially limited when the underlying system can support it safely.
+- Users should be able to escalate their level of responsibility when appropriate.
+- Security protections should defend the owner against unauthorized parties, malware, accidents, and unintended actions — not permanently restrict the owner from their own machine.
+- Where a limitation genuinely exists for technical, legal, safety, or hardware reasons, Evrosion should explain the limitation rather than pretending the capability does not exist.
+- Hide complexity. Never remove capability merely because it is difficult.

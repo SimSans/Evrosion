@@ -1,0 +1,14 @@
+Evrosion is a multi-license project.
+
+First-party Core software: GPL-3.0-only.
+Designated SDK/interface software: Apache-2.0.
+Eligible first-party documentation prose: CC-BY-4.0.
+Third-party material: its original recorded terms, unchanged.
+
+LICENSE_POLICY.md explains the fixed component boundaries. REUSE.toml records
+explicit first-party file assignments. Standard unmodified license texts are in
+LICENSES/GPL-3.0-only.txt, LICENSES/Apache-2.0.txt and LICENSES/CC-BY-4.0.txt.
+Upstream notices and terms are preserved under LICENSES/third-party/ and in the
+dependency inventory. These first-party assignments do not relicense that material.
+
+Source licensing does not grant trademark or certification rights; see LEGAL.md.

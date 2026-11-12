@@ -1,0 +1,219 @@
+Evrosion — Business & Ecosystem Strategy
+
+
+Status: STRATEGIC DIRECTION — DECIDED
+Exact legal/licensing implementation: TBD
+
+B-001 — Open Core, No Coercive Monetization
+
+Evrosion's core operating system should remain open and usable without forcing users into subscriptions, advertisements, telemetry, accounts, cloud services, or artificial feature restrictions.
+
+Evrosion should never make the user's computer worse simply because they are not paying.
+
+Principle:
+
+«Users pay for optional value, services, early access, or commercial rights — not for basic ownership or security of their computer.»
+
+---
+
+B-002 — Lifetime Security Updates
+
+Security updates for supported Evrosion installations should remain free for life.
+
+Security should never become a subscription hostage mechanism.
+
+Free security updates include, where applicable:
+
+- Security patches
+- Critical vulnerability fixes
+- Security-related bug fixes
+- Essential compatibility/security maintenance
+- Emergency security responses
+
+Optional paid services must never be required simply to keep a supported computer secure.
+
+---
+
+B-003 — Commercial Licensing
+
+Evrosion should support commercial licensing for organizations that want to build businesses around the platform.
+
+Potential licensing arrangements may allow companies to:
+
+- Build commercial products based on Evrosion
+- Make proprietary modifications where permitted by the applicable license
+- Keep certain modifications/code private
+- Receive commercial support
+- Obtain deployment or enterprise tooling
+- Receive additional contractual services
+
+The exact open-source and commercial licensing structure will be designed later with appropriate legal advice.
+
+Important: The licensing model must support Evrosion's long-term survival without undermining its ownership principles.
+
+---
+
+B-004 — Optional Preview/Beta Subscriptions
+
+Evrosion may offer optional paid subscriptions for users and organizations who want access to development builds and early functionality.
+
+Potential subscription benefits:
+
+- Beta patches
+- Experimental features
+- Preview releases
+- Development channels
+- Early access to new functionality
+- Developer previews
+- Additional testing/debugging tools where appropriate
+
+These subscriptions are optional.
+
+Stable users should not need a subscription to receive normal security and supported-system maintenance.
+
+---
+
+B-005 — Evrosion Marketplace
+
+Evrosion should have its own optional software marketplace.
+
+The marketplace should be designed to be attractive to developers through fair economics rather than forced platform lock-in.
+
+Proposed marketplace principles
+
+- Target platform fee: 10%
+- Developer receives approximately 90% before applicable payment processing, taxes, refunds, and other unavoidable costs
+- Developers may distribute their software outside the Evrosion Marketplace
+- Developers should not be forced to use the Evrosion Marketplace
+- Developers should be able to sell directly through their own websites where technically and legally feasible
+- Open-source software is welcome
+- Free software is welcome
+- Paid software is welcome
+- Subscriptions are welcome
+- Donations/tips may be supported
+- Automatic updates should be supported
+- Cryptographic signing should be supported
+- Software provenance should be visible
+- Permission requirements should be transparent
+- Security/malware checks should protect users without becoming unnecessary censorship
+- Marketplace ranking/discovery should be transparent and designed to avoid manipulative practices
+
+Core principle
+
+«Developers should choose Evrosion because it treats them well, not because Evrosion prevents them from leaving.»
+
+The 10% figure is currently a commercial target, not an immutable technical/foundational rule. Final pricing must account for payment processing, fraud, refunds, taxes/VAT, hosting, bandwidth, infrastructure, support, and applicable regulations.
+
+---
+
+B-006 — OEM & Preinstallation Strategy
+
+Evrosion should be inexpensive and attractive for hardware manufacturers to preinstall.
+
+Potential OEM value:
+
+- Low licensing cost
+- Easy hardware certification
+- Automatic hardware configuration
+- Strong recovery system
+- Excellent out-of-box experience
+- Long-term support
+- No mandatory advertising model
+- No requirement to compromise user ownership
+
+OEM licensing should provide revenue without turning the consumer experience into an advertising platform.
+
+---
+
+B-007 — Optional Cloud & AI Services
+
+Cloud and AI can provide additional revenue without becoming fundamental dependencies.
+
+Potential services include:
+
+- Hosted AI
+- AI credits
+- Cloud backup
+- Synchronization
+- Remote services
+- Enterprise infrastructure
+- Collaboration services
+- Additional compute
+
+These services should remain optional.
+
+Evrosion itself must remain useful without them.
+
+---
+
+B-008 — Enterprise & Professional Services
+
+Additional revenue may come from organizations that need professional infrastructure and support.
+
+Potential offerings:
+
+- Enterprise support
+- Deployment tooling
+- Fleet management
+- Commercial support contracts
+- Professional diagnostics
+- Certification programs
+- Custom integrations
+- Hardware/vendor partnerships
+- Long-term enterprise maintenance
+- Specialized development services
+
+---
+
+B-009 — Ecosystem Philosophy
+
+Evrosion should not depend on users being trapped inside its ecosystem.
+
+A healthy ecosystem should emerge because:
+
+1. The OS is excellent.
+2. Developers are treated fairly.
+3. Users retain ownership and freedom.
+4. Distribution is easy.
+5. Security is strong.
+6. The platform provides genuine value.
+7. Commercial services provide useful advantages rather than artificial restrictions.
+
+Guiding principle
+
+«Make people want to use Evrosion. Never make them unable to leave it.»
+
+---
+
+B-010 — Business Model Summary
+
+Evrosion's potential revenue sources:
+
+Revenue source| Optional for ordinary users?| Core principle
+Core OS| Yes / free| Open and unrestricted
+Security updates| Free| Never paywall security
+Commercial licenses| Yes| Businesses can build on Evrosion
+Beta/preview subscriptions| Yes| Pay for early access
+Marketplace| Yes| ~10% target platform fee
+OEM licensing| N/A to consumers| Cheap, scalable preinstallation
+Hosted AI| Yes| Optional compute/service
+Cloud services| Yes| Optional convenience
+Enterprise support| Yes| Professional value
+Deployment/tooling| Yes| Commercial infrastructure
+Certifications/partnerships| Yes| Ecosystem revenue
+
+Overall Commercial Principle
+
+«Evrosion should make money by creating value, not by taking control away from the person who owns the computer.»
+
+The business model must remain compatible with:
+
+- F-001 Human–Computer Relationship
+- F-002 Absolute Ownership
+- F-003 Progressive Responsibility
+- F-005 Compatibility Without Surrender
+- F-010 No Irreplaceable Magic
+- F-011 Local First
+- F-014 No Artificial Walls
+
+and the Universal Rules U-000 through U-018.

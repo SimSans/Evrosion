@@ -1,0 +1,564 @@
+E-008 — IPC & System Communication
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use:
+
+«Capability-Secured Multi-Path IPC»
+
+Evrosion will not force every kind of communication through one universal mechanism.
+
+Different workloads need different communication paths.
+
+Core Rule
+
+«Move commands through IPC. Move authority through capabilities. Move bulk data through shared memory.»
+
+---
+
+E-008.1 — Three Primary IPC Paths
+
+Evrosion will use three main communication paths.
+
+1. Fast Synchronous RPC
+
+Used for small control messages such as:
+
+- Open resource
+- Query state
+- Request permission
+- Change setting
+- Start operation
+- Obtain capability
+- Small request/reply calls
+
+The fast path should aim for:
+
+- Very small messages
+- Register-sized transfer where practical
+- No unnecessary allocation
+- No intermediate kernel buffering where avoidable
+- Direct caller-to-server handoff where possible
+- Minimal scheduler overhead
+
+---
+
+2. Asynchronous Shared Rings
+
+Used for queued/high-throughput workloads such as:
+
+- Networking
+- Storage
+- Graphics commands
+- Audio buffers
+- Driver requests
+- Event streams
+
+Conceptually:
+
+Producer
+   ↓
+Shared bounded ring
+   ↓
+Consumer
+   ↓
+Completion ring
+
+Notifications should remain lightweight.
+
+---
+
+E-008.2 — Explicit Backpressure
+
+Async queues must be bounded.
+
+A component should not be able to endlessly allocate kernel or system memory by generating messages faster than another component can process them.
+
+If a queue becomes full:
+
+- Wait
+- Yield
+- Throttle
+- Return a controlled error
+
+depending on protocol semantics.
+
+Principle
+
+«Backpressure is part of the protocol, not an emergency response.»
+
+---
+
+E-008.3 — Memory Objects for Bulk Data
+
+Large payloads should not normally be copied through ordinary IPC.
+
+Examples:
+
+- Video frames
+- File blocks
+- Network buffers
+- Audio buffers
+- GPU resources
+- Large shared datasets
+
+Instead, Evrosion should transfer a capability referencing an E-005 Memory Object.
+
+Example:
+
+Application
+    │
+    │ IPC: capability to Memory Object
+    ↓
+Service
+    │
+    └── maps the same memory
+
+This enables zero-copy or near-zero-copy communication where hardware and security permit.
+
+---
+
+E-008.4 — Capability Transfer
+
+IPC should support transferring authority between components.
+
+Example:
+
+A process owns:
+
+Memory Object
+READ + WRITE + MAP
+
+It may give another service only:
+
+Memory Object
+READ
+
+The receiver cannot recover rights that were not granted.
+
+This is known as rights attenuation.
+
+Principle
+
+«IPC transfers explicit authority, not ambient trust.»
+
+---
+
+E-008.5 — Work Context
+
+IPC should integrate with E-004 scheduling and accounting.
+
+A request may carry or reference a bounded Work Context containing information such as:
+
+- Originating Job
+- Accounting identity
+- CPU/scheduling budget
+- Priority
+- Deadline
+- Cancellation state
+
+Example:
+
+Browser
+   ↓
+Filesystem
+   ↓
+NVMe service
+
+Evrosion should be able to understand that this work ultimately happened because the Browser Job requested it.
+
+---
+
+E-008.6 — Bounded Scheduling Donation
+
+For synchronous service work, a client may donate a controlled amount of scheduling budget.
+
+Example:
+
+«This service may spend up to 500 μs of my current CPU budget processing this request.»
+
+The service must not automatically gain unrestricted use of the client's entire scheduling allocation.
+
+This enables efficient service execution while preserving accounting and control.
+
+---
+
+E-008.7 — Causal Resource Accounting
+
+Evrosion should attribute service work back to the Job responsible for causing it where practical.
+
+This may eventually allow reporting such as:
+
+Browser — 14% CPU
+
+9%  Browser execution
+3%  Networking performed for Browser
+2%  Storage work performed for Browser
+
+This directly supports E-004 and Evrosion's Observable System principle.
+
+---
+
+E-008.8 — Service Discovery Outside the Kernel
+
+The kernel should not understand human-readable service identities such as:
+
+evrosion.audio
+evrosion.network
+evrosion.storage
+
+Instead, E-007's Service Manager resolves service identities into capabilities/endpoints.
+
+Example:
+
+"evrosion.audio"
+       ↓
+Service Manager
+       ↓
+IPC endpoint capability
+
+After resolution, components communicate directly.
+
+This keeps service policy out of the kernel.
+
+---
+
+E-008.9 — Evrosion Interface Definition Language
+
+Evrosion should eventually provide a language-neutral interface-definition system.
+
+Conceptually:
+
+service Audio {
+    SetVolume(device, volume)
+    GetDevices() -> devices
+}
+
+Tooling can generate bindings for languages such as:
+
+- Rust
+- C
+- C++
+- Zig
+- Future supported languages
+
+Generated code may provide:
+
+- Validation
+- Encoding/decoding
+- Capability handling
+- Version compatibility
+- Fast RPC stubs
+- Async bindings
+- Error handling
+
+---
+
+E-008.10 — Efficient Wire Format
+
+Evrosion's IPC wire format should prioritize:
+
+- Minimal copying
+- Minimal allocation
+- Efficient validation
+- Single-pass processing where practical
+- In-place processing where safe
+- Predictable layouts
+- Language neutrality
+- Version evolution
+
+The protocol system must not become a giant serialization tax.
+
+---
+
+E-008.11 — Transport Independence
+
+Service interfaces should describe the logical protocol, not hardcode one communication mechanism.
+
+The same protocol may potentially use:
+
+Direct function call
+        ↓
+Fast synchronous IPC
+        ↓
+Async shared ring
+        ↓
+Other future transport
+
+depending on component placement and performance requirements.
+
+---
+
+E-008.12 — Co-Located Components
+
+If two trusted components are intentionally placed inside the same protection domain, their interface should not need to be rewritten.
+
+Example:
+
+Normally:
+
+Filesystem
+    ↓ IPC
+Storage
+
+After deliberate co-location:
+
+Filesystem
+    ↓ direct call
+Storage
+
+The logical protocol remains the same.
+
+Only the transport changes.
+
+This supports E-001's adaptive isolation architecture.
+
+---
+
+E-008.13 — Deadlines and Timeouts
+
+IPC operations should support deadlines/timeouts where appropriate.
+
+This prevents requests from remaining stuck forever if a service:
+
+- Crashes
+- Deadlocks
+- Stops responding
+- Loses hardware
+- Experiences another failure
+
+Different protocols may use different timeout policies.
+
+---
+
+E-008.14 — Cancellation
+
+Long-running operations should support cancellation where technically possible.
+
+Example:
+
+Application closes
+      ↓
+Cancel request
+      ↓
+Filesystem cancels operation
+      ↓
+Storage cancels remaining work
+
+Cancellation should propagate through request chains where supported.
+
+This prevents unnecessary work from continuing after nobody needs it.
+
+---
+
+E-008.15 — Endpoint Failure Detection
+
+IPC endpoints should expose failure clearly.
+
+If a service dies:
+
+Endpoint closes
+      ↓
+Client detects failure
+      ↓
+Service Manager may restart provider
+      ↓
+Client reconnects/retries according to protocol
+
+Failure should never be silently hidden.
+
+---
+
+E-008.16 — Retry Semantics
+
+Evrosion must not automatically retry every failed request.
+
+Some operations are safe to repeat.
+
+Others are not.
+
+Protocols should therefore be able to mark operations as:
+
+- Idempotent / retry-safe
+- Non-retryable
+- Transactional
+- Retryable with explicit request identity
+
+Example:
+
+Automatically retrying:
+
+«Read file block»
+
+may be safe.
+
+Automatically retrying:
+
+«Transfer money»
+
+may not be.
+
+Recovery must respect protocol semantics.
+
+---
+
+E-008.17 — Local vs Remote Communication
+
+Evrosion may eventually reuse the same interface definitions for remote communication.
+
+However, remote communication must not pretend to have the same semantics as local IPC.
+
+Remote systems introduce:
+
+- Network latency
+- Packet loss
+- Authentication
+- Reconnection
+- Network partitions
+- Different trust boundaries
+
+Therefore:
+
+«Same interface language does not mean identical transport semantics.»
+
+---
+
+E-008.18 — Security
+
+Every IPC operation should operate through explicit authority.
+
+The kernel/core should enforce:
+
+- Endpoint access
+- Capability ownership
+- Capability transfer
+- Rights attenuation
+- Memory mapping authority
+- Isolation boundaries
+
+Services should not receive authority merely because they know another service's name.
+
+---
+
+E-008.19 — Observability
+
+Evrosion should be able to inspect IPC relationships.
+
+Possible information includes:
+
+- Which Jobs communicate
+- Which services provide which endpoints
+- Message rates
+- Queue saturation
+- Latency
+- Timeouts
+- Failures
+- Capability transfers
+- Scheduling-budget donation
+- Resource attribution
+
+Layer 3 should eventually expose deep IPC inspection.
+
+---
+
+E-008.20 — Kernel Responsibility
+
+The kernel should provide only the fundamental mechanisms needed for IPC.
+
+Possible kernel responsibilities include:
+
+- Endpoint primitives
+- Fast message transfer
+- Thread handoff
+- Capability transfer
+- Notifications
+- Shared-memory authorization
+- Failure signaling
+- Scheduling-context handling
+
+Higher-level concepts such as:
+
+- Service names
+- Protocol discovery
+- Application semantics
+- Complex serialization
+- Retry policy
+
+belong outside the kernel.
+
+---
+
+E-008 Final Architecture
+
+                EVROSION IPC
+
+       ┌────────────┼────────────┐
+       │            │            │
+   FAST RPC     ASYNC RINGS   MEMORY OBJECTS
+       │            │            │
+Small control    Queued       Bulk data
+   messages       work         zero-copy
+
+Across all three paths:
+
+Capabilities
+Work Context
+Job attribution
+Deadlines
+Cancellation
+Versioned protocols
+Failure detection
+Observability
+
+---
+
+E-008 Summary
+
+Evrosion IPC will provide:
+
+«Fast synchronous control RPC»
+
+«Bounded asynchronous shared queues»
+
+«Zero-copy Memory Object transfer»
+
+«Capability transfer with reduced rights»
+
+«Scheduling-context/work-context propagation»
+
+«Causal resource accounting»
+
+«Backpressure»
+
+«Deadlines and cancellation»
+
+«Failure detection»
+
+«Explicit retry semantics»
+
+«Language-neutral interface definitions»
+
+«Transport independence»
+
+«Direct-call optimization for co-located components»
+
+---
+
+Governing Principles
+
+«Move commands through IPC.»
+
+«Move authority through capabilities.»
+
+«Move bulk data through shared memory.»
+
+«Do not copy data that can safely be shared.»
+
+«Do not queue work without bounds.»
+
+«Do not hide failures behind automatic retries.»
+
+«The logical interface should remain stable even when the underlying transport changes.»
+
+«IPC must be fast enough that isolation remains a practical advantage rather than a performance punishment.»

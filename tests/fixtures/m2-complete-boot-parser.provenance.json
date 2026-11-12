@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "kind": "historical-serial-parser-fixture",
+  "build_id": "87d2c58af93152104b603526775aac0b4849269b5ec999cde55de73b5ddbf486",
+  "serial_sha256": "4b259c218e0906aa31787aa173567989e7890bfa4b249d409aac682b4fde6961",
+  "serial_bytes": 7117,
+  "source_record_sha256": "261823b6891b215ee0f26c8ebc0019d1d9a2fcb9e40ebadda2da3542c5c5da19",
+  "scope": "Exact extracted historical serial bytes used only to test parser ordering and refusals. This fixture is not execution evidence for the public source snapshot."
+}

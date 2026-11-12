@@ -1,0 +1,28 @@
+# Generated outputs and local runtime state.
+/target/
+/build/
+**/build/
+/.ev/
+__pycache__/
+*.py[cod]
+
+# Local editor and development coordination files.
+**/.agents/
+**/.codex/
+**/.claude/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+.vscode/
+.idea/
+*~
+*.swp
+
+# Local credentials and environment settings.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Both Cargo lockfiles are intentionally tracked.

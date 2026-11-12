@@ -1,0 +1,26 @@
+[package]
+name = "ev-ipc-bench"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+[features]
+executable = []
+client = ["executable"]
+server = ["executable"]
+[[bin]]
+name = "ev-ipc-bench"
+path = "src/main.rs"
+required-features = ["executable"]
+test = false
+bench = false
+[dependencies]
+ev-userspace-contract = { path = "../../libs/userspace-contract" }
+ev-userspace-runtime = { path = "../../libs/userspace-runtime" }
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_unsafe = "deny"
+
+[lints.clippy]
+all = "warn"
+undocumented_unsafe_blocks = "deny"

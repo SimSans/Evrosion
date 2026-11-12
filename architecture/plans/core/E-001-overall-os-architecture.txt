@@ -1,0 +1,718 @@
+E-001 — Overall OS Architecture
+
+Status: DECIDED — COMPLETE
+
+Architecture
+
+Evrosion will use a:
+
+«Custom capability-based adaptive microkernel/component architecture.»
+
+Evrosion will not be a traditional monolithic kernel, a rigid textbook microkernel, or a conventional hybrid kernel.
+
+It will use a deliberately small privileged core combined with isolated user-space system components, capability-based authority, restartable services, explicit trust boundaries, and adaptive performance mechanisms.
+
+The architecture may selectively borrow proven concepts from systems such as seL4, QNX, MINIX 3, Fuchsia/Zircon, Genode, Linux, Windows NT/XNU, Barrelfish, and other operating-system research, but Evrosion will not follow any one architecture dogmatically.
+
+---
+
+E-001.1 — Small Privileged Core
+
+The most privileged part of Evrosion should remain deliberately small.
+
+Only functionality that genuinely requires kernel privilege, extremely low latency, or trusted enforcement should live in the core.
+
+Policy-rich functionality should remain outside the kernel wherever practical.
+
+The exact kernel boundary will be decided in E-002 — Kernel Architecture.
+
+Principle
+
+«Code does not belong in the kernel merely because traditional operating systems put it there.»
+
+Every privileged component must justify why it cannot safely and efficiently exist outside the kernel.
+
+---
+
+E-001.2 — Component-Based Operating System
+
+Above the privileged core, Evrosion will be constructed from explicitly separated system components.
+
+Potential architectural domains include:
+
+- Drivers
+- Storage
+- Filesystems
+- Networking
+- Graphics
+- Audio/media
+- Security
+- Hardware management
+- System management
+- Updates/recovery
+- Compatibility systems
+- Applications
+- User interface
+
+Exact domain boundaries remain subjects for later engineering decisions.
+
+Components should communicate through defined contracts rather than undocumented internal dependencies.
+
+---
+
+E-001.3 — Capability-Based Authority
+
+Evrosion will use capability-oriented authority as a fundamental security mechanism.
+
+A component should receive only the resources and operations it actually needs.
+
+Examples may include authority over:
+
+- Specific devices
+- Specific memory regions
+- IPC endpoints
+- Files or storage objects
+- Network resources
+- Processes
+- System services
+- Hardware interfaces
+
+Native components should not automatically inherit broad ambient authority merely because they are considered "system software."
+
+Principle
+
+«Possessing a capability grants authority. Absence of that capability means absence of authority.»
+
+The detailed capability model will be designed later.
+
+---
+
+E-001.4 — Adaptive Isolation
+
+Evrosion will not force every component into exactly the same isolation model.
+
+Instead, the system will support different isolation classes.
+
+This allows Evrosion to balance:
+
+- Reliability
+- Security
+- Performance
+- Hardware requirements
+- Latency
+- Compatibility
+
+An unknown third-party driver may deserve strong process and hardware isolation.
+
+Several tightly coupled, trusted components may deliberately share a protection domain when measurements show that doing so provides an important performance advantage.
+
+The choice must be explicit.
+
+Principle
+
+«Isolation should be as strong as practical, but never blindly applied without measuring its real cost.»
+
+---
+
+E-001.5 — Isolation Boundaries Are Security Boundaries
+
+Components sharing the same address space share part of the same security and failure boundary.
+
+Therefore, co-location must never be treated as a free optimization.
+
+Whenever components are grouped together, Evrosion must understand that a compromised component may potentially compromise other components inside that same protection domain.
+
+Co-location should therefore require a deliberate architectural reason.
+
+---
+
+E-001.6 — Control Plane and Data Plane Separation
+
+Evrosion should avoid forcing enormous quantities of high-bandwidth data through expensive serialized IPC unnecessarily.
+
+Where appropriate, components may use:
+
+Control plane
+
+Structured IPC for:
+
+- Commands
+- Permissions
+- Negotiation
+- Resource allocation
+- Lifecycle control
+- Errors
+- State changes
+
+Data plane
+
+High-performance mechanisms such as:
+
+- Shared memory
+- Ring buffers
+- Zero-copy transfers
+- Batched operations
+- Memory mappings
+- Hardware queues
+- Carefully designed direct paths
+
+Authority and setup remain controlled even when the data itself follows a faster path.
+
+Principle
+
+«Securely control who may communicate, then make the permitted communication fast.»
+
+---
+
+E-001.7 — IPC Is Fundamental Infrastructure
+
+Because Evrosion will contain many isolated components, IPC performance is an architectural priority rather than a secondary utility.
+
+IPC must eventually support:
+
+- Very low-latency messages
+- Synchronous request/reply
+- Asynchronous events
+- Capability transfer
+- Shared-memory negotiation
+- Bulk-data paths
+- Cancellation
+- Timeouts
+- Failure detection
+- Versioned protocols
+
+The exact IPC implementation belongs to E-008.
+
+---
+
+E-001.8 — Drivers Outside the Kernel by Default
+
+Evrosion's default architectural preference is for device drivers to operate outside the core kernel.
+
+This improves:
+
+- Fault containment
+- Restartability
+- Security boundaries
+- Debugging
+- Driver replacement
+- Update flexibility
+
+However, this is a preference rather than an absolute rule.
+
+A driver or small hardware-control mechanism may receive greater privilege if there is a demonstrated technical requirement.
+
+Such exceptions must be explicit and justified.
+
+---
+
+E-001.9 — Driver Domains
+
+Drivers may be grouped into dedicated driver domains or driver hosts.
+
+This allows Evrosion to choose between:
+
+Strong isolation
+
+Individual or small groups of drivers receive separate protection domains.
+
+Best suited for:
+
+- Untrusted drivers
+- Third-party drivers
+- Failure-prone drivers
+- Security-sensitive hardware
+
+Shared high-performance domains
+
+Closely related trusted drivers may intentionally share a process/domain when IPC overhead would otherwise significantly damage performance.
+
+This provides an adjustable balance rather than an all-or-nothing architecture.
+
+---
+
+E-001.10 — DMA and IOMMU Isolation
+
+Process isolation alone is not sufficient for devices capable of DMA.
+
+A device capable of arbitrary DMA may potentially modify memory outside its driver's normal address space.
+
+Therefore Evrosion should use:
+
+- IOMMU on supported x86 systems
+- SMMU or equivalent mechanisms on supported ARM systems
+- Explicit device-memory mappings
+- Restricted DMA buffers
+- Controlled device ownership
+
+where hardware permits.
+
+Systems without adequate DMA isolation must still be supported where practical, but Evrosion must represent the reduced isolation honestly.
+
+For example, the system may distinguish between:
+
+- Fully hardware-isolated driver
+- Address-space-isolated but DMA-trusted driver
+- Trusted shared driver domain
+- Privileged/core hardware component
+
+Principle
+
+«Never claim an isolation guarantee the hardware cannot actually enforce.»
+
+---
+
+E-001.11 — Restartability as an Architectural Property
+
+Evrosion should assume components will eventually fail.
+
+Where practical, system components should be restartable independently.
+
+Examples:
+
+- Wi-Fi driver crash → restart Wi-Fi stack/driver
+- Audio failure → restart audio service
+- Bluetooth failure → restart Bluetooth subsystem
+- Desktop crash → restart desktop
+- Network service failure → restore networking
+- Driver update failure → roll back affected driver
+
+Restartability must be considered when designing component interfaces and state ownership.
+
+It should not be bolted onto the system afterward.
+
+---
+
+E-001.12 — Graceful Degradation
+
+Failure of one subsystem should remove only the functionality that depends upon it whenever technically possible.
+
+Examples:
+
+- GPU acceleration fails → use basic rendering
+- Wi-Fi fails → wired networking continues
+- Networking fails → offline applications continue
+- Audio stack fails → rest of system remains operational
+- Optional AI service disappears → normal OS continues
+- Desktop environment fails → recovery environment remains available
+
+This directly implements F-006 — Graceful Degradation.
+
+---
+
+E-001.13 — Component Supervision
+
+Evrosion should have system-level mechanisms capable of supervising components.
+
+The architecture should eventually support knowledge of:
+
+- Component state
+- Dependencies
+- Health
+- Restart history
+- Failure reason
+- Resource consumption
+- Permissions/capabilities
+- Hardware ownership
+- Version
+- Update state
+
+The exact supervisor/service-manager architecture belongs to later engineering decisions.
+
+---
+
+E-001.14 — Structured System Topology
+
+Evrosion should maintain a machine-readable representation of how the running OS is assembled.
+
+The system should understand relationships such as:
+
+Application
+    ↓
+Graphics Service
+    ↓
+GPU Domain
+    ↓
+GPU Device
+
+Browser
+    ↓
+Network Service
+    ↓
+Wi-Fi Driver
+    ↓
+Wi-Fi Device
+
+This structure should support:
+
+- Diagnostics
+- Recovery
+- Security inspection
+- Dependency management
+- Updates
+- Layer-specific explanations
+- Developer tooling
+- Authorized automation
+- Authorized AI
+
+This implements F-007 and F-013 at the architectural level.
+
+---
+
+E-001.15 — Compatibility Domains
+
+Compatibility must not dictate Evrosion's native architecture.
+
+Instead, legacy compatibility should be implemented through explicit compatibility layers/domains where practical.
+
+These may eventually provide support for:
+
+- POSIX
+- Linux APIs
+- Linux binaries
+- Linux drivers
+- Windows software
+- Existing graphics APIs
+- Existing filesystems
+- Existing development environments
+
+Possible implementation techniques may include:
+
+- ABI shims
+- Translation layers
+- Runtime environments
+- Driver containers
+- Virtual machines
+- Compatibility services
+
+Exact compatibility decisions belong to E-022.
+
+Principle
+
+«Compatibility is allowed to adapt to Evrosion. Evrosion should not be forced to become the architecture it is replacing.»
+
+---
+
+E-001.16 — Native Architecture First
+
+Evrosion's native APIs and services should be designed around Evrosion's own requirements rather than simply copying UNIX, Windows, or another existing operating system.
+
+Compatibility APIs may present familiar abstractions externally while translating them into native Evrosion mechanisms internally.
+
+This permits compatibility without surrendering the architecture.
+
+---
+
+E-001.17 — Absolute Access and Capability Security
+
+Capability-based security must not violate F-002 — Absolute Ownership.
+
+Absolute Access should not mean that every program suddenly acquires unrestricted machine authority.
+
+Instead, the machine owner ultimately controls the authority system itself.
+
+In Absolute Access, the owner may deliberately:
+
+- Grant broad capabilities
+- Override normal policy
+- Replace system components
+- Install low-level drivers
+- Modify protected system state
+- Change boot configuration
+- Access normally protected hardware
+- Disable protections
+- Replace or modify core services
+
+after appropriate warnings.
+
+Principle
+
+«Capability security protects authority from unauthorized software. It must never permanently remove authority from the machine's owner.»
+
+---
+
+E-001.18 — No Permanent Ambient Root Requirement
+
+Evrosion should avoid designing the entire system around one permanently omnipotent userspace process.
+
+Instead, authority should be explicit and delegatable.
+
+Administrative tools may temporarily receive powerful capabilities when needed.
+
+Layer 3 / Absolute Access can deliberately grant enormous authority, but broad privilege should be an explicit state rather than the invisible default architecture.
+
+---
+
+E-001.19 — Recovery and Rollback
+
+Component architecture should make recovery granular where possible.
+
+Instead of:
+
+Something broke
+→ restore/reinstall entire operating system
+
+Evrosion should aim for:
+
+Component failed
+→ identify component
+→ isolate failure
+→ restart
+→ test
+→ fall back
+→ roll back component/configuration
+→ escalate only if necessary
+
+Full-system rollback still remains available when required.
+
+---
+
+E-001.20 — Performance Policy
+
+Evrosion will not sacrifice practical performance merely to satisfy architectural purity.
+
+Performance-sensitive boundaries should be benchmarked.
+
+Potential optimizations may include:
+
+- Fast IPC paths
+- Shared memory
+- Zero-copy communication
+- Batched operations
+- Co-located trusted services
+- Co-located driver stacks
+- Hardware queues
+- Kernel-supported fast mechanisms
+- Reduced boundary crossings
+- Control/data-plane separation
+
+However:
+
+«A component must not be moved into unrestricted kernel space simply because doing so is easier.»
+
+The first response to a performance problem should be to understand and optimize the architecture.
+
+---
+
+E-001.21 — Compatibility and Driver Reuse
+
+Evrosion should be architecturally capable of reusing existing driver ecosystems where feasible.
+
+Rewriting every driver required for modern computers would create an enormous barrier to hardware support.
+
+Therefore the architecture should leave room for methods such as:
+
+- Sandboxed foreign-driver environments
+- Linux driver compatibility domains
+- Driver translation layers
+- Virtualized driver environments
+- Native replacement drivers over time
+
+This does not decide which compatibility mechanisms Evrosion will use.
+
+It ensures the architecture does not prevent them.
+
+---
+
+E-001.22 — Weak and Old Hardware
+
+Evrosion's isolation model must degrade intelligently on machines lacking modern hardware protection.
+
+The OS should not arbitrarily refuse older computers merely because they lack features such as an IOMMU.
+
+Instead, Evrosion should:
+
+- Detect available isolation hardware
+- Use stronger mechanisms when present
+- Fall back when absent
+- Clearly represent the resulting trust level
+- Avoid pretending weaker isolation is equivalent to stronger isolation
+
+This supports Evrosion's goal of operating across a wide range of hardware.
+
+---
+
+E-001.23 — Multicore Architecture
+
+Evrosion should support modern multicore systems from the beginning.
+
+However, Evrosion will not initially adopt a full multikernel architecture in which each CPU core effectively runs an independent kernel and the entire OS is treated as a distributed system.
+
+Research such as Barrelfish demonstrates interesting approaches for heterogeneous and many-core systems, but this introduces substantial architectural complexity.
+
+Evrosion should remain free to borrow ideas from multikernel research later if future many-core or heterogeneous hardware makes them advantageous.
+
+---
+
+E-001.24 — Language Independence
+
+Rust is Evrosion's primary systems implementation language under E-013.
+
+However, E-001 requires architectural interfaces to remain language-neutral.
+
+System boundaries should be based on:
+
+- Defined ABIs
+- Defined protocols
+- Defined capability semantics
+- Defined data structures
+- Versioned contracts
+
+rather than Rust-specific implementation details.
+
+---
+
+E-001.25 — Architectural Classification
+
+Evrosion should not be described simply as:
+
+- Monolithic
+- Traditional microkernel
+- Conventional hybrid
+- Exokernel
+- Multikernel
+
+The most accurate description is:
+
+«A custom capability-based adaptive microkernel/component operating-system architecture.»
+
+Its distinguishing characteristics are:
+
+Small privileged core + capability security + isolated components + adaptive isolation + explicit high-performance paths + restartability + structured system state + compatibility domains.
+
+---
+
+E-001.26 — Why Not a Traditional Monolithic Kernel?
+
+A monolithic design provides excellent direct-call performance but places enormous amounts of functionality inside the highest-privilege failure domain.
+
+That conflicts with Evrosion's goals for:
+
+- Graceful degradation
+- Driver restart
+- Component replacement
+- Security isolation
+- Recovery
+- Modular evolution
+
+Evrosion therefore rejects monolithic architecture as its fundamental model.
+
+---
+
+E-001.27 — Why Not a Pure Textbook Microkernel?
+
+Microkernel principles align strongly with Evrosion, but rigidly placing every service in a separate protection domain can create:
+
+- Excessive IPC frequency
+- Repeated context switching
+- State duplication
+- Coordination complexity
+- Memory overhead
+- Performance problems in tightly coupled subsystems
+
+Evrosion therefore adopts microkernel principles without requiring identical isolation for every component.
+
+---
+
+E-001.28 — Why Not a Conventional Hybrid Kernel?
+
+Traditional hybrid kernels regain performance by placing substantial operating-system functionality back into privileged kernel space.
+
+This reduces some microkernel communication overhead but also recreates a large trusted failure domain.
+
+Evrosion instead prefers to optimize communication and selectively co-locate trusted user-space components before expanding the privileged kernel.
+
+---
+
+E-001.29 — Why Not an Exokernel?
+
+Exokernel concepts provide applications with unusually direct resource control.
+
+Some ideas may be useful for advanced workloads, but making this Evrosion's fundamental architecture would push too much operating-system complexity upward into applications and runtime libraries.
+
+This conflicts with Evrosion's goal of making ordinary computing radically simpler.
+
+---
+
+E-001.30 — Why Not a Multikernel?
+
+Multikernel architecture treats the computer increasingly like a distributed system across CPU cores.
+
+This may become valuable on future heterogeneous or very-high-core-count hardware.
+
+However, adopting it as Evrosion's initial foundation would introduce major complexity before a demonstrated requirement exists.
+
+Relevant concepts may be incorporated later without making the entire OS a multikernel.
+
+---
+
+Final E-001 Architecture
+
+Evrosion's overall architecture is therefore:
+
+                    APPLICATIONS
+                         │
+                COMPATIBILITY LAYERS
+                         │
+      ┌──────────────────┼──────────────────┐
+      │                  │                  │
+SYSTEM SERVICES     DRIVER DOMAINS    UI / RUNTIMES
+      │                  │                  │
+      └──────── Capability / IPC ───────────┘
+                         │
+              HIGH-PERFORMANCE PATHS
+           shared memory / zero-copy / etc.
+                         │
+              EVROSION PRIVILEGED CORE
+                         │
+     scheduling / isolation / IPC primitives /
+      interrupts / capabilities / HW control
+                         │
+                      HARDWARE
+
+Exact contents of the privileged core remain for E-002.
+
+---
+
+E-001 Governing Rules
+
+«Put each component at the lowest privilege level at which it can perform its job correctly and efficiently.»
+
+«Isolation by default. Co-location by evidence.»
+
+«Failures should remove components, not computers.»
+
+«Securely control the communication path, then make that path fast.»
+
+«Compatibility must be contained rather than allowed to dictate the native architecture.»
+
+«The owner remains the final authority over the machine.»
+
+---
+
+E-001 — FINAL STATUS
+
+DECIDED AND CLOSED.
+
+Architecture:
+
+«Custom Capability-Based Adaptive Microkernel / Component Architecture»
+
+Detailed decisions regarding:
+
+- Exact kernel responsibilities
+- Scheduler
+- Memory management
+- IPC implementation
+- Paging
+- DMA implementation
+- Driver architecture
+- Filesystem placement
+- Networking placement
+- Graphics placement
+- Service supervision
+- Recovery mechanisms
+
+are intentionally delegated to E-002 and the later engineering questions.
+
+These details may evolve without reopening the fundamental E-001 architectural decision.

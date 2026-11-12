@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "interface": "ev.internal.block",
+  "version": 1,
+  "maturity": "Internal",
+  "application_boundary": "backend_only_E010_File_Object_unchanged",
+  "wire": {
+    "bytes": 8,
+    "magic": "BL",
+    "endianness": "little",
+    "logical_sector": "u32",
+    "request_opcodes": {
+      "read": 1,
+      "write": 2,
+      "flush": 3
+    },
+    "response_opcodes": {
+      "read": 129,
+      "written": 130,
+      "flushed": 131,
+      "error": 255
+    },
+    "flush_sector": 0
+  },
+  "buffer": {
+    "bytes": 512,
+    "sectors_per_request": 1,
+    "transport": "prebound_shared_window",
+    "capabilities_per_message": 0,
+    "ownership": "external_transport_must_prevent_concurrent_reuse"
+  },
+  "transport": {
+    "max_outstanding": 1,
+    "deadline": "finite_absolute_monotonic",
+    "automatic_retry": false,
+    "read_semantics": "READ_ONLY",
+    "write_semantics": "NONE",
+    "flush_semantics": "NONE",
+    "timeout": "not_proof_of_nonexecution_or_buffer_release",
+    "first_fixture": "single_client_thread_no_admitted_timeout_before_controller_stop"
+  }
+}

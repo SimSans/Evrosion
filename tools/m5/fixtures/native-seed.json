@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "kind": "evrosion-native-reference-seed",
+  "file": "native-seed.raw",
+  "bytes": 4194304,
+  "sector_bytes": 512,
+  "sha256": "d907160f4e5fe0ac7b0ec9d11a8c8b48fb2fd918040a1730048fb05d16bdce46",
+  "provenance": {
+    "source": "M4 reference desktop checkpoint",
+    "source_record_sha256": "325adce75f2c6b34be05eb43faaa0e9f183f2bb964ee3117c8f0b1d3cac3cfe8",
+    "scope": "Exact extracted sample disk state. The historical execution record is archived separately; this fixture is not a new execution result, a boot image, or personal data."
+  }
+}

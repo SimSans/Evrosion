@@ -1,0 +1,1038 @@
+E-015 — System API & ABI
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use a:
+
+«Minimal Stable Kernel ABI + Versioned Capability-Based Platform Contracts»
+
+The system should preserve long-term software compatibility without freezing internal implementation details.
+
+The core rule is:
+
+«Freeze contracts, not implementations.»
+
+---
+
+E-015.1 — Separate the Kernel ABI from the Platform API
+
+Evrosion must not treat the entire operating system API as a direct kernel interface.
+
+Instead:
+
+Application
+   ↓
+Evrosion SDK / Platform Contracts
+   ↓
+Services / Runtime
+   ↓
+Small Kernel Gateway
+   ↓
+Kernel
+
+The kernel interface remains deliberately small.
+
+Most high-level functionality lives in versioned userspace contracts.
+
+---
+
+E-015.2 — Raw Syscall Numbers Are Private
+
+Applications should not directly depend on architecture-specific syscall/trap numbers.
+
+Instead:
+
+Application
+   ↓
+Stable Kernel Gateway
+   ↓
+Private syscall/trap mechanism
+   ↓
+Kernel
+
+The actual syscall numbers, CPU instructions, calling sequence, and low-level trap mechanism remain private implementation details.
+
+This allows:
+
+- x86-64
+- ARM64
+- RISC-V
+
+to use different kernel-entry mechanisms without exposing those differences to applications.
+
+---
+
+E-015.3 — Kernel Gateway
+
+Evrosion should expose a small kernel-provided gateway library.
+
+Conceptual functions may include:
+
+ev_handle_close(...)
+ev_memory_map(...)
+ev_ipc_call(...)
+ev_thread_create(...)
+ev_wait(...)
+
+These names are conceptual only.
+
+The gateway should use a stable language-neutral ABI.
+
+It may be implemented through a vDSO-like mechanism or equivalent kernel-provided interface.
+
+---
+
+E-015.4 — Tiny Kernel ABI
+
+The public kernel ABI should expose only true kernel mechanisms.
+
+Likely categories:
+
+- Capability/handle operations
+- Memory Objects
+- Address spaces
+- Jobs
+- Processes
+- Threads
+- IPC endpoints
+- Signals/events/waits
+- Timers/time
+- Mapping/protection
+- Low-level authorized hardware resources
+- Scheduling primitives where necessary
+
+The kernel ABI should not directly contain high-level concepts such as:
+
+- Wi-Fi configuration
+- DNS
+- Audio devices
+- Windows
+- Printers
+- Package management
+- Filesystem policy
+- Cameras
+
+Those belong to userspace services.
+
+---
+
+E-015.5 — High-Level Functionality Uses Platform Contracts
+
+Applications should interact with logical platform services.
+
+Examples:
+
+ev.storage.file
+ev.network.session
+ev.audio.output
+ev.graphics.surface
+ev.hardware.camera
+
+These names identify contracts rather than specific implementation binaries.
+
+The implementation may later be replaced without breaking applications.
+
+---
+
+E-015.6 — Logical Contract, Replaceable Implementation
+
+An application should depend on:
+
+ev.network.session
+
+not:
+
+network-service-v17.so
+
+The Service Manager resolves the contract to whichever implementation currently provides it.
+
+This allows major internal rewrites without changing the external API.
+
+---
+
+E-015.7 — E-008 IDL Becomes the Interface Source of Truth
+
+The Evrosion Interface Definition Language defined under E-008 should describe stable system interfaces.
+
+The IDL should be capable of defining:
+
+- Service protocols
+- Kernel gateway definitions
+- Data structures
+- Rights
+- Capability types
+- Errors
+- Method versions
+- Compatibility rules
+- Documentation metadata
+
+From one definition, Evrosion tooling should generate:
+
+Rust bindings
+C bindings
+C++ bindings
+Zig bindings
+Future language bindings
+
+Client stubs
+Server stubs
+Validation
+Documentation
+Compatibility tests
+
+Principle
+
+«Define the contract once. Generate everything else from it.»
+
+---
+
+E-015.8 — API Levels
+
+Each stable Evrosion platform generation should expose a numbered API Level.
+
+Conceptually:
+
+Evrosion API Level 1
+Evrosion API Level 2
+Evrosion API Level 3
+...
+
+Developers target an API Level rather than relying on whatever interfaces happen to exist in the newest SDK.
+
+---
+
+E-015.9 — Target API Level
+
+An application package should declare which API Level it targets.
+
+Example:
+
+Target API Level: 8
+
+A newer SDK should still allow developers to intentionally target older supported API Levels.
+
+This makes compatibility explicit.
+
+---
+
+E-015.10 — ABI Revision
+
+API Level and ABI Revision should remain distinct concepts.
+
+API Level
+
+Human-facing platform compatibility target.
+
+ABI Revision
+
+Machine-facing exact binary contract revision.
+
+A package may therefore contain both:
+
+API Level: 8
+ABI Revision: 0x019AF342
+
+The system can validate compatibility before starting the program.
+
+---
+
+E-015.11 — Reject Unsupported ABI Before Execution
+
+If an application requires an ABI that is genuinely unavailable, Evrosion should detect this before launching it.
+
+Avoid:
+
+Start program
+   ↓
+Missing symbol
+   ↓
+Crash mysteriously
+
+Prefer:
+
+Inspect package ABI
+   ↓
+Find compatibility support
+   ↓
+Load appropriate contract/capsule
+
+or:
+
+«This application requires an unsupported Evrosion ABI revision.»
+
+---
+
+E-015.12 — Compatibility Capsules
+
+Evrosion should introduce:
+
+«Compatibility Capsules»
+
+A Compatibility Capsule is a userspace translation component that preserves support for older APIs without forcing the modern kernel or service implementations to permanently contain old logic.
+
+Example:
+
+Old Application
+      ↓
+ev.audio.v2
+      ↓
+Compatibility Capsule
+      ↓
+ev.audio.v9
+      ↓
+Modern Audio Service
+
+---
+
+E-015.13 — Compatibility Capsules Are Modular
+
+Compatibility Capsules may be:
+
+- Bundled
+- Installed on demand
+- Downloaded when required
+- Cached locally
+- Updated independently
+- Sandboxed
+- Open source
+
+They should receive only the capabilities required to translate their assigned interface.
+
+---
+
+E-015.14 — Compatibility Without Architectural Stagnation
+
+Old software support should not force current Evrosion architecture to remain internally unchanged.
+
+Principle
+
+«Preserve compatibility without freezing the architecture.»
+
+Old applications may see an old contract.
+
+Internally, Evrosion may implement that contract through:
+
+- Translation
+- Emulation
+- Shims
+- Compatibility Capsules
+- Legacy service implementations
+
+---
+
+E-015.15 — Stable Protocol Versions
+
+Stable service protocols should have explicit versions.
+
+Example:
+
+ev.storage.file v1
+ev.storage.file v2
+ev.storage.file v3
+
+Changes should be automatically checked for compatibility.
+
+---
+
+E-015.16 — Incompatible Changes Require a New Contract Version
+
+Once a stable interface ships, developers must not silently make incompatible changes.
+
+If:
+
+ev.storage.file v3
+
+changes incompatibly, the build system should reject it.
+
+The developer must instead create:
+
+ev.storage.file v4
+
+or define an explicit compatibility mechanism.
+
+---
+
+E-015.17 — Additive Evolution
+
+Stable interfaces should be designed so that many changes can be additive.
+
+Examples:
+
+- Add optional field
+- Add new method
+- Add new capability
+- Add new optional feature bit
+
+Existing clients should continue functioning.
+
+---
+
+E-015.18 — Stable Structure Layout
+
+Direct binary ABI structures should use explicit layout rules.
+
+Preferred pattern:
+
+struct {
+    u32 size;
+    u32 flags;
+    ...
+}
+
+The explicit size allows old and new implementations to distinguish which fields are available.
+
+---
+
+E-015.19 — Reserved Fields
+
+ABI structures may reserve space for future expansion.
+
+Example:
+
+u32 reserved0;
+u64 reserved1;
+
+Reserved fields must:
+
+- Be initialized to zero
+- Be ignored or validated according to contract
+- Never gain undocumented meaning
+
+---
+
+E-015.20 — Unknown Flags
+
+Unknown capability or request flags should not silently change behavior.
+
+Unknown flags should normally result in:
+
+«Unsupported flag / invalid request.»
+
+This prevents old software and new software from accidentally interpreting the same bit differently.
+
+---
+
+E-015.21 — Fixed-Width ABI Types
+
+Stable binary interfaces should use explicit-width types.
+
+Examples:
+
+u8
+u16
+u32
+u64
+i8
+i16
+i32
+i64
+
+Avoid depending on ABI-sensitive types such as:
+
+long
+size_t
+usize
+compiler-dependent enum
+compiler-dependent bool
+
+unless the ABI explicitly defines their size.
+
+---
+
+E-015.22 — 64-Bit Native Architecture Assumption
+
+Native Evrosion targets are 64-bit.
+
+Time, storage offsets, object lengths, and other long-lived ABI quantities should therefore be designed with sufficiently large representations from the start.
+
+Avoid historical limitations such as:
+
+- 32-bit timestamps
+- 32-bit file sizes
+- Small inode/object identifiers
+
+---
+
+E-015.23 — Opaque Handles
+
+Kernel objects and system capabilities should be referenced through opaque handles.
+
+Conceptually:
+
+ev_handle_t
+
+The application must not know the internal encoding of the handle.
+
+The handle may represent:
+
+- Object reference
+- Capability rights
+- Generation information
+- Internal validation metadata
+
+but none of that representation becomes public ABI.
+
+---
+
+E-015.24 — Handles Are Process-Local Capabilities
+
+Handles should generally be meaningful only inside the process or capability domain to which they belong.
+
+They may be transferred only through controlled capability-aware mechanisms such as IPC.
+
+---
+
+E-015.25 — Handles Are Not Persistent Identities
+
+Applications must never serialize a raw handle to disk and expect it to identify the same object after restart.
+
+Handles are runtime capabilities.
+
+Persistent resources require stable object identifiers or application-level references defined by their respective services.
+
+---
+
+E-015.26 — Rights Travel With Capabilities
+
+A handle should carry only the rights granted to it.
+
+Examples:
+
+READ
+WRITE
+MAP
+TRANSFER
+SIGNAL
+ADMIN
+EXECUTE
+
+Rights may be attenuated when transferring the capability.
+
+---
+
+E-015.27 — Explicit Status Values
+
+The fundamental low-level ABI should use explicit status/error values.
+
+Conceptually:
+
+EV_OK
+EV_NOT_FOUND
+EV_PERMISSION_DENIED
+EV_TIMED_OUT
+EV_UNSUPPORTED
+EV_CANCELLED
+EV_INVALID_ARGUMENT
+
+These values remain language-neutral.
+
+---
+
+E-015.28 — Language Bindings Translate Errors Idiomatically
+
+Rust:
+
+Result<T, EvError>
+
+C:
+
+ev_status_t
+
+C++ or other languages may provide idiomatic wrappers.
+
+The underlying platform contract remains independent of language-specific exception/error systems.
+
+---
+
+E-015.29 — Do Not Depend on Global "errno" as the Core Model
+
+POSIX-compatible environments may expose "errno".
+
+Native Evrosion APIs should instead prefer explicit return/status values.
+
+This avoids hidden global/thread-local error state in the native contract.
+
+---
+
+E-015.30 — Capability Discovery
+
+Applications should detect features through capability/service discovery rather than checking OS version numbers.
+
+Prefer:
+
+Is ev.graphics.hdr available?
+Which protocol version?
+
+Avoid:
+
+if EvrosionVersion >= 14
+
+Principle
+
+«Ask whether the capability exists, not whether the OS version sounds new enough.»
+
+---
+
+E-015.31 — Interface Stability Classes
+
+Every externally visible interface should belong to a stability class.
+
+Stable
+
+Strong compatibility commitment.
+
+Preview
+
+Expected to become stable but may still change under documented rules.
+
+Experimental
+
+No compatibility guarantee.
+
+Internal
+
+Not part of the third-party platform contract.
+
+---
+
+E-015.32 — Experimental APIs Carry No Permanent Promise
+
+Experimental APIs should be allowed to change or disappear.
+
+This allows Evrosion to explore new ideas without creating lifetime compatibility obligations.
+
+Applications relying on experimental APIs accept that risk explicitly.
+
+---
+
+E-015.33 — Promotion to Stable Is Deliberate
+
+An interface should become Stable only after:
+
+- Design review
+- Security review
+- Versioning review
+- Compatibility strategy
+- Automated compatibility tests
+- Sufficient real-world experience
+
+Stable should mean something.
+
+---
+
+E-015.34 — Native Executable Format
+
+Evrosion will initially use:
+
+«ELF64»
+
+for native binaries.
+
+This avoids unnecessarily inventing a new executable/object format.
+
+ELF64 already provides mature support across:
+
+- x86-64
+- ARM64
+- RISC-V
+- LLVM
+- LLD
+- Rust
+- Debuggers
+- Existing tooling
+
+---
+
+E-015.35 — Executable Format Is Separate From Package Format
+
+A native application package may contain an ELF64 binary.
+
+Example:
+
+Evrosion Application Package
+        ↓
+Manifest
+Resources
+Capabilities
+ELF64 executable
+Libraries
+
+The full application/package model belongs to E-016.
+
+---
+
+E-015.36 — Stable Shared-Library ABI Should Remain Small
+
+Evrosion should avoid turning hundreds of implementation libraries into permanent system ABI.
+
+A small stable runtime library may exist, conceptually:
+
+libev_core
+libev_runtime
+
+Most functionality should instead use service contracts.
+
+---
+
+E-015.37 — Symbol Versioning
+
+Where long-lived shared libraries are necessary, symbol versioning should be used where appropriate.
+
+This allows multiple generations of an API symbol to coexist without silently changing behavior for old applications.
+
+---
+
+E-015.38 — Never Expose Rust ABI as Platform ABI
+
+Stable Evrosion interfaces must not depend on:
+
+- Rust trait-object layout
+- Rust enum representation
+- "Vec"
+- "String"
+- Rust references
+- Rust vtables
+- Generic monomorphization details
+- Rust panic/unwind implementation
+
+Rust remains an implementation language, not the platform ABI.
+
+---
+
+E-015.39 — Never Expose C++ ABI as Platform ABI
+
+Stable interfaces should likewise avoid depending on:
+
+- C++ class layout
+- Name mangling
+- STL containers
+- Virtual-table layout
+- Exceptions
+- Compiler-specific C++ ABI behavior
+
+C++ applications communicate through stable Evrosion contracts.
+
+---
+
+E-015.40 — C-Compatible ABI as Lowest Common Denominator
+
+When a direct binary ABI is required, Evrosion should use C-compatible calling conventions and explicit structures.
+
+This provides a common foundation for:
+
+- Rust
+- C
+- C++
+- Zig
+- Other languages
+
+Higher-level generated bindings can then provide idiomatic APIs.
+
+---
+
+E-015.41 — POSIX Is Compatibility, Not Native Architecture
+
+Native Evrosion should not reshape itself around traditional UNIX APIs merely for familiarity.
+
+POSIX/Linux compatibility belongs under E-022.
+
+Applications needing:
+
+open()
+read()
+fork()
+socket()
+
+may use a compatibility environment.
+
+Native Evrosion applications can instead use concepts such as:
+
+- Storage capabilities
+- Network sessions
+- Jobs
+- Memory Objects
+- Service contracts
+
+Principle
+
+«Compatibility Without Surrender applies to APIs too.»
+
+---
+
+E-015.42 — Old Binary Compatibility Testing
+
+Evrosion should continuously test old compiled binaries against new OS builds.
+
+Conceptually:
+
+Current Evrosion
+      ↓
+API Level 1 binary   ✓
+API Level 2 binary   ✓
+API Level 3 binary   ✓
+API Level 4 binary   ✓
+...
+Current API binary   ✓
+
+Compatibility regressions should be found by CI before release.
+
+---
+
+E-015.43 — Compatibility Artifacts
+
+For each stable API Level, Evrosion should retain representative compiled binaries and protocol fixtures.
+
+These become permanent compatibility test inputs.
+
+They test the actual binary contract rather than merely rebuilding old source with a new compiler.
+
+---
+
+E-015.44 — Stable Means Tested
+
+Every Stable contract should have automated tests checking:
+
+- Binary layout
+- Protocol behavior
+- Version negotiation
+- Old clients
+- New servers
+- Old servers where supported
+- Error semantics
+- Unknown-field handling
+- Capability rights
+
+Principle
+
+«Anything called stable must have an automated test proving that it stayed stable.»
+
+---
+
+E-015.45 — Kernel ABI Stability
+
+The Kernel Gateway ABI receives the strongest compatibility commitment.
+
+Changes should generally be:
+
+- Additive
+- Backward compatible
+- Extremely conservative
+
+Removing a stable kernel operation should be extraordinary.
+
+This is another reason to keep the kernel ABI tiny.
+
+---
+
+E-015.46 — Platform Contract Stability
+
+Stable userspace service contracts receive strong backward-compatibility guarantees.
+
+They may evolve through:
+
+- Additive protocol changes
+- Version negotiation
+- Translation
+- Compatibility Capsules
+- Parallel versions
+
+---
+
+E-015.47 — SDK Stability
+
+The SDK may evolve its convenience wrappers while preserving behavior promised by targeted API Levels.
+
+Source-level helper APIs are allowed more freedom than permanent binary contracts as long as compatibility guarantees remain clear.
+
+---
+
+E-015.48 — Preview Stability
+
+Preview APIs may change with documented migration guidance.
+
+They should never silently be presented as permanent.
+
+---
+
+E-015.49 — Internal Interfaces
+
+Internal implementation protocols may evolve rapidly.
+
+Third-party applications must not depend on them.
+
+This prevents accidental architectural fossilization.
+
+---
+
+E-015.50 — Internal Implementation Replacement
+
+Because applications depend on contracts rather than implementation binaries, Evrosion should be free to replace:
+
+- Network stack
+- Filesystem implementation
+- Audio service
+- Graphics service
+- Package manager
+- Service implementation
+- Scheduling policy
+- Hardware management implementation
+
+without requiring application changes, provided the relevant contracts remain compatible.
+
+---
+
+E-015.51 — Interface Documentation
+
+Stable interfaces should generate documentation from their canonical definitions wherever possible.
+
+Documentation should include:
+
+- Purpose
+- Parameters
+- Rights required
+- Possible errors
+- Version introduced
+- Stability class
+- Lifetime rules
+- Ownership rules
+- Threading/concurrency behavior
+- Compatibility guarantees
+
+---
+
+E-015.52 — Ownership Semantics Must Be Explicit
+
+Every ABI/interface must clearly specify whether data or resources are:
+
+- Borrowed
+- Copied
+- Transferred
+- Shared
+- Reference-counted
+- Revocable
+
+No permanent interface should rely on undocumented ownership assumptions.
+
+---
+
+E-015.53 — Buffer Semantics Must Be Explicit
+
+Interfaces should define:
+
+- Buffer ownership
+- Length
+- Alignment
+- Maximum size
+- Mutability
+- Lifetime
+- Whether memory may move
+- Whether data may be retained by receiver
+
+This prevents language-specific interpretation differences.
+
+---
+
+E-015.54 — Time Semantics Must Be Explicit
+
+Time values must specify whether they represent:
+
+- Monotonic time
+- Wall clock
+- Duration
+- Deadline
+- Timestamp
+
+Units and epoch must be explicit.
+
+Avoid ambiguous raw integers.
+
+---
+
+E-015.55 — Endianness and Serialization
+
+Wire protocols must define byte order explicitly.
+
+Native in-process ABI may use architecture-native conventions where appropriate, but persistent/network formats must not depend on undocumented machine endianness.
+
+---
+
+E-015.56 — IPC Message Validation
+
+All messages crossing protection boundaries must be validated.
+
+Receivers must not assume senders are correct merely because they are first-party components.
+
+Validation includes:
+
+- Message size
+- Version
+- Required fields
+- Flags
+- Capability types
+- Array lengths
+- Object references
+
+---
+
+E-015.57 — Unknown Protocol Fields
+
+Versioned message formats should permit safe forward evolution where possible.
+
+Unknown optional fields may be ignored when explicitly allowed.
+
+Unknown required semantics must fail safely.
+
+---
+
+E-015.58 — No Hidden Semantic Changes
+
+A stable function or protocol method must not retain the same name/version while radically changing its meaning.
+
+If semantics change incompatibly:
+
+«Create a new version.»
+
+---
+
+E-015.59 — Deprecation
+
+Stable APIs may be deprecated without immediately removing compatibility.
+
+Deprecation should provide:
+
+- Replacement
+- Reason
+- Migration guidance
+- Compatibility lifetime
+
+Deprecated APIs may eventually move behind Compatibility Capsules.
+
+---
+
+E-015.60 — ABI Removal
+
+Removing stable ABI support should be extremely rare.
+
+If it ever becomes necessary because of severe security or architectural reasons, Evrosion should prefer:
+
+- Compatibility Capsule
+- Sandbox
+- Emulation
+- Explicit migration
+
+before simply breaking applications.
+
+---
+
+E-015.61 — Security Overrides Compatibility When Fundamentally Necessary
+
+Compatibility is extremely important, but not absolute.
+
+If an old interface fundamentally violates a critical security invariant, Evrosion may:
+
+- Isolate it
+- Restrict it
+- Emulate it
+- Require explicit permission
+- Move it into a co

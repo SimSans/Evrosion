@@ -1,0 +1,886 @@
+E-006 — Driver Architecture
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use a:
+
+«Graph-Based, Capability-Controlled, Transactional Driver Architecture»
+
+The driver system will be designed around:
+
+- Automatic hardware discovery
+- Declarative driver matching
+- User-space driver isolation
+- Capability-based hardware access
+- Transactional install/update/rollback
+- Restartability
+- Offline recovery
+- Firmware management
+- Compatibility domains
+- Clear trust/provenance
+- Long-term evolvability
+
+---
+
+E-006.1 — Live Hardware Graph
+
+Evrosion should maintain a structured, machine-readable graph of detected hardware.
+
+Example:
+
+PCI Controller
+├── NVMe Controller
+│    └── SSD
+├── USB Controller
+│    ├── Keyboard
+│    └── Webcam
+└── GPU
+      ├── Display Output
+      └── Audio Function
+
+The hardware graph should describe:
+
+- Device identity
+- Parent/child relationships
+- Hardware IDs
+- Device class
+- Bus type
+- Capabilities
+- Current driver
+- Firmware
+- Health
+- Available fallback options
+
+This graph should integrate with diagnostics, recovery, updates, and user explanations.
+
+---
+
+E-006.2 — Declarative Driver Matching
+
+Drivers should declare what hardware they support.
+
+Driver metadata may include:
+
+- Exact hardware IDs
+- Compatible IDs
+- Device classes
+- CPU architecture
+- Platform requirements
+- Firmware requirements
+- Evrosion driver API/ABI versions
+- Dependencies
+- Required capabilities
+- Isolation requirements
+- Feature support
+
+Evrosion should not rely on fragile hardcoded assumptions when selecting drivers.
+
+---
+
+E-006.3 — Driver Resolver
+
+Evrosion should use a Driver Resolver to determine the best available driver.
+
+Possible preference order:
+
+Exact native driver
+        ↓
+Compatible native driver
+        ↓
+Generic class driver
+        ↓
+Compatibility driver
+        ↓
+Basic fallback driver
+        ↓
+Unsupported / unknown
+
+Selection should consider:
+
+- Hardware compatibility
+- Driver version
+- Trust/provenance
+- Stability
+- Feature support
+- Architecture
+- Firmware availability
+- Known problems
+- Isolation requirements
+
+---
+
+E-006.4 — Evrosion Driver Packages
+
+A driver should be distributed as a complete first-class package rather than as an isolated binary.
+
+An Evrosion Driver Package may contain:
+
+- Driver binary
+- Manifest
+- Hardware matching rules
+- Version
+- Architecture
+- Driver API/ABI requirements
+- Dependencies
+- Requested capabilities
+- Firmware requirements
+- Cryptographic hashes
+- Signatures
+- Publisher/provenance information
+- Isolation class
+- Recovery information
+- Rollback information
+- Health checks
+- Tests where applicable
+
+Principle
+
+«A driver is a managed system component, not just a file copied into the OS.»
+
+---
+
+E-006.5 — Transactional Driver Installation
+
+Driver installation and updates should be transactional.
+
+Conceptually:
+
+Find package
+     ↓
+Verify provenance/signature
+     ↓
+Verify hardware compatibility
+     ↓
+Verify dependencies
+     ↓
+Stage alongside current driver
+     ↓
+Activate
+     ↓
+Test hardware
+     ↓
+Observe health
+   ↙       ↘
+GOOD       BAD
+↓          ↓
+Commit    Roll back
+
+The previously working driver should remain available until the replacement has demonstrated acceptable operation.
+
+---
+
+E-006.6 — User-Space Drivers by Default
+
+Drivers should run outside the kernel by default.
+
+This supports:
+
+- Fault containment
+- Restartability
+- Safer updates
+- Easier debugging
+- Reduced kernel attack surface
+- Better third-party isolation
+- Easier driver replacement
+
+Kernel-level driver execution should require a strong technical justification.
+
+Principle
+
+«User-space by default. Kernel privilege only when proven necessary.»
+
+---
+
+E-006.7 — Driver Hosts / Protection Domains
+
+Drivers should execute inside dedicated Driver Hosts or equivalent protection domains.
+
+Default approach:
+
+Driver A → isolated host
+Driver B → isolated host
+Driver C → isolated host
+
+However, tightly coupled trusted components may deliberately share a host when measurement proves that isolation overhead is unacceptable.
+
+Example:
+
+GPU Driver Host
+├── GPU driver
+├── Display driver
+└── Accelerator component
+
+Co-location creates a shared failure/security boundary and must therefore be explicit.
+
+Principle
+
+«Isolate by default. Co-locate only by evidence.»
+
+---
+
+E-006.8 — Capability-Controlled Hardware Access
+
+Drivers should never receive broad machine authority merely because they are drivers.
+
+A driver should receive only the capabilities required for its device.
+
+Possible capabilities include:
+
+- Specific PCI function
+- MMIO region
+- Interrupt
+- DMA mapping
+- I/O ports
+- Device memory
+- Required IPC endpoints
+- Specific firmware object
+
+Example:
+
+A Wi-Fi driver may receive:
+
+Wi-Fi PCI function
+Wi-Fi MMIO
+Wi-Fi interrupt
+Restricted DMA mappings
+Network-stack IPC
+
+It should not automatically receive:
+
+All memory
+All storage
+All devices
+All kernel interfaces
+
+---
+
+E-006.9 — DMA / IOMMU Protection
+
+DMA-capable devices must be treated carefully.
+
+Where hardware supports it, Evrosion should use:
+
+- IOMMU
+- SMMU
+- Restricted DMA mappings
+- Device ownership tracking
+
+Drivers may request DMA buffers, but the kernel/core controls what physical memory a device can actually access.
+
+Systems without adequate DMA isolation may still function, but Evrosion should clearly represent their reduced security guarantees.
+
+---
+
+E-006.10 — Restartable Driver Lifecycle
+
+Restartability should be a formal driver contract.
+
+A driver's lifecycle may include:
+
+Discover
+   ↓
+Claim device
+   ↓
+Reset hardware to known state
+   ↓
+Initialize
+   ↓
+Start
+   ↓
+Healthy
+   ↓
+Stop / Crash / Update
+   ↓
+Reset / Restore / Restart
+
+Drivers must not assume hardware is always left in a clean state.
+
+After a crash, a replacement instance should be capable of resetting or reconstructing device state where technically possible.
+
+---
+
+E-006.11 — Repeated Failure Handling
+
+Evrosion should never enter endless driver-restart loops.
+
+Possible escalation:
+
+Driver crashes
+     ↓
+Restart once
+     ↓
+Still fails
+     ↓
+Restart with recovery/reset
+     ↓
+Still fails
+     ↓
+Quarantine broken version
+     ↓
+Roll back previous driver
+     ↓
+Try generic fallback
+     ↓
+Explain problem to user
+
+Hardware failure should also be considered separately from driver failure.
+
+---
+
+E-006.12 — Driver Health Monitoring
+
+Evrosion should monitor driver health.
+
+Potential signals include:
+
+- Crashes
+- Timeouts
+- Repeated resets
+- Interrupt storms
+- Failed initialization
+- Excessive resource use
+- Hardware errors
+- Restart frequency
+- Device disappearance
+- Failed health checks
+
+This data should feed into:
+
+- Recovery
+- Driver ranking
+- Rollback
+- Diagnostics
+- User explanations
+
+---
+
+E-006.13 — Firmware Manager
+
+Firmware should be managed separately from driver logic.
+
+Evrosion should maintain a Firmware Manager responsible for:
+
+- Firmware version
+- Hardware compatibility
+- Cryptographic hashes
+- Signatures
+- Provenance
+- Licensing information
+- Local cache
+- Packaged firmware
+- Firmware updates
+- Rollback where possible
+- Offline availability
+
+Drivers may request firmware objects through controlled interfaces.
+
+---
+
+E-006.14 — Proprietary Firmware
+
+Some hardware requires proprietary firmware.
+
+Evrosion should support this where legally and technically possible without making proprietary firmware part of the core OS architecture.
+
+Firmware availability should be explicit.
+
+Example:
+
+«Device supported, but required vendor firmware is not currently installed.»
+
+The system may then:
+
+- Use cached firmware
+- Retrieve trusted firmware
+- Request user-supplied firmware
+- Use a fallback mode if possible
+
+---
+
+E-006.15 — Offline Bootstrap Hardware Pack
+
+Evrosion should not assume internet access exists before drivers are available.
+
+Installation/recovery media should include a bootstrap driver and firmware set sufficient for broad basic operation.
+
+Potential bootstrap support:
+
+- USB HID
+- Basic keyboard/mouse
+- Basic display
+- Common storage controllers
+- Common Ethernet hardware
+- Generic USB devices
+- VirtIO for virtual machines
+- Other high-value generic drivers
+
+The exact contents will evolve.
+
+---
+
+E-006.16 — Driver Source Hierarchy
+
+Evrosion may search for drivers in an ordered trust/source hierarchy.
+
+Example:
+
+Bundled driver
+      ↓
+Local cache
+      ↓
+Official Evrosion repository
+      ↓
+Trusted hardware-vendor repository
+      ↓
+User-supplied package
+      ↓
+Manual Layer 3 installation
+
+The user should always be able to see where a driver came from.
+
+---
+
+E-006.17 — Generic Fallback Drivers
+
+Evrosion should strongly support generic class/fallback drivers.
+
+Example:
+
+A vendor-specific GPU driver may provide full acceleration.
+
+A generic display driver may provide only basic output.
+
+The basic driver is still valuable because:
+
+«A partially functional computer is better than an unusable computer.»
+
+Fallback drivers may exist for areas such as:
+
+- Display
+- Storage
+- USB
+- HID
+- Networking
+- Audio
+- Other standardized device classes
+
+---
+
+E-006.18 — Driver Feature Levels
+
+Evrosion should be capable of expressing hardware support levels.
+
+Possible states:
+
+- Fully supported
+- Supported with native driver
+- Supported through generic driver
+- Supported through compatibility driver
+- Reduced functionality
+- Driver available but firmware missing
+- Detected but unsupported
+- Unknown hardware
+
+This allows the OS to explain exactly what is happening instead of presenting a vague error.
+
+---
+
+E-006.19 — Stable Versioned Driver Protocols
+
+Evrosion should provide stable, versioned driver-facing protocols where practical.
+
+However, the architecture should not permanently freeze itself to its first driver ABI.
+
+Instead:
+
+Old Driver API
+      ↓
+Compatibility shim
+      ↓
+Current Driver API
+
+Compatibility should be maintained for a reasonable period while allowing the native architecture to evolve.
+
+Principle
+
+«Preserve compatibility without making historical implementation mistakes permanent.»
+
+---
+
+E-006.20 — Compatibility Driver Domains
+
+Evrosion should leave room for existing driver ecosystems.
+
+Possible compatibility targets include:
+
+- Linux drivers
+- Vendor driver stacks
+- Existing userspace driver frameworks
+- Virtualized hardware drivers
+
+These should run inside explicit compatibility domains rather than dictating the native Evrosion driver model.
+
+Example:
+
+Evrosion
+   │
+Compatibility Driver Domain
+   │
+Foreign driver environment
+   │
+Existing driver
+   │
+Controlled Evrosion hardware capabilities
+
+Exact implementation belongs to E-022.
+
+---
+
+E-006.21 — Linux Driver Reuse
+
+Evrosion should investigate ways of reusing Linux drivers because Linux has enormous hardware coverage.
+
+However, Linux kernel modules should not simply be loaded directly into Evrosion.
+
+Potential approaches may include:
+
+- Linux driver compatibility environment
+- API translation
+- Driver virtualization
+- Sandboxed Linux subsystem
+- Automated/assisted driver porting
+- Reimplementation using native Evrosion APIs
+
+Exact strategy remains TBD.
+
+---
+
+E-006.22 — Driver Signing and Trust
+
+Driver signing should establish:
+
+- Who produced the package
+- Whether it has been modified
+- Whether it came from a known source
+
+Signing is a trust signal, not ownership enforcement.
+
+Default behavior may prefer trusted signed packages.
+
+Unknown or unsigned packages may receive:
+
+- Strong warnings
+- Stronger sandboxing
+- Reduced capabilities
+- Additional testing requirements
+
+---
+
+E-006.23 — Absolute Access
+
+F-002 still applies.
+
+In Layer 3 / Absolute Access, the owner may deliberately install or load:
+
+- Unsigned drivers
+- Experimental drivers
+- Custom drivers
+- Manually modified drivers
+
+after clear warnings.
+
+Principle
+
+«Signatures establish provenance. They do not determine who owns the computer.»
+
+---
+
+E-006.24 — Driver Permissions
+
+A driver package should declare required capabilities before activation.
+
+Evrosion should be able to answer:
+
+«What hardware does this driver control?»
+
+«What memory can it access?»
+
+«What services can it communicate with?»
+
+«What DMA authority does it possess?»
+
+«Why does it require these permissions?»
+
+This should integrate with the three-layer UX.
+
+---
+
+E-006.25 — Layer-Based Driver UX
+
+Layer 1
+
+Simple:
+
+«Wi-Fi ready. ✓»
+
+or:
+
+«Wi-Fi needed a driver. Evrosion installed and tested it automatically.»
+
+Layer 2
+
+Shows:
+
+- Driver name
+- Version
+- Publisher
+- Hardware device
+- Update status
+- Restart
+- Rollback
+- Basic diagnostics
+
+Layer 3
+
+Shows full details:
+
+- Hardware IDs
+- Driver manifest
+- Capabilities
+- MMIO mappings
+- Interrupts
+- DMA mappings
+- Driver host
+- Isolation class
+- Firmware
+- Dependencies
+- Logs
+- Restart history
+- Manual loading controls
+
+---
+
+E-006.26 — Driver Testing
+
+Drivers distributed through official Evrosion infrastructure should undergo strong testing where practical.
+
+Possible testing includes:
+
+- Static analysis
+- Rust safety analysis
+- Unit tests
+- Integration tests
+- Fuzz testing
+- Simulated-device testing
+- Failure injection
+- Crash/restart testing
+- Capability audits
+- Update/rollback testing
+- Real-hardware testing
+
+---
+
+E-006.27 — Driver Simulation / Test Environments
+
+Evrosion should provide ways to test driver stacks without requiring every test to run on real hardware.
+
+This may include:
+
+- Simulated devices
+- Virtual buses
+- Fake hardware services
+- Driver-host test environments
+- Fault injection
+- Reproducible hardware states
+
+This is especially important for automated CI.
+
+---
+
+E-006.28 — Driver Updates
+
+Driver updates should be independent where safe.
+
+A driver update should not automatically require:
+
+- Full OS replacement
+- Full reinstall
+- System wipe
+
+Where possible:
+
+Stage → activate → test → commit
+
+If activation fails:
+
+Rollback automatically
+
+---
+
+E-006.29 — Recovery Integration
+
+Driver failures should integrate directly with Evrosion's recovery architecture.
+
+Examples:
+
+Wi-Fi fails
+→ restart driver
+→ test
+→ restore networking
+
+GPU driver fails
+→ restart GPU domain
+→ restore display
+→ fall back to basic graphics if required
+
+Updated driver fails
+→ roll back automatically
+
+---
+
+E-006.30 — Observability
+
+The driver system should expose structured state.
+
+Evrosion should know:
+
+- Which driver controls every device
+- Why that driver was selected
+- Driver source
+- Driver version
+- Firmware version
+- Capabilities
+- Isolation level
+- Health
+- Last failure
+- Restart count
+- Update history
+- Rollback state
+
+This information feeds:
+
+- Diagnostics
+- Recovery
+- Security
+- User explanations
+- Developer tools
+- Authorized AI
+
+---
+
+E-006.31 — Self-Repair
+
+Driver management should support Evrosion's self-repair goals.
+
+Example:
+
+Hardware not working
+      ↓
+Identify device
+      ↓
+Check current driver
+      ↓
+Test driver
+      ↓
+Search local alternatives
+      ↓
+Search trusted repositories if online
+      ↓
+Install candidate transactionally
+      ↓
+Test hardware
+      ↓
+Commit or roll back
+
+The user should not need to understand hardware IDs or manually hunt obscure driver websites for normal hardware maintenance.
+
+---
+
+E-006 Final Architecture
+
+Evrosion's driver stack becomes:
+
+             HARDWARE GRAPH
+                   │
+                   ↓
+             DRIVER RESOLVER
+                   │
+                   ↓
+          DRIVER PACKAGE STORE
+                   │
+       ┌───────────┼───────────┐
+       │           │           │
+     Native      Generic   Compatibility
+     Driver       Driver       Driver
+       │           │           │
+       └───────────┼───────────┘
+                   ↓
+             DRIVER HOSTS
+                   │
+        Capabilities + IOMMU
+                   │
+                   ↓
+               HARDWARE
+
+Supported by:
+
+Firmware Manager
+Driver Health Monitor
+Transactional Installer
+Rollback System
+Offline Driver Cache
+Recovery Controller
+Compatibility Domains
+
+---
+
+E-006 Summary
+
+Evrosion drivers will be:
+
+«Discovered automatically»
+
+«Matched declaratively»
+
+«Packaged as managed components»
+
+«Verified before activation»
+
+«User-space by default»
+
+«Capability-controlled»
+
+«DMA-isolated where hardware permits»
+
+«Restartable»
+
+«Transactionally updated»
+
+«Automatically rolled back on failure»
+
+«Supported by generic fallbacks»
+
+«Usable offline»
+
+«Compatible with legacy ecosystems through contained compatibility domains»
+
+«Observable and explainable»
+
+---
+
+Governing Principles
+
+«The user should not need to know what driver their computer needs. Evrosion should know.»
+
+«Drivers receive access to their hardware, not authority over the computer.»
+
+«A broken driver should be restarted or replaced, not allowed to crash the entire machine.»
+
+«Install new drivers beside known-good drivers, test them, then commit.»
+
+«Fallback functionality is better than complete failure.»
+
+«Compatibility should expand Evrosion's hardware support without dictating Evrosion's native architecture.»
+
+«Signatures establish trust and provenance; the owner remains the final authority.»

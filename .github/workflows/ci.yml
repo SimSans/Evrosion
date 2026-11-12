@@ -1,0 +1,113 @@
+name: Kernel spine, architecture and UEFI boot checks
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install the repository's pinned Rust toolchain
+        shell: python
+        run: |
+          import subprocess
+          import tomllib
+          with open("rust-toolchain.toml", "rb") as source:
+              pin = tomllib.load(source)["toolchain"]
+          subprocess.run([
+              "rustup", "toolchain", "install", pin["channel"],
+              "--profile", pin["profile"],
+              "--component", ",".join(pin["components"]),
+              "--target", ",".join(pin["targets"]),
+          ], check=True)
+
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Fetch locked host dependencies
+        run: cargo fetch --locked
+
+      - name: Rust lint checks
+        run: cargo clippy --all-targets --locked --offline -- -D warnings
+
+      - name: Host tests
+        run: cargo test --locked --offline
+
+      - name: Kernel lint checks
+        run: cargo clippy -p ev-kernel --target x86_64-unknown-none --features qemu-test-exit --locked --offline -- -D warnings
+
+      - name: ev entry point
+        run: cargo ev --help
+
+      - name: Architecture registers and source inventory
+        run: python3 tools/check_architecture.py
+
+      - name: Governance failure cases
+        run: python3 -m unittest discover -s tests/host -p 'test_*.py' -v
+
+      - name: Locked dependency and license inventory
+        run: python3 tools/cargo_inventory.py --check
+
+      - name: Prepare Linux development tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends qemu-system-x86 ovmf gdb
+
+      - name: Diagnose prepared host
+        run: cargo ev doctor
+
+      - name: Reject intentionally missing firmware
+        shell: python
+        run: |
+          import os
+          import subprocess
+          from pathlib import Path
+          missing = Path(os.environ["RUNNER_TEMP"]) / "evrosion-missing-ovmf.fd"
+          assert not missing.exists()
+          result = subprocess.run([
+              "cargo", "ev", "doctor", "--ovmf-code", str(missing),
+          ], capture_output=True, text=True, timeout=30)
+          print(result.stdout)
+          print(result.stderr)
+          assert result.returncode == 1, result.returncode
+          assert "FAIL OVMF" in result.stdout
+
+      - name: Build kernel and UEFI image
+        # The pinned upstream builder compiles its separately locked UEFI loader.
+        # A cold build needs network access for this second Cargo graph.
+        run: cargo ev build
+
+      - name: Image builder lint checks
+        run: cargo clippy -p ev-image-builder --all-targets --locked --offline -- -D warnings
+
+      - name: Complete M0 acceptance (fresh boots, panic, GDB, two clean builds)
+        run: cargo ev test m0
+
+      - name: Complete M1 kernel-spine mechanism acceptance
+        run: python3 tools/m1/acceptance.py
+
+      - name: Retain build and boot evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: m0-boot-evidence
+          path: |
+            build/m0/
+            build/m1/
+            !build/m0/evidence/repro-*/source-a/target/**
+            !build/m0/evidence/repro-*/source-b/target/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Local evidence and configured CI are distinct. Do not claim a remote run
+  # until this workflow has actually executed on the hosting service.

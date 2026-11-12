@@ -1,0 +1,402 @@
+E-005 — Memory Architecture
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use an:
+
+«Object-Based, Pressure-Aware, Tiered Memory Architecture»
+
+The memory system should understand not only how much memory is used, but also:
+
+- Who owns it
+- How important it is
+- How recently it was used
+- Whether reclaiming it causes refaults
+- Whether the system is actually suffering from memory pressure
+- Where that memory should live
+
+---
+
+Core Split
+
+Kernel handles
+
+- Physical pages
+- Virtual address spaces
+- Page tables
+- Protection
+- Mapping enforcement
+- Page faults
+- DMA-pinned memory
+- Fundamental isolation
+
+Memory Manager service handles policy
+
+- Reclaim strategy
+- Compression policy
+- Swap policy
+- Memory tiers
+- Cache pressure
+- Job memory budgets
+- Background-memory handling
+- Pressure response
+
+Principle
+
+«Kernel enforces memory safety. Higher-level services decide memory policy.»
+
+---
+
+Memory Objects
+
+Memory should be represented as capability-controlled objects rather than merely anonymous pointer ranges.
+
+A Memory Object may support:
+
+- Mapping into processes
+- Sharing between processes
+- IPC buffers
+- Copy-on-write clones
+- File-backed memory
+- Pager-backed memory
+- Read/write/execute permissions
+
+Example:
+
+Memory Object
+   ├── Process A
+   ├── Process B
+   ├── Shared IPC buffer
+   └── Copy-on-write clone
+
+Access is granted through capabilities.
+
+---
+
+Pressure-Aware Memory Management
+
+Evrosion should not make major decisions based simply on:
+
+«"Only 500 MB RAM remains."»
+
+Instead it should consider:
+
+- Actual system slowdown/stalls
+- Working-set activity
+- Page recency
+- Refault rates
+- Job importance
+- Memory guarantees
+- Compression effectiveness
+- Storage speed
+- Available memory tiers
+
+Principle
+
+«Manage memory according to usefulness and actual pressure, not merely free-RAM numbers.»
+
+---
+
+Working-Set Intelligence
+
+Evrosion should track which memory is:
+
+- Hot
+- Warm
+- Cold
+- Frequently reclaimed and immediately needed again
+
+If Evrosion repeatedly removes memory that immediately has to be restored, the system should learn that the reclaim strategy is poor and adjust.
+
+---
+
+Tiered Memory
+
+Memory should be treated as a hierarchy rather than simply:
+
+«RAM or disk.»
+
+Potential tiers:
+
+Fast DRAM
+   ↓
+Slower RAM / NUMA / CXL memory
+   ↓
+Compressed RAM
+   ↓
+Fast SSD/NVMe swap
+   ↓
+Slower backing storage
+
+Evrosion should automatically place memory in the most appropriate tier.
+
+Systems without additional tiers simply skip the unavailable stages.
+
+---
+
+Memory Compression
+
+Before heavily relying on disk swap, Evrosion should be able to compress cold memory in RAM.
+
+This is especially important for low-memory and older machines.
+
+The system should balance:
+
+- CPU cost
+- Compression ratio
+- Memory pressure
+- Storage performance
+- Battery/power cost
+
+---
+
+Job-Based Memory Ownership
+
+E-004 Jobs should also become the primary memory-accounting units.
+
+Example:
+
+Game Job
+   ├── Main process
+   ├── Renderer
+   ├── Audio process
+   └── Helper processes
+
+Evrosion should understand that all of these belong to one logical workload.
+
+Memory usage can therefore be shown and controlled at Job level.
+
+---
+
+Memory Budgets
+
+Jobs may eventually support:
+
+- Protected minimum memory
+- Soft targets
+- Hard maximums
+- Priority under pressure
+- Background-memory limits
+- Reclaim preferences
+
+Critical Evrosion services should retain enough protected memory to keep the system controllable during extreme pressure.
+
+---
+
+Controlled Memory-Pressure Ladder
+
+When memory becomes scarce, Evrosion should respond progressively.
+
+1. Trim disposable caches
+        ↓
+2. Reclaim genuinely cold pages
+        ↓
+3. Compress cold memory
+        ↓
+4. Demote to slower RAM/CXL if available
+        ↓
+5. Swap cold pages to storage
+        ↓
+6. Throttle/freeze low-priority background Jobs
+        ↓
+7. Ask cooperative applications to release memory
+        ↓
+8. Terminate selected Jobs
+        ↓
+9. Emergency OOM recovery
+
+Termination should be the last resort, not the first.
+
+---
+
+OOM Behavior
+
+Evrosion should avoid randomly killing individual processes.
+
+If an application consists of many processes, the system should reason about the entire Job.
+
+Principle
+
+«OOM decisions operate on workloads, not random processes.»
+
+The goal should be:
+
+«Free enough memory while destroying the least useful work possible.»
+
+---
+
+User-Space Paging
+
+Evrosion should support userspace pagers where appropriate.
+
+This may allow:
+
+- Filesystems to provide pages on demand
+- Specialized runtimes to manage backing memory
+- Compatibility systems to implement custom paging behavior
+- New storage technologies to integrate without expanding the kernel
+
+The kernel still enforces mappings and isolation.
+
+---
+
+Shared Memory and Zero-Copy
+
+Memory Objects should support efficient shared-memory communication.
+
+This is important for:
+
+- Graphics
+- Networking
+- Drivers
+- Audio
+- Storage
+- IPC
+- High-throughput applications
+
+Evrosion should avoid unnecessary copying where safe.
+
+---
+
+Copy-on-Write
+
+Copy-on-write should be available for:
+
+- Process creation
+- Memory snapshots
+- Shared data
+- Recovery
+- Fast cloning
+- Filesystem integration where appropriate
+
+---
+
+Page Sizes
+
+Evrosion should support flexible page-size strategies where hardware allows.
+
+This may include:
+
+- Normal pages
+- Intermediate larger pages
+- Huge pages
+
+The system should choose based on workload rather than blindly forcing one page size.
+
+---
+
+NUMA and Future Memory Hardware
+
+Evrosion should be designed for:
+
+- NUMA systems
+- CXL memory
+- Heterogeneous memory
+- Persistent memory
+- Future memory technologies
+
+These do not need to be fully implemented in v1, but the architecture must not assume all memory has identical speed or latency.
+
+---
+
+Observability
+
+Memory behavior should be visible and explainable.
+
+Evrosion should eventually be able to report things such as:
+
+«Browser is using 3.2 GB.»
+
+«1.1 GB is inactive.»
+
+«700 MB has been compressed.»
+
+«400 MB was reclaimed from cache.»
+
+«No applications were terminated.»
+
+Or:
+
+«Memory pressure became critical. A background Job was terminated to recover 2.3 GB.»
+
+This should integrate with Layers 1–3.
+
+---
+
+Layer Behavior
+
+Layer 1
+
+Simple explanations:
+
+«Memory became low. Evrosion automatically freed unused memory.»
+
+Layer 2
+
+More detail:
+
+- Job memory usage
+- Compression
+- Swap usage
+- Cache usage
+- Pressure
+- Memory limits
+
+Layer 3
+
+Full technical access:
+
+- Memory Objects
+- Mappings
+- Page faults
+- NUMA placement
+- Swap
+- Pager state
+- Compression statistics
+- Job limits
+- Manual memory controls
+
+---
+
+E-005 Summary
+
+Evrosion memory management will combine:
+
+«Capability-controlled Memory Objects»
+
+«Working-set intelligence»
+
+«Actual pressure/stall feedback»
+
+«Job-based ownership and limits»
+
+«Memory compression»
+
+«Tiered memory»
+
+«Controlled reclaim»
+
+«Userspace paging»
+
+«Flexible page sizes»
+
+«Job-level OOM handling»
+
+«Structured observability»
+
+---
+
+Governing Principles
+
+«Memory belongs to identifiable workloads.»
+
+«Usefulness matters more than free-memory numbers.»
+
+«Compress and reclaim intelligently before killing applications.»
+
+«OOM is a controlled recovery mechanism, not random murder.»
+
+«Old and low-memory machines should degrade gracefully rather than becoming unusable.»
+
+«The kernel protects memory; higher-level policy decides how best to use it.»

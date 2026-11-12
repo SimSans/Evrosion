@@ -1,0 +1,459 @@
+E-002 — Kernel Architecture
+
+
+Status: DECIDED — COMPLETE
+
+Evrosion will keep the privileged kernel/core deliberately small.
+
+The kernel should provide mechanisms and enforcement, while most policy and functionality should live in isolated userspace components.
+
+Core Rule
+
+«The kernel provides mechanisms and enforces isolation. Userspace provides policy and functionality.»
+
+A component belongs inside the privileged core only when there is a strong technical reason for it to be there.
+
+---
+
+Inside the Evrosion Core
+
+The privileged core should handle:
+
+- CPU scheduling/thread primitives
+- Virtual-memory and address-space enforcement
+- Basic physical-memory allocation/accounting
+- Page-table control
+- IPC primitives and fast paths
+- Capability/permission enforcement
+- Interrupts and exceptions
+- Timers and timekeeping
+- Multicore CPU control
+- IOMMU/SMMU enforcement
+- DMA isolation
+- Low-level MMIO/device-access primitives
+- Fault delivery
+- Minimal architecture/platform control
+- Minimal boot/debug functionality
+
+Exact implementation details will be designed later.
+
+---
+
+Outside the Kernel by Default
+
+These should normally live in isolated components:
+
+- Device drivers
+- GPU drivers
+- Storage drivers
+- Filesystems
+- Networking stack
+- Wi-Fi
+- Ethernet
+- Bluetooth
+- Audio
+- USB policy
+- Hardware discovery
+- Power-management policy
+- Package management
+- Update system
+- Service supervision
+- Desktop/UI
+- Applications
+
+If one of these components later proves unable to meet performance requirements outside the core, Evrosion should first optimize IPC, shared memory, zero-copy paths, batching, or controlled co-location before expanding kernel privilege.
+
+---
+
+Driver Architecture Direction
+
+Drivers should operate outside the kernel by default.
+
+Benefits:
+
+- Driver crashes do not automatically crash the OS
+- Drivers can be restarted
+- Third-party drivers can be strongly isolated
+- Driver updates can be safer
+- Debugging becomes easier
+- Failures can be contained
+
+Drivers may use different isolation classes depending on trust and performance requirements.
+
+---
+
+Memory Split
+
+Memory responsibilities will be divided.
+
+Kernel
+
+Controls:
+
+- Physical pages
+- Address spaces
+- Page tables
+- Protection
+- Mapping enforcement
+- Hardware memory isolation
+
+Userspace/system services
+
+May control higher-level policy such as:
+
+- Paging strategy
+- File-backed paging
+- Prefetching
+- Cache policy
+- Reclamation policy
+- Swap policy
+
+This allows memory protection to remain trusted while higher-level policy remains replaceable.
+
+---
+
+DMA / IOMMU
+
+DMA protection belongs to the privileged core.
+
+Userspace drivers may request DMA mappings, but they must not be allowed unrestricted access to arbitrary physical memory.
+
+Where available, Evrosion should use:
+
+- IOMMU
+- SMMU
+- Device-specific DMA isolation
+
+Older systems without adequate hardware protection may still be supported, but Evrosion should clearly represent their weaker isolation guarantees.
+
+---
+
+Graphics
+
+The GPU system driver should remain outside the kernel by default.
+
+The kernel should provide only the mechanisms needed for:
+
+- Hardware access
+- Interrupt handling
+- Memory mapping
+- DMA protection
+- Secure resource ownership
+
+Graphics policy, scheduling logic, rendering systems, and most GPU functionality should live outside the core.
+
+---
+
+Networking
+
+Networking should remain outside the kernel by default.
+
+Performance should be achieved through mechanisms such as:
+
+- Shared memory
+- Zero-copy transfer
+- Ring buffers
+- Batching
+- Hardware queues
+- Controlled co-location
+
+rather than automatically moving the network stack into privileged kernel space.
+
+---
+
+Filesystems
+
+Filesystems should run outside the kernel where practical.
+
+This means a filesystem bug should ideally result in:
+
+«filesystem failure → containment → recovery/restart»
+
+rather than:
+
+«filesystem bug → whole OS crash»
+
+The kernel provides the low-level memory, storage, and communication mechanisms required.
+
+---
+
+Independent Recovery Architecture
+
+Evrosion should treat recovery as a fundamental architectural feature rather than merely a settings menu.
+
+Recovery Principle
+
+«Automatic first. Manual always available. Explain what happened.»
+
+Evrosion should automatically detect and recover from failures whenever practical.
+
+Examples:
+
+- Wi-Fi driver crashes → restart Wi-Fi driver
+- Audio stack crashes → restart audio
+- Desktop crashes → restart desktop
+- Driver update fails → roll back
+- Network service fails → restart networking
+
+The user should not normally need to intervene.
+
+---
+
+Main System Button
+
+Evrosion should have a familiar main system button similar in basic purpose to the traditional Windows Start button.
+
+Instead of filling it with excessive administrative clutter, it should provide simple access to system and recovery controls.
+
+Potential recovery actions include:
+
+- Fix Wi-Fi
+- Restart networking
+- Restart Bluetooth
+- Restart audio
+- Restart graphics
+- Restart desktop
+- Restart a driver
+- Restart a system service
+- Re-scan hardware
+- Roll back last driver/update
+- Open recovery mode
+- Reboot
+- Shut down
+
+---
+
+Layer-Based Recovery UI
+
+Layer 1
+
+Simple actions:
+
+- Fix Wi-Fi
+- Fix sound
+- Fix display
+- Fix Bluetooth
+- Restart desktop
+- Restart computer
+
+The OS handles the technical details.
+
+Layer 2
+
+Shows actual components:
+
+- Wi-Fi driver
+- Audio service
+- GPU service
+- Network stack
+- Bluetooth stack
+- Desktop shell
+
+Users can restart or diagnose individual components.
+
+Layer 3 / Absolute Access
+
+Full control:
+
+- Raw driver control
+- Service restart
+- Kill/reload components
+- Dependency inspection
+- Logs
+- Capability inspection
+- Manual rollback
+- Low-level diagnostics
+- Forced component replacement
+
+---
+
+Independent Recovery Controller
+
+Evrosion should maintain a small recovery/control component that is separated from the normal desktop environment as much as practical.
+
+It should:
+
+- Have very few dependencies
+- Run at high priority
+- Remain independent of the normal shell
+- Access structured system-health information
+- Restart failed services/drivers
+- Trigger rollback
+- Start fallback components
+- Reboot safely when required
+
+The purpose is to preserve control when the normal GUI becomes unresponsive.
+
+---
+
+Minimal Input Path
+
+Evrosion should attempt to keep a minimal input path available for recovery.
+
+This may allow keyboard and mouse input to continue reaching the recovery controller even if the normal desktop/compositor is frozen.
+
+The recovery path should not depend entirely on:
+
+- Desktop shell
+- Normal compositor
+- Normal window manager
+- Ordinary application input routing
+
+---
+
+Minimal Fallback Display
+
+Where technically practical, Evrosion should maintain a basic display/recovery path independent of the normal accelerated graphics environment.
+
+If the main graphics stack fails, Evrosion should attempt to provide a simple recovery screen.
+
+It does not need animations or advanced rendering.
+
+It only needs to remain functional enough to:
+
+- Show the problem
+- Allow recovery actions
+- Restart components
+- Roll back
+- Reboot
+
+---
+
+Emergency Keyboard Path
+
+Mouse recovery cannot always be guaranteed.
+
+If:
+
+- USB/input hardware fails
+- Input drivers fail
+- GPU output fails
+- Scheduler completely wedges
+- Kernel itself hard-locks
+
+then normal mouse-based recovery may be impossible.
+
+Evrosion should therefore include a kernel-routed emergency keyboard sequence.
+
+Its purpose is to bypass much of the normal software stack and request emergency recovery actions.
+
+Possible actions could include:
+
+- Open emergency recovery
+- Restart desktop
+- Restart graphics
+- Terminate a stuck foreground session
+- Sync storage
+- Trigger controlled reboot
+
+Exact key combinations and security rules remain TBD.
+
+---
+
+Watchdog / Hard-Lock Recovery
+
+Evrosion should support watchdog-style detection for serious system hangs.
+
+Possible mechanisms include:
+
+- Kernel watchdog
+- Hardware watchdog
+- NMI-based lockup detection
+- Scheduler health monitoring
+- Component heartbeat monitoring
+
+If the system stops making progress, Evrosion should attempt controlled recovery before requiring the user to physically power-cycle the machine.
+
+---
+
+Recovery Ladder
+
+Evrosion should use progressively deeper recovery methods:
+
+1. Automatic component recovery
+
+        ↓
+
+2. Manual recovery through main system menu
+
+        ↓
+
+3. Independent recovery controller
+
+        ↓
+
+4. Emergency keyboard path
+
+        ↓
+
+5. Watchdog / NMI / low-level recovery
+
+        ↓
+
+6. Hardware reset as final fallback
+
+Each deeper level should depend on fewer system components.
+
+---
+
+Important Limitation
+
+Evrosion cannot guarantee that the mouse or GUI will always remain functional during every possible failure.
+
+A complete hardware failure or kernel-level hard lock can make normal input impossible.
+
+Therefore the design principle is not:
+
+«"The mouse must always work."»
+
+It is:
+
+«Provide multiple independent recovery paths so that failure of one path does not automatically eliminate every way to regain control.»
+
+---
+
+Recovery Architecture Rule
+
+«At least one recovery path should live outside the component most likely to have failed.»
+
+Examples:
+
+Desktop fails → recovery controller remains.
+
+Graphics stack fails → fallback display path.
+
+Normal input routing fails → emergency keyboard path.
+
+Userspace freezes → kernel-level emergency handling.
+
+Kernel stalls → watchdog/NMI mechanisms.
+
+Everything fails → physical reset remains the ultimate fallback.
+
+---
+
+E-002 Final Summary
+
+Evrosion's privileged core will primarily act as a:
+
+«Hardware referee, isolation enforcer, resource manager, and communication foundation.»
+
+Most actual operating-system functionality will run as isolated, restartable components above it.
+
+The system will also include layered recovery mechanisms so that ordinary subsystem failures can be fixed without rebooting the entire machine.
+
+Governing Principles
+
+«Keep the kernel small.»
+
+«Drivers and services live outside it unless proven otherwise.»
+
+«Failures should remove components, not computers.»
+
+«Automatic recovery first; manual recovery always available.»
+
+«The owner must always have a path toward regaining control.»
+
+«At least one recovery mechanism should remain independent of the component likely to fail.»
+
+E-002 — DECIDED AND CLOSED.

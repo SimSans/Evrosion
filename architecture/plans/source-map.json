@@ -1,0 +1,349 @@
+{
+  "description": "Actual published technical source files. sha256/bytes describe this edition; source_sha256 records prior source lineage and is not a claim of byte-identical preservation.",
+  "path_base": "repository root",
+  "documents": [
+    {
+      "original_path": "Evrosion_Data_Migration_and_Windows_Compatibility_Amendment_v1.md",
+      "path": "architecture/plans/amendments/Evrosion_Data_Migration_and_Windows_Compatibility_Amendment_v1.md",
+      "sha256": "adec5a0aa3e664114f1a47b12ae5a74d40068bf5f3728612b39c9883fa9883be",
+      "bytes": 13672,
+      "source_sha256": "f0ee00fcca09e2eae9b798e1ca6d157c0e990f14790412cda070fd17ec1e7db9",
+      "edition": "public-technical",
+      "editorial_scope": "Neutral technical edition; private development instructions and context references removed, technical requirements retained. License-application status is recorded where applicable."
+    },
+    {
+      "original_path": "Engineering direction, 2026-10-16",
+      "path": "architecture/plans/amendments/engineering-direction-2026-10-16.md",
+      "sha256": "8369e01e82899b7d907642bd6397c3b93323645b37e733a478f4b43fa894a3c1",
+      "bytes": 1611,
+      "source_sha256": "54795a80ec7b8f1b1d26379145e37da09041bbdfaef87c7aaa09fcd4e3c672b2",
+      "edition": "public-technical",
+      "editorial_scope": "Neutral technical edition; private development instructions and context references removed, technical requirements retained. License-application status is recorded where applicable."
+    },
+    {
+      "original_path": "E-001 _.txt",
+      "path": "architecture/plans/core/E-001-overall-os-architecture.txt",
+      "sha256": "9cebc1824704183c125c5f8200d0dca6f8035defeddb427c45b45b0c6bb3584a",
+      "bytes": 20345,
+      "source_sha256": "9cebc1824704183c125c5f8200d0dca6f8035defeddb427c45b45b0c6bb3584a",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-002 _ Kernel.txt",
+      "path": "architecture/plans/core/E-002-kernel-architecture.txt",
+      "sha256": "86d47a156b123fa2b6e7938945fc123671ba26ab7f493a27bd474a8738b5f3d8",
+      "bytes": 10410,
+      "source_sha256": "86d47a156b123fa2b6e7938945fc123671ba26ab7f493a27bd474a8738b5f3d8",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-004 _ CPU_.txt",
+      "path": "architecture/plans/core/E-004-cpu-process-and-execution-model.txt",
+      "sha256": "1476f91702a747fb27449b7d28872d77e46ca07b50b07a55a2ce44610b3e81fc",
+      "bytes": 6604,
+      "source_sha256": "1476f91702a747fb27449b7d28872d77e46ca07b50b07a55a2ce44610b3e81fc",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-005 _ Memory.txt",
+      "path": "architecture/plans/core/E-005-memory-architecture.txt",
+      "sha256": "b4140a4eca2b91222541f58371b6bb9efac98a58458650b6a2554d364885a1f8",
+      "bytes": 7560,
+      "source_sha256": "b4140a4eca2b91222541f58371b6bb9efac98a58458650b6a2554d364885a1f8",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-007 _ System.txt",
+      "path": "architecture/plans/core/E-007-system-service-architecture.txt",
+      "sha256": "63371d3a70a9a5581dbe4a351a9202e55005f226b8059591763a9ca1ed8a5271",
+      "bytes": 12009,
+      "source_sha256": "63371d3a70a9a5581dbe4a351a9202e55005f226b8059591763a9ca1ed8a5271",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-008 _ IPC _.txt",
+      "path": "architecture/plans/core/E-008-ipc-and-system-communication.txt",
+      "sha256": "190f38dd7267fc4d839d172a84ae4ae5456835c58d67b7cf58d251d07142a0d1",
+      "bytes": 10915,
+      "source_sha256": "190f38dd7267fc4d839d172a84ae4ae5456835c58d67b7cf58d251d07142a0d1",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-009 _.txt",
+      "path": "architecture/plans/core/E-009-security-and-permissions.txt",
+      "sha256": "1c880970848ff2d6536d538cbdd2fa4d43f6cb533a86f14dd0b67359f8636f16",
+      "bytes": 17002,
+      "source_sha256": "1c880970848ff2d6536d538cbdd2fa4d43f6cb533a86f14dd0b67359f8636f16",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-015 _ System.txt",
+      "path": "architecture/plans/core/E-015-system-api-and-abi.txt",
+      "sha256": "80c497150ad1319fc95c30bd48070c03fd1d6a6e13ac4641c3c71d4797101b33",
+      "bytes": 20291,
+      "source_sha256": "80c497150ad1319fc95c30bd48070c03fd1d6a6e13ac4641c3c71d4797101b33",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_E-023_Performance_and_Resource_Model.md",
+      "path": "architecture/plans/core/E-023-performance-and-resource-model.md",
+      "sha256": "6ddbe444615cc11ac1a21d64ff39c150afc54168c3f3d5dcaa0d1c843fb948a6",
+      "bytes": 33120,
+      "source_sha256": "6ddbe444615cc11ac1a21d64ff39c150afc54168c3f3d5dcaa0d1c843fb948a6",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_E-024_Modularity_and_Extensibility_Architecture.md",
+      "path": "architecture/plans/core/E-024-modularity-and-extensibility.md",
+      "sha256": "98401129c652f367592ef2a5e934989acfc5573a3a6b2b1ce8a2891fdc23b42a",
+      "bytes": 48791,
+      "source_sha256": "98401129c652f367592ef2a5e934989acfc5573a3a6b2b1ce8a2891fdc23b42a",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-013 _.txt",
+      "path": "architecture/plans/development/E-013-programming-languages.txt",
+      "sha256": "827cff277ba5bc0157928c6b76ae8801bd6216aec58a15ca23282ab361cbc55d",
+      "bytes": 30023,
+      "source_sha256": "827cff277ba5bc0157928c6b76ae8801bd6216aec58a15ca23282ab361cbc55d",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-014 _ Build.txt",
+      "path": "architecture/plans/development/E-014-build-system-and-toolchain.txt",
+      "sha256": "df042a8da9ce494e6d7997a227f7364764e8853874b81da6dadc14b2bc1a3e73",
+      "bytes": 19850,
+      "source_sha256": "df042a8da9ce494e6d7997a227f7364764e8853874b81da6dadc14b2bc1a3e73",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-020.txt",
+      "path": "architecture/plans/development/E-020-development-and-debugging.txt",
+      "sha256": "94c5c60784cdeea87ac2c3886853d320e3d4db35d0bb91427ed01a9b2d37288a",
+      "bytes": 34319,
+      "source_sha256": "94c5c60784cdeea87ac2c3886853d320e3d4db35d0bb91427ed01a9b2d37288a",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-016 _.txt",
+      "path": "architecture/plans/experience/E-016-application-and-software-model.txt",
+      "sha256": "9cc0ef16a7aa31feb0eb0c06868f105353420822db16e46c74f0b40a0d4a2268",
+      "bytes": 20758,
+      "source_sha256": "9cc0ef16a7aa31feb0eb0c06868f105353420822db16e46c74f0b40a0d4a2268",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-017.txt",
+      "path": "architecture/plans/experience/E-017-graphics-and-display.txt",
+      "sha256": "56df030a2f9c854b9beabcd48fdca0c3971b177be96ff6c006af3941ad311d14",
+      "bytes": 38217,
+      "source_sha256": "56df030a2f9c854b9beabcd48fdca0c3971b177be96ff6c006af3941ad311d14",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-018.txt",
+      "path": "architecture/plans/experience/E-018-audio-and-multimedia.txt",
+      "sha256": "f41693da3bc0c9638c390a0f87f5be1e212cd9f9779a76dd98021afbf503f214",
+      "bytes": 37382,
+      "source_sha256": "f41693da3bc0c9638c390a0f87f5be1e212cd9f9779a76dd98021afbf503f214",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-021.txt",
+      "path": "architecture/plans/experience/E-021-ai-integration.txt",
+      "sha256": "96df9ea475cc9c0195f31260c047e23160c32e324efe9cca9ebf1faad17e58d2",
+      "bytes": 38509,
+      "source_sha256": "96df9ea475cc9c0195f31260c047e23160c32e324efe9cca9ebf1faad17e58d2",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_E-022_Compatibility_Architecture.md",
+      "path": "architecture/plans/experience/E-022-compatibility-architecture.md",
+      "sha256": "77f8ed517ad29e687066c6ead39220a35a4e3533061a81df643d17f31955eefe",
+      "bytes": 38061,
+      "source_sha256": "77f8ed517ad29e687066c6ead39220a35a4e3533061a81df643d17f31955eefe",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Startup login.txt",
+      "path": "architecture/plans/experience/startup-login-and-customization.txt",
+      "sha256": "908bf7103c78810a511f3c9f74d0a66e5379d113b267a006c7872787aa74a834",
+      "bytes": 6785,
+      "source_sha256": "908bf7103c78810a511f3c9f74d0a66e5379d113b267a006c7872787aa74a834",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion _.txt",
+      "path": "architecture/plans/foundations/business-and-ecosystem-strategy.txt",
+      "sha256": "6c94cc5aa3a89d0d3cf67896812b3ddf7c14a46d3d770557b4c71530c31cd8ac",
+      "bytes": 6943,
+      "source_sha256": "6c94cc5aa3a89d0d3cf67896812b3ddf7c14a46d3d770557b4c71530c31cd8ac",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Foundation.txt",
+      "path": "architecture/plans/foundations/foundational-requirements.txt",
+      "sha256": "b1c5b7f8df5a1acd576d88beca21586f01095a4a8d47cc3743bfcab998e8d394",
+      "bytes": 28214,
+      "source_sha256": "b1c5b7f8df5a1acd576d88beca21586f01095a4a8d47cc3743bfcab998e8d394",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Universal.txt",
+      "path": "architecture/plans/foundations/universal-rules.txt",
+      "sha256": "88ae3570b162c68d6c94720ba77c24172caf70217d07fa844ae329103dd2795d",
+      "bytes": 7709,
+      "source_sha256": "88ae3570b162c68d6c94720ba77c24172caf70217d07fa844ae329103dd2795d",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-003 _.txt",
+      "path": "architecture/plans/platform/E-003-hardware-and-platform-targets.txt",
+      "sha256": "7c514f70f93c7e5b36f0f287f2f5dd1317192dd36a06e75da153f8a75416a749",
+      "bytes": 6618,
+      "source_sha256": "7c514f70f93c7e5b36f0f287f2f5dd1317192dd36a06e75da153f8a75416a749",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-006 _ Driver.txt",
+      "path": "architecture/plans/platform/E-006-driver-architecture.txt",
+      "sha256": "ce232d751a84e6a7c129bdf7979c105dee349b4d0ca4f2671c13c00f306ef622",
+      "bytes": 17946,
+      "source_sha256": "ce232d751a84e6a7c129bdf7979c105dee349b4d0ca4f2671c13c00f306ef622",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-010 _.txt",
+      "path": "architecture/plans/platform/E-010-storage-and-filesystems.txt",
+      "sha256": "6e2c09f0b94e606eb07ba6acea40830cb7bf064d2e1c1000ff89d286b623730d",
+      "bytes": 18796,
+      "source_sha256": "6e2c09f0b94e606eb07ba6acea40830cb7bf064d2e1c1000ff89d286b623730d",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-011 _.txt",
+      "path": "architecture/plans/platform/E-011-networking-architecture.txt",
+      "sha256": "444a12fa2af3885edcc39ae0c73921b2eabcec739a77b4c6202c71a0fe7ce24c",
+      "bytes": 13890,
+      "source_sha256": "444a12fa2af3885edcc39ae0c73921b2eabcec739a77b4c6202c71a0fe7ce24c",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-012 _ Boot _.txt",
+      "path": "architecture/plans/platform/E-012-boot-and-recovery.txt",
+      "sha256": "6a7dde9a27ade1aa65a7eeec608c155497a65b7482848c1a98c372737431bfec",
+      "bytes": 19524,
+      "source_sha256": "6a7dde9a27ade1aa65a7eeec608c155497a65b7482848c1a98c372737431bfec",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "E-019.txt",
+      "path": "architecture/plans/platform/E-019-update-and-lifecycle.txt",
+      "sha256": "58fde5eb4ae5c9572c70e62d62434f6a22e66b2bd6c9563aa8deb70e07631391",
+      "bytes": 39642,
+      "source_sha256": "58fde5eb4ae5c9572c70e62d62434f6a22e66b2bd6c9563aa8deb70e07631391",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_Certified_Privacy_Diagnostic_Integrity_v1.md",
+      "path": "architecture/plans/release-project/Evrosion_Certified_Privacy_Diagnostic_Integrity_v1.md",
+      "sha256": "860ca2ca3f812cde3409e4e4dbc2061d0543a51fe14129af5f104fe0060ffac9",
+      "bytes": 21371,
+      "source_sha256": "860ca2ca3f812cde3409e4e4dbc2061d0543a51fe14129af5f104fe0060ffac9",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_R-001_Economic_Independence_v1.md",
+      "path": "architecture/plans/release-project/Evrosion_R-001_Economic_Independence_v1.md",
+      "sha256": "e480047f1853cf95519ec37e1e313b65d26996b0cb0f9931428cb5ced428b061",
+      "bytes": 18055,
+      "source_sha256": "e480047f1853cf95519ec37e1e313b65d26996b0cb0f9931428cb5ced428b061",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_R-002_Founder_Stewardship_Foundation_Governance_v1.md",
+      "path": "architecture/plans/release-project/Evrosion_R-002_Founder_Stewardship_Foundation_Governance_v1.md",
+      "sha256": "6a4aa42e2ce12f86f426f901a62c43cd749927a8f0fd82c3869b52e2b5778d6a",
+      "bytes": 32367,
+      "source_sha256": "6a4aa42e2ce12f86f426f901a62c43cd749927a8f0fd82c3869b52e2b5778d6a",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_R-003_Official_Releases_Distribution_Updates_and_Release_Trust_v1.md",
+      "path": "architecture/plans/release-project/Evrosion_R-003_Official_Releases_Distribution_Updates_and_Release_Trust_v1.md",
+      "sha256": "206d09f42be882dbb9b81bec96a0da739b92ddbbdb34b97918195064790b3043",
+      "bytes": 24364,
+      "source_sha256": "206d09f42be882dbb9b81bec96a0da739b92ddbbdb34b97918195064790b3043",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_R-004_Security_Vulnerability_Disclosure_and_Incident_Response_v1.md",
+      "path": "architecture/plans/release-project/Evrosion_R-004_Security_Vulnerability_Disclosure_and_Incident_Response_v1.md",
+      "sha256": "63081d19c1652746aaa3c9a580091cf3b91f5adeb3a220526940ac4cbd0d7315",
+      "bytes": 26223,
+      "source_sha256": "63081d19c1652746aaa3c9a580091cf3b91f5adeb3a220526940ac4cbd0d7315",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_R-005_Public_Release_GitHub_and_Community_Growth_v1_2.md",
+      "path": "architecture/plans/release-project/Evrosion_R-005_Public_Release_GitHub_and_Community_Growth_v1_2.md",
+      "sha256": "ae0d79404d812f6d4640ede42c5b98c74e7f72b479f620a9ccb80133e4741199",
+      "bytes": 43768,
+      "source_sha256": "da6f8c5d77b8422c74e6230f010ed5e5470434e8be747d265997e35b8f1df791",
+      "edition": "public-technical",
+      "editorial_scope": "Neutral technical edition; private development instructions and context references removed, technical requirements retained. License-application status is recorded where applicable."
+    },
+    {
+      "original_path": "Evrosion_R-006_Licensing_Contributor_Rights_and_Trademark_Policy_v1.md",
+      "path": "architecture/plans/release-project/Evrosion_R-006_Licensing_Contributor_Rights_and_Trademark_Policy_v1.md",
+      "sha256": "86abce0515078b63cdbfe7859d38342459bec288b86e1b90db4ef5416a4f676f",
+      "bytes": 59091,
+      "source_sha256": "324406f9879ec6ad5474a5f1ce018657a91e388e8f94dfd495591d4cf346e870",
+      "edition": "public-technical",
+      "editorial_scope": "Neutral technical edition; private development instructions and context references removed, technical requirements retained. License-application status is recorded where applicable."
+    },
+    {
+      "original_path": "Evrosion_R-007_to_R-011_Superfile_v1.md",
+      "path": "architecture/plans/release-project/Evrosion_R-007_to_R-011_Superfile_v1.md",
+      "sha256": "64a888924af3532e9f4ae339d6710645f21b78b44f609091f519ad8f8b631cc5",
+      "bytes": 107335,
+      "source_sha256": "7115a1b76c73e9b0db81c8246dc0fc4fe6f2e634e854f8d77e7c516016d73265",
+      "edition": "public-technical",
+      "editorial_scope": "Neutral technical edition; private development instructions and context references removed, technical requirements retained. License-application status is recorded where applicable."
+    },
+    {
+      "original_path": "Evrosion_Full_Architecture_Audit_v1.md",
+      "path": "architecture/plans/reviews/full-architecture-audit-v1.md",
+      "sha256": "a2c792e4ecbf119085518e359bf3c142b10a8c39833ab288219f05b00f3f929b",
+      "bytes": 58227,
+      "source_sha256": "a2c792e4ecbf119085518e359bf3c142b10a8c39833ab288219f05b00f3f929b",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_E-025_Initial_Scope.md",
+      "path": "architecture/plans/roadmap/E-025-initial-scope.md",
+      "sha256": "a4aeb2836a270a3126595e41531e7e355ba130a57e06848899c4c28456b3f5aa",
+      "bytes": 39952,
+      "source_sha256": "cdcedc6f2204c76b088a08a54452da257bbf79739e729ad7d9f607ae6e529642",
+      "edition": "public-technical",
+      "editorial_scope": "Neutral technical edition; private development instructions and context references removed, technical requirements retained. License-application status is recorded where applicable."
+    },
+    {
+      "original_path": "Evrosion_E-026_Long-Term_Architecture.md",
+      "path": "architecture/plans/roadmap/E-026-long-term-architecture.md",
+      "sha256": "5592f4bbe400f7d0e1cae349e7e46fc8030ceecc5c1a7a4832ccd4871ff4a1f9",
+      "bytes": 40369,
+      "source_sha256": "5592f4bbe400f7d0e1cae349e7e46fc8030ceecc5c1a7a4832ccd4871ff4a1f9",
+      "edition": "unchanged-technical-source"
+    },
+    {
+      "original_path": "Evrosion_PRE-M0_Implementation_Package_v1.md",
+      "path": "architecture/plans/roadmap/PRE-M0-implementation-package-v1.md",
+      "sha256": "5800c390edaa15176fdf2f33a32a9c146b20ba743b7261d01d24274c81c3cfc3",
+      "bytes": 60107,
+      "source_sha256": "82dcde3bbb7e2621d3a0d8cfa705455be19b511a59724249db4b0e520c6e954a",
+      "edition": "public-technical",
+      "editorial_scope": "Neutral technical edition; private development instructions and context references removed, technical requirements retained. License-application status is recorded where applicable."
+    }
+  ]
+}

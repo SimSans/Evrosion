@@ -1,0 +1,631 @@
+E-007 — System Service Architecture
+
+
+Status: DIRECTION DECIDED
+
+Evrosion will use a:
+
+«Capability-Routed Supervised Service Graph»
+
+A service will not simply be treated as an immortal background process.
+
+Instead:
+
+«A service is a durable system contract and identity. Its running process is replaceable.»
+
+---
+
+E-007.1 — Service Identity
+
+Applications and system components should depend on stable service identities rather than directly depending on process IDs.
+
+Example:
+
+evrosion.network
+      ↓
+Current Network Service instance
+
+If the service process crashes:
+
+evrosion.network
+      ↓
+Restarted Network Service instance
+
+The logical service remains the same even though its implementation process changed.
+
+---
+
+E-007.2 — Declarative Service Manifests
+
+Every system service should describe itself through a structured manifest.
+
+The manifest may declare:
+
+- What the service provides
+- What other services it requires
+- Capabilities it needs
+- CPU budget
+- Memory budget
+- Restart policy
+- Health contract
+- Persistent state ownership
+- Activation mode
+- Dependencies
+- Isolation requirements
+- Failure behavior
+- Version/API compatibility
+
+This allows Evrosion to reason about the service rather than blindly launching it.
+
+---
+
+E-007.3 — Supervised Service Graph
+
+Services should form an explicit dependency graph.
+
+Example:
+
+Networking
+├── Wi-Fi
+├── Ethernet
+├── DNS
+└── VPN
+
+Evrosion should understand which components depend on which others.
+
+This enables targeted recovery rather than unnecessary whole-system restarts.
+
+---
+
+E-007.4 — Supervision Strategies
+
+Different service relationships may use different restart strategies.
+
+Possible strategies:
+
+Restart Only This
+
+Restart only the failed component.
+
+Example:
+
+«Wi-Fi service crashes → restart Wi-Fi only.»
+
+Restart Dependent Subtree
+
+Restart the failed component and services whose state depends on it.
+
+Restart Group
+
+Restart a tightly coupled group when one component fails.
+
+The correct strategy should depend on the architecture of the subsystem.
+
+---
+
+E-007.5 — Restart Limits
+
+Evrosion must avoid infinite restart loops.
+
+Example:
+
+Crash
+↓
+Restart
+↓
+Crash again
+↓
+Recovery attempt
+↓
+Still failing
+↓
+Quarantine / rollback / fallback / explain
+
+Restart policy should consider:
+
+- Number of failures
+- Failure frequency
+- Time since last successful operation
+- Dependency state
+- Available fallback components
+- Previous working version
+
+---
+
+E-007.6 — Lazy / On-Demand Activation
+
+Services should not necessarily run simply because the computer booted.
+
+Where appropriate, Evrosion should start a service only when its functionality is actually needed.
+
+Example:
+
+No Bluetooth hardware or Bluetooth activity:
+
+«Bluetooth service may remain stopped.»
+
+Application requests Bluetooth:
+
+«Evrosion activates Bluetooth service.»
+
+This reduces:
+
+- Boot time
+- RAM usage
+- CPU usage
+- Background activity
+- Power consumption
+- Attack surface
+
+This is especially valuable on older hardware.
+
+---
+
+E-007.7 — Capability-Routed Access
+
+Services should receive only the capabilities they actually require.
+
+A service should not automatically gain access to the entire operating system.
+
+Example:
+
+A DNS service may need:
+
+- Network-stack access
+- DNS configuration
+- Limited configuration storage
+- IPC endpoint
+
+It should not automatically receive:
+
+- Raw storage access
+- GPU access
+- Arbitrary process control
+- All hardware
+
+Principle
+
+«Services receive authority explicitly, not ambiently.»
+
+---
+
+E-007.8 — Stable Service Endpoints
+
+Communication endpoints should be tied to the logical service where possible rather than permanently tied to one process instance.
+
+This allows Evrosion to:
+
+- Restart services transparently
+- Replace implementations
+- Upgrade services
+- Redirect requests
+- Preserve service identity
+
+Clients should not have to manually rediscover a service simply because its process restarted.
+
+---
+
+E-007.9 — Health Contracts
+
+A running process is not necessarily a healthy service.
+
+Evrosion should support explicit health contracts.
+
+Health may include:
+
+- Process alive
+- Responsive
+- Dependencies healthy
+- Self-test passing
+- Requests succeeding
+- Resource usage within limits
+- Watchdog heartbeat present
+- Hardware responding where applicable
+
+Example:
+
+Running       ✓
+Responsive    ✓
+Dependencies  ✓
+Self-test     ✓
+Resource use  Normal
+
+---
+
+E-007.10 — Watchdog Support
+
+Services may expose health heartbeats to the service supervisor.
+
+If a service stops responding:
+
+Heartbeat missing
+      ↓
+Health check
+      ↓
+Attempt graceful recovery
+      ↓
+Restart if necessary
+
+This catches services that are technically running but functionally frozen.
+
+---
+
+E-007.11 — Separate Process State From Durable State
+
+Where practical, critical service state should not exist only inside volatile process memory.
+
+Instead:
+
+Service Process
+      │
+      ├── temporary runtime state
+      │
+      └── controlled durable/recoverable state
+
+This allows the process to restart without losing essential system configuration.
+
+Examples may include:
+
+- Network configuration
+- Device preferences
+- Service settings
+- Known hardware state
+- Persistent queues
+
+---
+
+E-007.12 — Transactional Service Updates
+
+Evrosion should support safe service replacement where practical.
+
+Instead of:
+
+Stop old service
+Replace binary
+Start new service
+Hope
+
+Evrosion should aim for:
+
+Service v4 running
+      ↓
+Start Service v5 alongside it
+      ↓
+Provide required state/capabilities
+      ↓
+Health-test v5
+      ↓
+Route new requests to v5
+      ↓
+Drain v4
+      ↓
+Commit
+
+If v5 fails:
+
+Route back to v4
+      ↓
+Rollback
+
+---
+
+E-007.13 — Service Resource Budgets
+
+Services should integrate directly with the E-004 Job model.
+
+A service may own or belong to a Job containing:
+
+- Processes
+- Threads
+- CPU budget
+- Memory budget
+- Capabilities
+- Resource limits
+
+Example:
+
+Bluetooth Service
+   │
+   ├── Job
+   │    ├── Process
+   │    └── Threads
+   │
+   ├── CPU budget
+   ├── Memory budget
+   ├── Capabilities
+   └── Health contract
+
+---
+
+E-007.14 — Memory Integration
+
+E-005 memory controls should apply to service Jobs.
+
+Evrosion should be able to understand:
+
+- Service memory usage
+- Protected minimums
+- Soft limits
+- Hard limits
+- Memory pressure
+- Reclaimability
+- Whether a service may be frozen or restarted
+
+Critical recovery services may receive protected memory guarantees.
+
+---
+
+E-007.15 — CPU Integration
+
+E-004 scheduling controls should apply to service Jobs.
+
+Services may receive:
+
+- Fair scheduling
+- CPU budgets
+- Minimum guarantees
+- Deadline scheduling where justified
+- Capability-controlled real-time privileges
+
+A service must not gain unlimited CPU authority merely because it is a system service.
+
+---
+
+E-007.16 — Failure Isolation
+
+Service failures should remain contained wherever possible.
+
+Example:
+
+Bluetooth crashes
+→ Bluetooth unavailable temporarily
+→ rest of system unaffected
+
+Rather than:
+
+Bluetooth crashes
+→ entire system becomes unstable
+
+This continues Evrosion's Graceful Degradation principle.
+
+---
+
+E-007.17 — Dependency-Aware Recovery
+
+Recovery should consider service relationships.
+
+Example:
+
+Network device service
+      ↓
+Network stack
+      ↓
+DNS
+      ↓
+Applications
+
+If a lower-level dependency fails, Evrosion should understand which higher-level services may require reconnection or restart.
+
+This should happen through explicit dependency information rather than guesswork.
+
+---
+
+E-007.18 — Replaceable Services
+
+System services should be replaceable where technically practical.
+
+Evrosion should not unnecessarily tie the OS to one implementation forever.
+
+A future alternate service implementation may be allowed if it satisfies the required:
+
+- Protocol
+- Capabilities
+- Security rules
+- Health contract
+- Version/API requirements
+
+This supports modularity and long-term evolution.
+
+---
+
+E-007.19 — Service Discovery
+
+Applications and components should request services by capability or protocol rather than searching for arbitrary processes.
+
+Conceptually:
+
+Application requests:
+"network access"
+
+Evrosion routes:
+approved network capability
+        ↓
+current network provider
+
+This provides:
+
+- Better isolation
+- Easier replacement
+- Cleaner dependencies
+- Better observability
+
+---
+
+E-007.20 — User Services vs System Services
+
+Evrosion should distinguish between different service scopes.
+
+Potential scopes include:
+
+Core system services
+
+Essential machine-wide services.
+
+User/session services
+
+Services belonging to one logged-in user/session.
+
+Application services
+
+Helpers belonging to one application Job.
+
+Temporary/on-demand services
+
+Created only while required.
+
+The exact scope model will be defined later.
+
+---
+
+E-007.21 — Boot Behavior
+
+Evrosion should avoid starting every possible service at boot.
+
+Boot should primarily initialize:
+
+- Kernel/core
+- Essential hardware
+- Critical system services
+- Login/session environment
+
+Other services should activate according to demand, dependencies, hardware presence, or policy.
+
+Principle
+
+«Do not spend CPU, RAM, power, and boot time on functionality nobody is using.»
+
+---
+
+E-007.22 — Observability
+
+Evrosion should maintain structured information about every service.
+
+This may include:
+
+- Service identity
+- Current implementation/version
+- Current process/Job
+- Dependencies
+- Capabilities
+- CPU use
+- Memory use
+- Health
+- Last failure
+- Restart count
+- Current state
+- Activation reason
+- Update history
+- Persistent-state location
+
+---
+
+E-007.23 — Layer-Based UX
+
+Layer 1
+
+Simple:
+
+«Networking restarted successfully.»
+
+«Bluetooth is temporarily unavailable.»
+
+Layer 2
+
+Shows:
+
+- Service name
+- Health
+- Restart control
+- Dependencies
+- CPU/RAM usage
+- Last error
+
+Layer 3
+
+Full detail:
+
+- Service graph
+- Capabilities
+- Job/process information
+- Protocol endpoints
+- Resource budgets
+- Health checks
+- Raw logs
+- Restart policies
+- Manual replacement
+- Dependency manipulation
+
+---
+
+E-007 Final Architecture
+
+Evrosion system services become:
+
+             SERVICE GRAPH
+                  │
+          SERVICE SUPERVISOR
+                  │
+       Capability / Protocol Routing
+                  │
+    ┌─────────────┼─────────────┐
+    │             │             │
+Service A     Service B     Service C
+    │             │             │
+   Job           Job           Job
+    │             │             │
+Processes      Processes     Processes
+
+Supported by:
+
+Health contracts
+Watchdogs
+Lazy activation
+Resource budgets
+Stable endpoints
+Transactional updates
+Dependency-aware recovery
+Persistent state management
+
+---
+
+E-007 Summary
+
+Evrosion services will be:
+
+«Declarative»
+
+«Capability-scoped»
+
+«Supervised»
+
+«Restartable»
+
+«Dependency-aware»
+
+«Lazy-loaded where appropriate»
+
+«Resource-controlled»
+
+«Health-checked»
+
+«Observable»
+
+«Transactionally replaceable»
+
+«Independent of any single process instance»
+
+---
+
+Governing Principles
+
+«A service is a durable contract. Its process is disposable.»
+
+«Running does not necessarily mean healthy.»
+
+«Start services because they are needed, not because boot happened.»
+
+«Failures should restart the smallest affected part of the system.»
+
+«Services receive explicit authority, not automatic system-wide privilege.»
+
+«The system should know why every service exists, what it depends on, what it can access, and whether it is healthy.»

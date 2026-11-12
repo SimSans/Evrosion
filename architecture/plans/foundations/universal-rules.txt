@@ -1,0 +1,331 @@
+Universal Rules
+MyOS — Universal Rules
+
+These rules apply to every part of MyOS: kernel, drivers, system services, applications, UI, filesystem, networking, security, recovery, AI, and future components.
+
+They are the rules that every technical design and implementation should be evaluated against.
+
+---
+
+U-000 — The Person Comes First
+
+MyOS exists to serve the person using the computer.
+
+The computer belongs to the person using it. The OS should make the computer easier to use without taking away its underlying capability or ownership.
+
+Every major design decision should ultimately be evaluated against this principle.
+
+---
+
+U-001 — Simple by Default
+
+MyOS should hide unnecessary complexity.
+
+A person should not need specialized technical knowledge to accomplish ordinary tasks.
+
+Complexity should exist underneath when necessary, but the user should not be forced to deal with it unless they choose to.
+
+---
+
+U-002 — Explainable
+
+When MyOS performs an important action automatically, it should be able to explain:
+
+- What happened
+- Why it happened
+- What changed
+- Whether it succeeded
+- What the consequences are
+- What the user can do next
+- How to undo it, when possible
+
+The amount of explanation should depend on the user's chosen layer.
+
+---
+
+U-003 — User Ownership
+
+The person who owns the machine ultimately controls it.
+
+Security mechanisms may protect the user and the system, but they must not be confused with ownership.
+
+This directly supports F-002 — Absolute Ownership.
+
+---
+
+U-004 — Safe by Default
+
+MyOS should protect users from:
+
+- Accidental damage
+- Malware
+- Unauthorized access
+- Corruption
+- Dangerous operations
+- Unintended system changes
+- Data loss where prevention is possible
+
+Normal operation should favor safe defaults.
+
+---
+
+U-005 — Never Paternalistic
+
+Safety must not become permanent control over the owner.
+
+When a user deliberately chooses greater responsibility and explicitly accepts the consequences, MyOS should provide a path to greater control.
+
+Warnings and informed consent are preferable to secretly overriding deliberate owner decisions.
+
+This directly supports the concept of Absolute Access in F-002.
+
+---
+
+U-006 — Reversible Where Possible
+
+Important system operations should be reversible whenever technically possible.
+
+MyOS should use mechanisms such as:
+
+- Snapshots
+- Rollbacks
+- Backups
+- Transactional changes
+- Recovery environments
+- Restore points
+- Safe configuration changes
+
+When an operation cannot be reversed, MyOS should make that clear before it happens.
+
+---
+
+U-007 — Offline Capable
+
+Core functionality must not depend on an Internet connection or cloud service.
+
+MyOS should remain useful when:
+
+- The Internet is unavailable
+- A cloud service is unavailable
+- A third-party service disappears
+- The user chooses not to use online services
+
+Online services can enhance the system, but the core OS should not become useless without them.
+
+---
+
+U-008 — Performance & Resource Efficiency
+
+MyOS should use hardware efficiently.
+
+The OS should be capable of running well on:
+
+- Older hardware
+- Weak hardware
+- Modern hardware
+- High-end hardware
+
+Powerful hardware should allow additional capabilities, but the basic OS should not unnecessarily consume resources simply because they are available.
+
+---
+
+U-009 — Capability Preservation
+
+Making something simple must never mean removing capability.
+
+«Hide complexity. Don't remove capability.»
+
+A beginner should receive a simple interface.
+
+An advanced user should be able to reveal deeper controls.
+
+An expert should be able to reach the underlying system.
+
+Simplification is about presentation and interaction—not secretly deleting capability.
+
+---
+
+U-010 — Progressive Disclosure
+
+MyOS should start simple and reveal additional information and control when the person wants it.
+
+Complexity should be:
+
+Hidden by default → revealed by choice → fully accessible when authorized.
+
+This supports the three responsibility layers defined by F-003.
+
+---
+
+U-011 — Consistency
+
+The same concepts should behave consistently throughout MyOS.
+
+Users should not need to learn completely different interaction models for:
+
+- Networking
+- Storage
+- Applications
+- Settings
+- Hardware
+- Updates
+- Recovery
+- Permissions
+- System services
+
+The OS should feel like one coherent system, not a collection of unrelated tools.
+
+---
+
+U-012 — Automation With Control
+
+MyOS should automate work when automation is useful.
+
+However:
+
+Automatic does not mean uncontrollable.
+
+The user should be able to:
+
+- Understand what happened
+- Inspect the action
+- Change relevant settings
+- Override automatic behavior when appropriate
+- Escalate to greater control
+
+Automation should reduce work, not remove ownership.
+
+---
+
+U-013 — Failure Is Expected
+
+MyOS should assume that things will sometimes fail.
+
+Hardware fails.
+
+Drivers fail.
+
+Updates fail.
+
+Applications crash.
+
+Storage becomes corrupted.
+
+Networks disappear.
+
+Unexpected conditions happen.
+
+The OS should therefore be designed to:
+
+Detect → Explain → Contain → Recover → Learn/Record
+
+where technically possible.
+
+Failure should not automatically become catastrophe.
+
+---
+
+U-014 — No Unnecessary Dependencies
+
+Core MyOS functionality should not unnecessarily depend on:
+
+- External companies
+- Cloud providers
+- Online accounts
+- Proprietary services
+- AI providers
+- Internet connectivity
+
+External services may be supported when useful, but the user should not be trapped by unnecessary dependencies.
+
+---
+
+U-015 — Privacy by Default
+
+MyOS should minimize unnecessary:
+
+- Data collection
+- Data transmission
+- Tracking
+- Exposure of personal information
+- Third-party access
+
+The user should understand what information leaves the machine and why when such disclosure is meaningful.
+
+---
+
+U-016 — AI Is a Tool, Not the Authority
+
+AI may assist the person and operate through MyOS.
+
+However:
+
+«The AI does not decide what it is allowed to do. The OS decides.»
+
+AI must operate within the permissions and capabilities granted to it.
+
+The user remains the authority.
+
+AI should also remain optional. MyOS must function without AI.
+
+---
+
+U-017 — User Intent Over Implementation
+
+Users should normally tell MyOS what they want, rather than explaining exactly how the computer should accomplish it.
+
+For example:
+
+«"Connect my computer to this Wi-Fi network."»
+
+should not require the user to understand:
+
+- Network interfaces
+- Drivers
+- Services
+- Configuration files
+- Firmware
+- Routing
+- Kernel networking
+
+MyOS should translate user intent into the necessary technical operations.
+
+Advanced users can still access and control those underlying mechanisms.
+
+---
+
+U-018 — Transparent State
+
+MyOS should maintain a clear, structured understanding of what is happening on the machine.
+
+System state should be understandable and machine-readable rather than existing only as scattered logs, error messages, or assumptions.
+
+This state can support:
+
+- Diagnostics
+- System services
+- User interfaces
+- Developer tools
+- Recovery
+- Automation
+- Authorized AI
+
+The OS, its tools, and authorized AI should reason from actual system state, not guesswork whenever possible.
+
+---
+
+Universal Rule
+
+All MyOS components must be evaluated against these rules.
+
+A component that works technically but violates the fundamental relationship between the person and their computer is not considered a successful MyOS design.
+
+The overall principle is:
+
+«Make the computer brutally simple without making it weak.»
+
+«Protect the user by default without taking ownership away.»
+
+«Hide complexity, never remove capability.»
+
+«Automate what the computer can handle, while keeping the person in control.»

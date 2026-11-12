@@ -1,0 +1,94 @@
+[package]
+name = "ev-root-supervisor"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ev-root-supervisor"
+path = "src/main.rs"
+required-features = ["executable"]
+test = false
+bench = false
+
+[features]
+native-contract = ["desktop-contract", "dep:ev-store", "dep:ev-zion", "dep:ev-app-registry", "dep:ev-diagnostics", "dep:ev-grant-policy"]
+native-root = ["desktop-root", "native-contract", "dep:ev-app-registry", "dep:ev-zion", "dep:ev-block-service", "ev-block-service/test-generation-client"]
+provider-switch = ["executable", "dep:ev-provider-test"]
+ipc-bench-root=["executable","dep:ev-ipc-bench"]
+desktop-contract = ["dep:sha2"]
+desktop-root = ["executable", "desktop-contract", "dep:ev-desktop", "dep:ev-picker", "dep:ev-file", "dep:ev-graphics", "dep:ev-diagnostics"]
+generation-good = ["executable"]
+generation-bad = ["executable"]
+generation-silent = ["executable"]
+executable = []
+test-fault = ["executable"]
+service-launch = ["executable"]
+service-fault = ["service-launch"]
+service-rpc = ["service-launch"]
+service-rpc-timeout = ["service-rpc"]
+service-restart = ["executable"]
+custody-graph = ["executable"]
+custody-exit = ["custody-graph"]
+custody-watchdog = ["custody-graph"]
+
+[dependencies]
+ev-grant-policy = { path = "../../libs/grant-policy", optional = true }
+ev-userspace-contract = { path = "../../libs/userspace-contract" }
+ev-userspace-runtime = { path = "../../libs/userspace-runtime" }
+
+[dependencies.ev-provider-test]
+path = "../provider-test"
+optional = true
+
+[dependencies.sha2]
+version="=0.10.9"
+default-features=false
+features=["force-soft"]
+optional=true
+[dependencies.ev-desktop]
+path="../desktop"
+optional=true
+[dependencies.ev-picker]
+path="../../libs/picker"
+optional=true
+[dependencies.ev-file]
+path="../../libs/file"
+optional=true
+[dependencies.ev-graphics]
+path="../../libs/graphics"
+optional=true
+
+[dependencies.ev-diagnostics]
+path="../../libs/diagnostics"
+optional=true
+
+[dependencies.ev-store]
+path="../../libs/store"
+optional=true
+[dependencies.ev-app-registry]
+path="../../libs/app-registry"
+optional=true
+[dependencies.ev-zion]
+path="../../libs/zion"
+optional=true
+[dependencies.ev-block-service]
+path="../block"
+features=["test-store-client"]
+optional=true
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_unsafe = "deny"
+
+[lints.clippy]
+all = "warn"
+undocumented_unsafe_blocks = "deny"
+
+[dev-dependencies]
+ev-zion = { path="../../libs/zion", features=["std"] }
+
+[dependencies.ev-ipc-bench]
+path="../ipc-bench"
+optional=true

@@ -1,0 +1,13 @@
+[package]
+name = "ev-picker"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+license.workspace = true
+[dependencies]
+ev-app-identity = { path = "../app-identity" }
+sha2 = { version = "=0.10.9", default-features = false }
+
+[lints]
+workspace = true
