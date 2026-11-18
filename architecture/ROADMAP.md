@@ -34,6 +34,18 @@ results are separately recorded. The public [implementation status](../docs/stat
 records current scope. Public release, official signing and general Kernel/Root replacement are
 separate gates.
 
+## Continuous refinement checkpoint
+
+Every active 0.X milestone now includes a source-bound [refinement review](GOVERNANCE.md#continuous-refinement-at-every-development-milestone)
+before engineering sign-off: maintainability and duplicate-mechanism checks,
+security/recovery and compatibility regressions, measured resource/response
+comparisons, and supported UX/accessibility review. This implements E-026's
+existing complexity and architecture-fitness principles. It adds no automatic
+PASS to any gate and does not retroactively alter historical checkpoints.
+For M8/0.4, attach the review to M8-12/M8-14 qualification; unresolved
+blocking regressions keep those gates open. Release and distribution decisions
+remain separate.
+
 ## Accepted clarification of older statements
 
 - E-025.80 (“Compatibility Comes Later”) and E-025.118 define early implementation

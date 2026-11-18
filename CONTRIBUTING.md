@@ -25,6 +25,12 @@ Useful checks are listed in the [quickstart](docs/development/QUICKSTART.md).
 Changes to bare-metal or feature-specific paths need their relevant target checks
 and actual workflows; workspace defaults are only a subset.
 
+Milestone work also requires the [continuous refinement closeout](architecture/GOVERNANCE.md#continuous-refinement-at-every-development-milestone):
+review duplication and maintainability, security/recovery invariants, measured
+resource and performance impact, and real supported user experience before
+calling a development milestone complete. A smaller diff or fewer lines alone
+does not establish an improvement.
+
 Implementation improvements are welcome. Significant mechanism changes need
 evidence, tests and an ADR where required. Contract changes need compatibility
 analysis. Foundational guarantees follow the [governance](architecture/GOVERNANCE.md)
