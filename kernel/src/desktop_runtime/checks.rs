@@ -134,6 +134,21 @@ impl Runtime<'_, '_> {
                 assert_eq!(self.hw.entry(leaf, page as usize) & !AD, expected);
             }
         }
+        #[cfg(feature = "test-m6-network")]
+        if index == 0 && self.dynamic.initialized() {
+            // SAFETY: sole actual restored-CR3/IF0/BSP owner before Root resume.
+            unsafe {
+                self.dynamic.check(
+                    &self.root.active.as_ref().unwrap().image().loaded().root,
+                    self.a,
+                    self.hw,
+                )
+            }
+            .expect("actual dynamic Root mappings");
+        } else {
+            assert_eq!(self.hw.entry(directory, 1), 0);
+        }
+        #[cfg(not(feature = "test-m6-network"))]
         assert_eq!(self.hw.entry(directory, 1), 0);
         assert_eq!(self.hw.entry(directory, 4), 0);
         if index == 0 {
@@ -141,6 +156,44 @@ impl Runtime<'_, '_> {
                 .scalar(root, leaf, self.a, self.backing, Scalar::System, false);
             self.hw
                 .scalar(root, leaf, self.a, self.backing, Scalar::Catalogue, true);
+            #[cfg(feature = "test-m6-session")]
+            {
+                #[cfg(not(feature = "test-m6-network"))]
+                let which = Scalar::Application;
+                #[cfg(feature = "test-m6-network")]
+                let which = Scalar::Note;
+                let object = self.backing.scalar(which);
+                root.validate_session_note(self.a, object).unwrap();
+                let page = root_v2::native::SESSION_NOTE_PAGE;
+                let lease = root.shared_mapping(page * FRAME_SIZE).unwrap();
+                assert_eq!(
+                    direct_address(self.hw.offset, lease.physical(), self.hw.bits).unwrap(),
+                    self.backing.alias(which)
+                );
+                assert_eq!(
+                    self.hw.entry(leaf, page as usize) & !AD,
+                    lease.physical() | PRESENT | USER | WRITABLE | NO_EXECUTE
+                );
+            }
+            #[cfg(feature = "test-m6-network")]
+            {
+                let object = self.backing.scalar(Scalar::NetClient);
+                root.validate_network_client(self.a, object).unwrap();
+                let page = root_abi::ROOT_NET_CLIENT_PAGE;
+                let lease = root.shared_mapping(page * FRAME_SIZE).unwrap();
+                assert_eq!(
+                    direct_address(self.hw.offset, lease.physical(), self.hw.bits).unwrap(),
+                    self.backing.alias(Scalar::NetClient)
+                );
+                assert_eq!(
+                    self.hw.entry(leaf, page as usize) & !AD,
+                    lease.physical() | PRESENT | USER | WRITABLE | NO_EXECUTE
+                );
+                assert_ne!(
+                    self.backing.alias(Scalar::Note),
+                    self.backing.alias(Scalar::Application)
+                );
+            }
             #[cfg(feature = "test-m5-native")]
             if let (RootImage::Native(owner), Some(native)) =
                 (self.root.active.as_ref().unwrap().image(), &self.native)
@@ -203,21 +256,56 @@ impl Runtime<'_, '_> {
         let scalars: &[(Scalar, bool)] = match actor.child {
             Child::Block => &[(Scalar::System, false), (Scalar::File, true)],
             Child::File => &[(Scalar::File, false), (Scalar::Application, true)],
+            #[cfg(not(feature = "test-m6-network"))]
             Child::App => &[(Scalar::Application, false)],
+            #[cfg(feature = "test-m6-network")]
+            Child::App => &[(Scalar::Application, false), (Scalar::Note, true)],
+            #[cfg(feature = "test-m6-network")]
+            Child::NetDriver => &[(Scalar::Nic, false)],
+            #[cfg(feature = "test-m6-network")]
+            Child::NetService => &[(Scalar::Nic, false), (Scalar::NetClient, true)],
             _ => &[],
         };
         for &(which, aux) in scalars {
             self.hw.scalar(root, leaf, self.a, self.backing, which, aux);
         }
     }
-    pub(super) fn check_scalar_guards(&self) {
+    pub(super) fn check_scalar_guards(&mut self) {
         for which in [Scalar::System, Scalar::File, Scalar::Application] {
+            // The App legitimately maps all4096 bytes RW. Its unused protocol
+            // tail cannot be a Kernel invariant: malformed padding is refused
+            // by the File service, not promoted into a critical Kernel fault.
+            #[cfg(feature = "test-m6-session")]
+            if matches!(which, Scalar::Application) {
+                continue;
+            }
             let pointer = self.backing.alias(which) as *const u8;
             for byte in 512..FRAME_SIZE as usize {
-                // SAFETY: exact initialized parent-owned scalar page, all user CPUs
-                // stopped/captured; guard bytes are never an application data input.
+                // SAFETY: exact initialized parent-owned scalar page, all user
+                // CPUs stopped/captured. In M6 only trusted Root/Block/File
+                // protocol buffers retain this internal zero-padding check.
                 assert_eq!(unsafe { pointer.add(byte).read_volatile() }, 0);
             }
+        }
+        #[cfg(feature = "test-m6-session")]
+        {
+            let pointer = self.backing.alias(Scalar::Application) as *const u8;
+            let mut nonzero = 0;
+            let mut first = FRAME_SIZE;
+            for byte in 256..FRAME_SIZE as usize {
+                // SAFETY: initialized parent-owned page retained after all App
+                // execution stopped; reads do not clear or repair client bytes.
+                if unsafe { pointer.add(byte).read_volatile() } != 0 {
+                    nonzero += 1;
+                    if first == FRAME_SIZE {
+                        first = byte as u64;
+                    }
+                }
+            }
+            (self.observations)(Observation::SessionWindowPadding(SessionWindowPadding {
+                nonzero,
+                first,
+            }));
         }
     }
 }

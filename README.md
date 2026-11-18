@@ -1,69 +1,41 @@
 # Evrosion
 
-Evrosion is an operating system being built to make computers easier to use,
-configure and recover while preserving their full power and the owner's control.
-Its foundation is a capability kernel, isolated userspace services, native
-applications and recoverable System Generations. Local operation, accessibility
-and deliberate owner control are part of the product direction.
+Evrosion is an operating system being built to make computers easier to use and configure while preserving their power and the owner's control. Recovery, accessibility, local operation and deliberate control are part of that goal. A small capability kernel, isolated services and recoverable System Generations provide the foundation.
 
-**Early development — 0.1 Developer Preview source snapshot.** The current target
-is x86-64 UEFI under QEMU Q35/TCG. This is a bounded architecture demonstration,
-not an interactive daily desktop or an installer for personal hardware.
+**Current source checkpoint: unfinished 0.4 development.** This update includes the work since the published 0.1 preview, including the 0.2 connected developer alpha, the 0.3 document workflow and the current native workspace implementation. All fourteen full 0.4 acceptance gates remain open. This is an unsigned development source checkpoint.
 
-The 0.1 engineering checkpoint demonstrates:
+The native workspace includes Files, Editor and Inspector, larger documents, multiple windows, scoped file access, ordinary namespace operations, protected controls, semantic interfaces and local application installation. Individual components have bounded engineering results. Those results do not establish acceptance of this public edition or a complete integrated desktop. See [current status](docs/status/PROJECT_STATUS.md), [0.4 progress](docs/status/M8_PROGRESS.md) and [source identity](SOURCE_IDENTITY.md).
 
-- Native `.zion` package installation, activation, update and rollback, with
-  private data retained through removal and reinstallation.
-- Selected-file READ access, explicit remembered permissions and revocation.
-- App and Shell fault containment, replacement, structured crash records and
-  resource inspection.
-- A provider change behind an unchanged consumer endpoint.
-- Health-gated System selection, failed-candidate rollback and an independent
-  basic recovery path with usable data preserved.
+## Build and explore
 
-See [scope and limits](docs/release/0.1-preview.md) and
-[source identity](SOURCE_IDENTITY.md). Historical engineering acceptance and this
-publication snapshot have separate source identities. Exact build and validation
-records identify which bytes were tested. This repository is not a signed
-official image release.
-
-## Build and run
-
-Use the [Linux quickstart](docs/development/QUICKSTART.md). After provisioning the
-pinned compiler and host tools:
+The current reference target is x86-64 UEFI/QEMU on a prepared x86-64 Linux host. Start with the [Linux quickstart](docs/development/QUICKSTART.md) for the pinned toolchain and prerequisites. Initial dependency provisioning needs network access; subsequent checks can use the cached graphs.
 
 ```bash
-cargo fetch --locked
 cargo ev doctor
-cargo ev build
-cargo ev run
+cargo ev --help
 ```
 
-`run` opens a bounded graphical demonstration. Its input is scripted; it does not
-leave a manual desktop session running. It uses an owned test disk. Keep the
-image away from irreplaceable data and physical system disks.
+The earlier bounded graphical demonstration remains available through `cargo ev run`. It uses a disposable runner-owned disk and requires a graphical Linux session with QEMU GTK. The [0.3 document-session guide](docs/development/DOCUMENT_SESSION.md) describes its separate retained-data workflow.
 
-`run` selects a Native fixture. Build a normal image again before generic boot
-checks or GDB:
+The unfinished 0.4 workspace has an explicit, feature-gated qualification frontend:
 
 ```bash
-cargo ev build
-cargo ev test boot --runs 3 --timeout 60
-cargo ev debug kernel --batch
+cargo run -p ev --features workspace -- workspace --help
 ```
 
-## Development
+See [workspace development](docs/development/WORKSPACE_04.md). Keep existing data and its retained executable cohort together; never resolve a compatibility refusal by reformatting or replacing the original volume.
 
-- [Technical architecture](architecture/README.md),
-  [invariants](architecture/INVARIANTS.md) and [ADRs](architecture/adr/README.md).
-- [Engineering governance](architecture/GOVERNANCE.md).
-- [Contributing](CONTRIBUTING.md), [security reporting](SECURITY.md) and
-  [license status](LICENSES/README.md).
-- [Dependency inventory](third_party/README.md) and [performance methods](PERFORMANCE.md).
+## Develop
 
-Networking, sustained interactive sessions and one physical reference target are
-next-stage work. Broad hardware support, production authentication, a consumer
-installer and compatibility runtimes are not implemented by this preview.
+- [Architecture overview](docs/development/ARCHITECTURE.md), [architecture index](architecture/ARCHITECTURE_INDEX.md), [invariants](architecture/INVARIANTS.md) and [ADRs](architecture/adr/README.md).
+- [Native package guide](docs/development/ZION.md), [debugging](docs/development/DEBUGGING.md) and [performance methods](PERFORMANCE.md).
+- [Experimental source deltas](development/experimental/README.md) preserve pending reclamation, observation and recovery work separately from the default implementation.
+- [Contribution guidance](CONTRIBUTING.md), [security reporting](SECURITY.md), [license policy](LICENSE_POLICY.md) and [legal status](LEGAL.md).
 
-Generated images, raw VM runs and compiler outputs stay under ignored `build/`
-and `target/`. Share diagnostics only after checking them for private data.
+Core software uses GPL-3.0-only; the seven fixed interface roots use Apache-2.0; eligible prose uses CC-BY-4.0. Third-party terms remain intact. The file-level assignments in [REUSE.toml](REUSE.toml) govern their respective materials.
+
+## Limits
+
+Physical hardware qualification, consumer installation, broad device support and a signed official release remain separate work. Automated VM observations and screenshots are distinct from human usability acceptance. Historical proofs identify their own source bytes; publication edits and later source changes need their own verification.
+
+Generated images, caches, private session data and raw execution archives are excluded from this repository. Preserve test failures and their inputs alongside later successes. The existing `v0.1.0` tag remains unchanged; this checkpoint creates no 0.4 release tag.

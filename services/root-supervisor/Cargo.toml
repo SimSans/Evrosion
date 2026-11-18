@@ -1,9 +1,9 @@
 [package]
+license.workspace = true
 name = "ev-root-supervisor"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
 
 [[bin]]
 name = "ev-root-supervisor"
@@ -13,6 +13,12 @@ test = false
 bench = false
 
 [features]
+workspace-runtime = ["document-workflow", "native-owner-ui"]
+document-workflow = ["native-session", "ev-desktop/document-workflow"]
+native-owner-ui=["native-network","ev-desktop/native-owner-ui"]
+native-session = ["native-root"]
+native-network-negative = ["native-network"]
+native-network = ["native-session", "dep:ev-random", "dep:ev-time-contract", "dep:ev-time-proof", "dep:ev-net-driver", "dep:ev-content-store", "dep:ev-release-trust", "ev-block-service/native-network"]
 native-contract = ["desktop-contract", "dep:ev-store", "dep:ev-zion", "dep:ev-app-registry", "dep:ev-diagnostics", "dep:ev-grant-policy"]
 native-root = ["desktop-root", "native-contract", "dep:ev-app-registry", "dep:ev-zion", "dep:ev-block-service", "ev-block-service/test-generation-client"]
 provider-switch = ["executable", "dep:ev-provider-test"]
@@ -34,6 +40,12 @@ custody-exit = ["custody-graph"]
 custody-watchdog = ["custody-graph"]
 
 [dependencies]
+ev-release-trust = { path = "../../libs/release-trust", optional = true }
+ev-time-proof = { path = "../../libs/time-proof", optional = true }
+ev-content-store = { path = "../../libs/content-store", optional = true }
+ev-net-driver = { path = "../net-driver", features = ["stack-service"], optional = true }
+ev-random = { path = "../../libs/random", optional = true }
+ev-time-contract = { path = "../../libs/time-contract", optional = true }
 ev-grant-policy = { path = "../../libs/grant-policy", optional = true }
 ev-userspace-contract = { path = "../../libs/userspace-contract" }
 ev-userspace-runtime = { path = "../../libs/userspace-runtime" }

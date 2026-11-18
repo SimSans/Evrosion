@@ -1,8 +1,7 @@
 # IPC reentrancy and deadlock discipline
 
 Extracted from the [Pre-M0 implementation package](../plans/roadmap/PRE-M0-implementation-package-v1.md) on 2026-09-20.
-This is a public technical edition of the canonical record. Published source
-hashes and original lineage are recorded in the architecture source map.
+This is the working canonical file; the imported package remains unchanged.
 
 Status: Verified for the bounded Internal M2 profile: AF-IPC-001–010 pass the
 [accepted cumulative gate](../M2_ACCEPTANCE.md). Actual mutex/forwarding/depth

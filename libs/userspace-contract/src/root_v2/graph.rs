@@ -71,6 +71,14 @@ pub const CHANNELS: [Channel; 15] = [
     Channel::PrivateRead,
     Channel::PrivateWrite,
 ];
+/// The declared receiver protocol narrows an already-authorized endpoint. It
+/// creates no authority and is not inferred from a packet, name or raw handle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeliveryMode {
+    Async,
+    Rpc,
+    Selected,
+}
 impl Channel {
     pub const fn index(self) -> usize {
         self as usize
@@ -87,6 +95,31 @@ impl Channel {
             Self::NotesRead | Self::NotesWrite | Self::PrivateRead | Self::PrivateWrite => {
                 Child::File
             }
+        }
+    }
+    pub const fn delivery(self) -> DeliveryMode {
+        match self {
+            Self::InputKeys | Self::ShellControl | Self::AppControl => DeliveryMode::Async,
+            Self::GrantInbox => DeliveryMode::Selected,
+            Self::AppPresent
+            | Self::ShellPresent
+            | Self::ShellWindow
+            | Self::RootSession
+            | Self::InputBarrier
+            | Self::SystemBlock
+            | Self::UserBlock
+            | Self::NotesRead
+            | Self::NotesWrite
+            | Self::PrivateRead
+            | Self::PrivateWrite => DeliveryMode::Rpc,
+        }
+    }
+    /// Bounded sustained-profile transaction classes. Other execution profiles
+    /// keep their original controller-stop based1024-tick transport bound.
+    pub const fn session_rpc_ticks(self) -> u64 {
+        match self {
+            Self::NotesRead | Self::NotesWrite | Self::PrivateRead | Self::PrivateWrite => 8192,
+            _ => 1024,
         }
     }
 }
@@ -241,6 +274,61 @@ pub fn description() -> [u8; DESCRIPTION_BYTES] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn declared_delivery_preserves_existing_closed_receiver_protocols() {
+        assert_eq!(
+            CHANNELS.map(Channel::delivery),
+            [
+                DeliveryMode::Rpc,
+                DeliveryMode::Rpc,
+                DeliveryMode::Rpc,
+                DeliveryMode::Rpc,
+                DeliveryMode::Async,
+                DeliveryMode::Rpc,
+                DeliveryMode::Async,
+                DeliveryMode::Async,
+                DeliveryMode::Selected,
+                DeliveryMode::Rpc,
+                DeliveryMode::Rpc,
+                DeliveryMode::Rpc,
+                DeliveryMode::Rpc,
+                DeliveryMode::Rpc,
+                DeliveryMode::Rpc,
+            ]
+        );
+        assert_eq!(
+            CHANNELS
+                .into_iter()
+                .filter(|channel| channel.delivery() == DeliveryMode::Selected)
+                .count(),
+            1
+        );
+        // Selected capability handoff does not become ordinary scalar SEND.
+        assert_ne!(Channel::GrantInbox.delivery(), DeliveryMode::Async);
+    }
+    #[test]
+    fn only_scoped_file_transactions_get_the_separate_session_aggregate_cut() {
+        let aggregate = [
+            Channel::NotesRead,
+            Channel::NotesWrite,
+            Channel::PrivateRead,
+            Channel::PrivateWrite,
+        ];
+        for channel in CHANNELS {
+            assert_eq!(
+                channel.session_rpc_ticks(),
+                if aggregate.contains(&channel) {
+                    8192
+                } else {
+                    1024
+                }
+            );
+        }
+        assert_eq!(Channel::SystemBlock.session_rpc_ticks(), 1024);
+        assert_eq!(Channel::UserBlock.session_rpc_ticks(), 1024);
+        assert_eq!(Channel::AppPresent.session_rpc_ticks(), 1024);
+        assert_eq!(Channel::InputBarrier.session_rpc_ticks(), 1024);
+    }
     #[test]
     fn exact_graph_has_no_ambient_app_sources_and_fits_eight_roles() {
         for child in CHILDREN {

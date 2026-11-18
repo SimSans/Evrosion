@@ -261,7 +261,7 @@
         }
       ],
       "affected": [
-        "PRE-M0 §27 (M0 technical choices)"
+        "PRE-M0 \u00a727 (M0 technical choices)"
       ],
       "recorded_in": [
         "architecture/ARCHITECTURE_INDEX.md"
@@ -463,6 +463,27 @@
       ],
       "effective_status": "EFFECTIVE",
       "history_preserved": "Original technical requirements are preserved; public technical editions do not revise historical M0/M1 evidence."
+    },
+    {
+      "id": "SUP-016",
+      "kind": "narrow-amendment",
+      "old": "M6 / 0.2 acceptance requiring a physical reference-machine PASS",
+      "new": "Owner-approved VM-based Connected Developer Alpha acceptance; physical M6-09 is deferred to a later milestone.",
+      "scope": "0.2 release engineering acceptance dependencies only. Every virtual gate, future physical qualification and all foundational/product guarantees remain binding.",
+      "effective_rule": "M6-10 requires M6-01 through M6-08. M6-09 remains DEFERRED, never represented by QEMU or read-only host inventory as a physical PASS.",
+      "reason": "Record the existing explicit owner release-scope decision so older roadmap/handoff wording cannot silently restore the superseded gate.",
+      "authority": [
+        {
+          "source": "architecture/plans/amendments/2026-11-12-m6-virtual-acceptance.md",
+          "section": "Accepted release-scope amendment",
+          "statement": "M6-09 physical qualification is deferred to a later milestone and is not a required dependency of M6-10 / 0.2 acceptance."
+        }
+      ],
+      "effective_status": "EFFECTIVE",
+      "recorded_in": [
+        "architecture/M6_PLAN.md",
+        "architecture/ROADMAP.md"
+      ]
     }
   ]
 }

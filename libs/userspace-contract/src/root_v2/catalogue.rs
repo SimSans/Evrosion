@@ -68,11 +68,19 @@ fn image_role(i: usize) -> Role {
         Role::DisplayImage,
     ][i]
 }
-pub struct Catalogue<'a> {
+/// Count-qualified six-component metadata. It is not a validated legacy Root
+/// catalogue or an admission token; constructors remain profile-specific.
+pub struct Components<'a> {
     bytes: &'a [u8],
 }
-impl<'a> Catalogue<'a> {
-    pub fn decode(b: &'a [u8]) -> Result<Self, Error> {
+impl<'a> Components<'a> {
+    pub(crate) fn decode_profile(b: &'a [u8], counts: [u8; IMAGES]) -> Result<Self, Error> {
+        if counts
+            .iter()
+            .any(|count| !(1..=crate::MAX_GRANTS as u8).contains(count))
+        {
+            return Err(Error::Profile);
+        }
         if b.len() != SIZE {
             return Err(Error::Length);
         }
@@ -118,7 +126,7 @@ impl<'a> Catalogue<'a> {
             }
             if image.abi != crate::ABI
                 || image.limits != CHILD_LIMITS
-                || image.grants != CHILD_ROLE_COUNTS[i]
+                || image.grants != counts[i]
                 || image.display_layout != (i == 5)
             {
                 return Err(Error::Profile);
@@ -191,7 +199,63 @@ impl<'a> Catalogue<'a> {
         })
     }
 }
+/// The public legacy constructor always enforces the original App6 profile.
+pub struct Catalogue<'a> {
+    components: Components<'a>,
+}
+impl<'a> Catalogue<'a> {
+    /// Read-only component view of an already strictly validated legacy profile.
+    /// This does not expose the profile-count constructor or change its rules.
+    pub fn components(&self) -> &Components<'a> {
+        &self.components
+    }
+
+    pub fn decode(b: &'a [u8]) -> Result<Self, Error> {
+        Ok(Self {
+            components: Components::decode_profile(b, CHILD_ROLE_COUNTS)?,
+        })
+    }
+    pub fn bytes(&self) -> &'a [u8] {
+        self.components.bytes()
+    }
+    pub fn root_image(&self) -> [u8; 32] {
+        self.components.root_image()
+    }
+    pub fn kernel_input(&self) -> [u8; 32] {
+        self.components.kernel_input()
+    }
+    pub fn graph_measurement(&self) -> [u8; 32] {
+        self.components.graph_measurement()
+    }
+    pub fn app_id(&self) -> [u8; 16] {
+        self.components.app_id()
+    }
+    pub fn package(&self) -> [u8; 32] {
+        self.components.package()
+    }
+    pub fn app_build(&self) -> [u8; 32] {
+        self.components.app_build()
+    }
+    pub fn provenance(&self) -> Provenance {
+        self.components.provenance()
+    }
+    pub fn restart_attempts(&self) -> u8 {
+        self.components.restart_attempts()
+    }
+    pub fn restart_window(&self) -> u64 {
+        self.components.restart_window()
+    }
+    pub fn measurement_parts(&self) -> (&'a [u8], &'a [u8]) {
+        self.components.measurement_parts()
+    }
+    pub fn images(&self) -> impl Iterator<Item = Image> + '_ {
+        self.components.images()
+    }
+}
 pub fn encode(d: Description) -> Result<[u8; SIZE], Error> {
+    encode_profile(d, CHILD_ROLE_COUNTS)
+}
+pub(crate) fn encode_profile(d: Description, counts: [u8; IMAGES]) -> Result<[u8; SIZE], Error> {
     let mut b = [0; SIZE];
     b[..8].copy_from_slice(b"EVGRAPH1");
     b[8..10].copy_from_slice(&1u16.to_le_bytes());
@@ -227,7 +291,7 @@ pub fn encode(d: Description) -> Result<[u8; SIZE], Error> {
         slot[137] = image.grants;
         slot[144..176].copy_from_slice(&image.roles);
     }
-    Catalogue::decode(&b)?;
+    Components::decode_profile(&b, counts)?;
     Ok(b)
 }
 #[cfg(test)]

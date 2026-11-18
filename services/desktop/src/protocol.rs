@@ -11,6 +11,13 @@ pub enum Error {
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RootControl {
+    #[cfg(feature = "document-workflow")]
+    DocumentPicker {
+        request: u32,
+        access: ev_userspace_contract::document::Access,
+    },
+    #[cfg(feature = "native-owner-ui")]
+    Connection(u32),
     AppStarted(u32),
     AppStopped(u32),
     PickFile(u32),
@@ -32,6 +39,20 @@ pub enum RootControl {
 impl RootControl {
     pub fn encode(self) -> Result<[u8; 8], Error> {
         let (op, word) = match self {
+            #[cfg(feature = "document-workflow")]
+            Self::DocumentPicker { request, access } => {
+                return ev_userspace_contract::document_control::Picker {
+                    serial: request,
+                    access,
+                }
+                .encode()
+                .map_err(|_| Error::Format);
+            }
+            #[cfg(feature = "native-owner-ui")]
+            Self::Connection(n) => {
+                crate::owner_ui::Presentation::decode(n).map_err(|_| Error::Format)?;
+                (18, n)
+            }
             Self::AppStarted(n) => (1, n),
             Self::AppStopped(n) => (2, n),
             Self::PickFile(n) => (3, n),
@@ -61,6 +82,17 @@ impl RootControl {
         }
         let word = word(b);
         let message = match b[1] {
+            #[cfg(feature = "document-workflow")]
+            19 | 20 => {
+                let p = ev_userspace_contract::document_control::Picker::decode(&b, 0)
+                    .map_err(|_| Error::Format)?;
+                Self::DocumentPicker {
+                    request: p.serial,
+                    access: p.access,
+                }
+            }
+            #[cfg(feature = "native-owner-ui")]
+            18 => Self::Connection(word),
             1 => Self::AppStarted(word),
             2 => Self::AppStopped(word),
             3 => Self::PickFile(word),
@@ -87,9 +119,16 @@ impl RootControl {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShellCommand {
+    #[cfg(feature = "native-owner-ui")]
+    Owner(crate::owner_ui::Request),
     Launch,
     Forward(KeyEvent),
-    Select { request: u32, file: FileChoice },
+    Text(ev_input::text::TextEvent),
+    Pointer(ev_input::pointer::PositionEvent),
+    Select {
+        request: u32,
+        file: FileChoice,
+    },
     Cancel(u32),
     Repaint,
     PickerReady(u32),
@@ -98,8 +137,12 @@ pub enum ShellCommand {
 impl ShellCommand {
     pub fn from_policy(command: Command) -> Self {
         match command {
+            #[cfg(feature = "native-owner-ui")]
+            Command::Owner(request) => Self::Owner(request),
             Command::Launch => Self::Launch,
             Command::Forward(key) => Self::Forward(key),
+            Command::Text(text) => Self::Text(text),
+            Command::Pointer(pointer) => Self::Pointer(pointer),
             // Root must match this request against its retained live requester.
             // The reducer's epoch is never serialized as bearer authority.
             Command::Select { request, file, .. } => Self::Select { request, file },
@@ -108,8 +151,12 @@ impl ShellCommand {
     }
     pub fn encode(self) -> Result<[u8; 8], Error> {
         Ok(match self {
+            #[cfg(feature = "native-owner-ui")]
+            Self::Owner(request) => request.encode().map_err(|_| Error::Format)?,
             Self::Launch => frame(b'S', 1, 0, 0),
             Self::Forward(event) => event.encode().map_err(|_| Error::Format)?,
+            Self::Text(event) => event.encode().map_err(|_| Error::Format)?,
+            Self::Pointer(event) => event.encode().map_err(|_| Error::Format)?,
             Self::Select { request, file } => {
                 counter(request)?;
                 frame(
@@ -138,6 +185,22 @@ impl ShellCommand {
         })
     }
     pub fn decode(b: [u8; 8]) -> Result<Self, Error> {
+        #[cfg(feature = "native-owner-ui")]
+        if b[0] == b'O' {
+            return crate::owner_ui::Request::decode(b)
+                .map(Self::Owner)
+                .map_err(|_| Error::Format);
+        }
+        if b[0] == b'M' {
+            return ev_input::pointer::PositionEvent::decode(b)
+                .map(Self::Pointer)
+                .map_err(|_| Error::Format);
+        }
+        if b[0] == b'T' {
+            return ev_input::text::TextEvent::decode(b)
+                .map(Self::Text)
+                .map_err(|_| Error::Format);
+        }
         if b[0] == b'K' {
             return KeyEvent::decode(b)
                 .map(Self::Forward)
@@ -165,6 +228,59 @@ impl ShellCommand {
         };
         command.encode()?;
         Ok(command)
+    }
+}
+
+/// Shell-only cursor metadata through its existing protected Window RPC. No
+/// visibility, focus, Present credit or shared-memory read is authorized here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CursorControl {
+    pub x: u16,
+    pub y: u8,
+    pub sequence: u32,
+}
+impl CursorControl {
+    fn encode(self, op: u8) -> Result<[u8; 8], Error> {
+        counter(self.sequence)?;
+        if self.x >= 320 || self.y >= 200 {
+            return Err(Error::Format);
+        }
+        let mut bytes = [
+            b'C',
+            op | ((self.x >> 8) as u8) << 2,
+            self.x as u8,
+            self.y,
+            0,
+            0,
+            0,
+            0,
+        ];
+        bytes[4..].copy_from_slice(&self.sequence.to_le_bytes());
+        Ok(bytes)
+    }
+    pub fn request(self) -> Result<[u8; 8], Error> {
+        self.encode(1)
+    }
+    pub fn reply(self) -> Result<[u8; 8], Error> {
+        self.encode(2)
+    }
+    fn parse(bytes: [u8; 8], op: u8) -> Result<Self, Error> {
+        if bytes[0] != b'C' || bytes[1] & !4 != op {
+            return Err(Error::Format);
+        }
+        let result = Self {
+            x: u16::from(bytes[2]) | u16::from((bytes[1] >> 2) & 1) << 8,
+            y: bytes[3],
+            sequence: word(bytes),
+        };
+        result.encode(op)?;
+        Ok(result)
+    }
+    pub fn parse_request(bytes: [u8; 8]) -> Result<Self, Error> {
+        Self::parse(bytes, 1)
+    }
+    pub fn parse_reply(bytes: [u8; 8]) -> Result<Self, Error> {
+        Self::parse(bytes, 2)
     }
 }
 
@@ -223,6 +339,51 @@ fn word(b: [u8; 8]) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn pointer_forwarding_and_cursor_rpc_are_separate_strict_versioned_frames() {
+        let pointer = ev_input::pointer::PositionEvent {
+            x: 319,
+            y: 199,
+            buttons: 1,
+            fresh_left_press: true,
+            sequence: 7,
+        };
+        let command = ShellCommand::Pointer(pointer);
+        let bytes = command.encode().unwrap();
+        assert_eq!(ShellCommand::decode(bytes), Ok(command));
+        assert!(RootControl::decode(bytes).is_err());
+        let cursor = CursorControl {
+            x: 319,
+            y: 199,
+            sequence: 1,
+        };
+        assert_eq!(
+            CursorControl::parse_request(cursor.request().unwrap()),
+            Ok(cursor)
+        );
+        assert_eq!(
+            CursorControl::parse_reply(cursor.reply().unwrap()),
+            Ok(cursor)
+        );
+        assert!(CursorControl::parse_reply(cursor.request().unwrap()).is_err());
+        assert!(WindowControl::parse_request(cursor.request().unwrap()).is_err());
+        assert!(ShellCommand::decode(cursor.request().unwrap()).is_err());
+        for index in 0..4 {
+            let mut bad = cursor.request().unwrap();
+            bad[index] = 255;
+            assert!(CursorControl::parse_request(bad).is_err());
+        }
+        assert!(
+            CursorControl {
+                sequence: 0,
+                ..cursor
+            }
+            .request()
+            .is_err()
+        );
+        assert!(CursorControl { x: 320, ..cursor }.request().is_err());
+        assert!(CursorControl { y: 200, ..cursor }.request().is_err());
+    }
     #[test]
     fn root_messages_never_accept_reserved_fields_unknown_op_or_wrapping_ids() {
         for message in [

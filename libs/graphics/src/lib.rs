@@ -3,7 +3,9 @@
 #![no_std]
 #![deny(unsafe_code)]
 pub mod composition;
+pub mod document;
 pub mod native;
+pub mod session;
 pub mod shell;
 pub const WIDTH: usize = 320;
 pub const HEIGHT: usize = 200;
@@ -18,6 +20,7 @@ pub enum Error {
     Geometry,
     Counter,
     Bounds,
+    Text,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SurfaceHeader {
@@ -154,6 +157,29 @@ impl<'a, P: Pixels> Canvas<'a, P> {
         Ok(())
     }
     pub fn text(&mut self, x: usize, y: usize, text: &[u8], color: Color) -> Result<(), Error> {
+        self.text_glyphs(x, y, text, color, glyph)
+    }
+    /// Session note text preserves case; the legacy proof font is unchanged.
+    pub fn text_exact(
+        &mut self,
+        x: usize,
+        y: usize,
+        text: &[u8],
+        color: Color,
+    ) -> Result<(), Error> {
+        if text.iter().any(|c| !(0x20..=0x7e).contains(c)) {
+            return Err(Error::Text);
+        }
+        self.text_glyphs(x, y, text, color, exact_glyph)
+    }
+    fn text_glyphs(
+        &mut self,
+        x: usize,
+        y: usize,
+        text: &[u8],
+        color: Color,
+        font: fn(u8) -> [u8; 7],
+    ) -> Result<(), Error> {
         let w = text.len().checked_mul(6).ok_or(Error::Bounds)?;
         let (width, height) = self.sink.dimensions();
         if x.checked_add(w).is_none_or(|v| v > width) || y.checked_add(7).is_none_or(|v| v > height)
@@ -161,7 +187,7 @@ impl<'a, P: Pixels> Canvas<'a, P> {
             return Err(Error::Bounds);
         }
         for (index, character) in text.iter().copied().enumerate() {
-            let glyph = glyph(character);
+            let glyph = font(character);
             for (row, bits) in glyph.into_iter().enumerate() {
                 for col in 0..5 {
                     if bits & (1 << (4 - col)) != 0 {
@@ -336,6 +362,62 @@ fn glyph(c: u8) -> [u8; 7] {
         b']' => [14, 2, 2, 2, 2, 2, 14],
         b' ' => [0; 7],
         _ => [14, 17, 1, 2, 4, 0, 4],
+    }
+}
+fn exact_glyph(c: u8) -> [u8; 7] {
+    match c {
+        b'a' => [0, 0, 14, 1, 15, 17, 15],
+        b'b' => [16, 16, 30, 17, 17, 17, 30],
+        b'c' => [0, 0, 14, 16, 16, 17, 14],
+        b'd' => [1, 1, 15, 17, 17, 17, 15],
+        b'e' => [0, 0, 14, 17, 31, 16, 14],
+        b'f' => [6, 9, 8, 28, 8, 8, 8],
+        b'g' => [0, 15, 17, 17, 15, 1, 14],
+        b'h' => [16, 16, 30, 17, 17, 17, 17],
+        b'i' => [4, 0, 12, 4, 4, 4, 14],
+        b'j' => [2, 0, 6, 2, 2, 18, 12],
+        b'k' => [16, 16, 18, 20, 24, 20, 18],
+        b'l' => [12, 4, 4, 4, 4, 4, 14],
+        b'm' => [0, 0, 26, 21, 21, 21, 21],
+        b'n' => [0, 0, 30, 17, 17, 17, 17],
+        b'o' => [0, 0, 14, 17, 17, 17, 14],
+        b'p' => [0, 30, 17, 17, 30, 16, 16],
+        b'q' => [0, 15, 17, 17, 15, 1, 1],
+        b'r' => [0, 0, 22, 25, 16, 16, 16],
+        b's' => [0, 0, 15, 16, 14, 1, 30],
+        b't' => [8, 8, 28, 8, 8, 9, 6],
+        b'u' => [0, 0, 17, 17, 17, 19, 13],
+        b'v' => [0, 0, 17, 17, 17, 10, 4],
+        b'w' => [0, 0, 17, 17, 21, 21, 10],
+        b'x' => [0, 0, 17, 10, 4, 10, 17],
+        b'y' => [0, 17, 17, 17, 15, 1, 14],
+        b'z' => [0, 0, 31, 2, 4, 8, 31],
+        b'!' => [4, 4, 4, 4, 4, 0, 4],
+        b'"' => [10, 10, 10, 0, 0, 0, 0],
+        b'#' => [10, 10, 31, 10, 31, 10, 10],
+        b'$' => [4, 15, 20, 14, 5, 30, 4],
+        b'%' => [24, 25, 2, 4, 8, 19, 3],
+        b'&' => [12, 18, 20, 8, 21, 18, 13],
+        b'\'' => [4, 4, 8, 0, 0, 0, 0],
+        b'(' => [2, 4, 8, 8, 8, 4, 2],
+        b')' => [8, 4, 2, 2, 2, 4, 8],
+        b'*' => [0, 4, 21, 14, 21, 4, 0],
+        b'+' => [0, 4, 4, 31, 4, 4, 0],
+        b',' => [0, 0, 0, 0, 0, 4, 8],
+        b';' => [0, 4, 4, 0, 4, 4, 8],
+        b'<' => [2, 4, 8, 16, 8, 4, 2],
+        b'=' => [0, 0, 31, 0, 31, 0, 0],
+        b'>' => [8, 4, 2, 1, 2, 4, 8],
+        b'@' => [14, 17, 23, 21, 23, 16, 14],
+        b'\\' => [16, 8, 8, 4, 2, 2, 1],
+        b'^' => [4, 10, 17, 0, 0, 0, 0],
+        b'_' => [0, 0, 0, 0, 0, 0, 31],
+        b'`' => [8, 4, 2, 0, 0, 0, 0],
+        b'{' => [2, 4, 4, 8, 4, 4, 2],
+        b'|' => [4, 4, 4, 4, 4, 4, 4],
+        b'}' => [8, 4, 4, 2, 4, 4, 8],
+        b'~' => [0, 0, 9, 22, 0, 0, 0],
+        _ => glyph(c),
     }
 }
 
@@ -542,3 +624,6 @@ mod tests {
         assert_eq!(HelloControl::OpenFile.next(), HelloControl::CrashMe);
     }
 }
+
+#[cfg(feature = "owner-ui")]
+pub mod connection;

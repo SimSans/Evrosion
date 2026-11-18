@@ -72,4 +72,4 @@ peer isolation. Actual CPL3 proof connects generated clients, server execution,
 blocked scheduling, timer expiry and matching replies. The initial Echo transport
 is cap-free; general synchronous capability transfer and full service/BAC recovery
 remain explicit M2 work. Executed results and remaining scope belong in
-[M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+M2 progress.

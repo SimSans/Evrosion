@@ -7,7 +7,7 @@ image; `cargo ev run` boots it. Without `qemu-test-exit`, the kernel halts after
 report. It includes mechanism tests and separately measured Rust userspace services.
 
 Run `python3 tools/m2/binding.py` for cumulative host, QEMU, failure-image and
-governance checks. See [M2 readiness](../docs/release/0.1-preview.md#validation-and-provenance) and the
+governance checks. See M2 readiness and the
 [acceptance contract](../architecture/M2_ACCEPTANCE.md) for the accepted scope.
 
 The portable library contains physical-frame ownership/recycling, mapping models,
@@ -38,7 +38,7 @@ unsafe trait declarations describe loaded backing ownership and complete
 incarnation quiescence. They perform no unsafe operations. Their hardware implementations retain the actual
 loaded root through admission and stop. Host model implementations are test-only.
 See [ADR-0033](../architecture/adr/ADR-0033-owned-image-incarnation-activation.md)
-and [M2 progress](../docs/release/0.1-preview.md#validation-and-provenance) for scope and executed evidence.
+and M2 progress for scope and executed evidence.
 
 The source-built Root Supervisor now enters through that gate with a shared
 read-only/NX startup contract. Its development acceptance verifies explicit
@@ -54,9 +54,10 @@ M3 adds scoped IoPorts authority and a binary-only instruction boundary under
 [ADR-0042](../architecture/adr/ADR-0042-scoped-userspace-pio-reference-backend.md).
 The userspace block driver owns the device protocol. The isolated storage
 workflow now passes actual write/flush/readback and fresh-VM verification;
-[block evidence](../docs/release/0.1-preview.md#validation-and-provenance) preserves
-that bounded result. Complete persistent-machine acceptance remains pending. Device-free Root recovery receipts
-cannot certify device-bearing teardown. See [M3 progress](../docs/release/0.1-preview.md#validation-and-provenance).
+block evidence (local engineering archive) preserves
+that bounded result. M3 persistent-machine acceptance
+has since passed in its declared scope. Device-free Root recovery receipts cannot
+certify general device-bearing reconstruction. See M3 progress.
 
 Read [E-002](../architecture/plans/core/E-002-kernel-architecture.txt), the
 [invariants](../architecture/INVARIANTS.md) and the
@@ -67,3 +68,10 @@ M4 adds bounded RAM extent initialization and device Display ownership contracts
 under the safe core; real pointer/MSR/page-table operations remain in binary HAL.
 No model implementation is hardware evidence. See
 [ADR-0046](../architecture/adr/ADR-0046-owned-surfaces-and-userspace-display.md).
+
+Current M0–M6 status belongs in M6 readiness and
+the tracker. M6 adds bounded persisted-image
+admission and a scoped virtual networking graph; policy/protocols remain in
+userspace. The current [stack refinement](../architecture/adr/ADR-0101-phase-local-bootstrap-and-update-record-storage.md)
+changes temporary storage lifetimes within existing ownership and stack bounds.
+No general hardware, arbitrary executable or common-root recovery claim follows.

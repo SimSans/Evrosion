@@ -56,10 +56,67 @@ pub fn reply_native_root_identity(frame: &mut UserContext, process: u64, thread:
     frame.registers[11] = thread;
     frame.registers[5] = tick;
 }
+/// Exact selected-session reply, after independent captured-Root and lifecycle
+/// validation. Neither a stale fourth input nor a capability may escape.
+#[cfg(feature = "workspace-authority")]
+pub fn reply_session_power(frame: &mut UserContext, status: u64, value: u64) {
+    frame.registers[14] = status;
+    frame.registers[9] = if status == 0 { value } else { 0 };
+    frame.registers[11] = 0;
+    frame.registers[5] = 0;
+}
+#[cfg(all(test, feature = "workspace-authority"))]
+#[path = "session_power_abi_tests.rs"]
+mod session_power_abi_tests;
 const _: () = assert!(core::mem::size_of::<UserContext>() == 176);
 const _: () = assert!(core::mem::offset_of!(UserContext, rip) == 136);
 #[derive(Debug, PartialEq, Eq)]
 pub enum Call {
+    #[cfg(feature = "workspace-authority")]
+    SessionPowerInfo {
+        restart: bool,
+    },
+    #[cfg(feature = "workspace-authority")]
+    SessionPowerReady {
+        nonce: u64,
+        frame: u64,
+        input: u64,
+    },
+    #[cfg(feature = "workspace-authority")]
+    SessionPower {
+        operation: u64,
+        block: Handle,
+        nic: Handle,
+        extra: u64,
+    },
+    #[cfg(feature = "workspace-authority")]
+    ManagedSendRetire {
+        process: Handle,
+        nonce: u32,
+    },
+    #[cfg(feature = "workspace-authority")]
+    ManagedSendRetireInfo,
+    NetworkNegativeProbe {
+        operation: u64,
+        cut: u64,
+    },
+    NetworkRetirement {
+        operation: u64,
+        driver: Handle,
+        service: Handle,
+        extra: u64,
+    },
+    ImageControl {
+        creator: Handle,
+        operation: ev_userspace_contract::root_v4::dynamic::Operation,
+        operand: u64,
+        extra: u64,
+    },
+    #[cfg(feature = "workspace-authority")]
+    PrepareWorkspaceProcess {
+        creator: Handle,
+        process: Handle,
+    },
     Yield,
     EnqueueManagedRead {
         process: Handle,
@@ -83,6 +140,43 @@ pub enum Call {
         width: u64,
         value: u64,
     },
+    PortByteBatchInfo,
+    PortInputBytes4 {
+        capability: Handle,
+        port: u64,
+        deadline: u64,
+    },
+    PortOutputBytes4 {
+        capability: Handle,
+        port: u64,
+        deadline: u64,
+        value: u64,
+    },
+    PortBatchInfo,
+    PortWords256Info,
+    PortInputWords256 {
+        capability: Handle,
+        port: u64,
+        deadline: u64,
+        buffer: u64,
+    },
+    PortOutputWords256 {
+        capability: Handle,
+        port: u64,
+        deadline: u64,
+        buffer: u64,
+    },
+    PortInputWords4 {
+        capability: Handle,
+        port: u64,
+        deadline: u64,
+    },
+    PortOutputWords4 {
+        capability: Handle,
+        port: u64,
+        deadline: u64,
+        value: u64,
+    },
     MutexAcquire(Handle),
     MutexRelease(u64),
     Spawn(u64),
@@ -92,6 +186,16 @@ pub enum Call {
         serial: u64,
     },
     ReceiveRpc(Handle),
+    ServingOrigin {
+        endpoint: Handle,
+        nonce: u64,
+        field: u64,
+    },
+    ServingOriginInfo,
+    SelfIdentity {
+        field: u64,
+    },
+    SelfIdentityInfo,
     Exit(u64),
     Send {
         endpoint: Handle,
@@ -119,6 +223,11 @@ pub enum Call {
         capability: Handle,
         field: u64,
     },
+    ProcessJobInfo {
+        capability: Handle,
+        field: u64,
+    },
+    ProcessJobInfoInfo,
     FaultInfo {
         capability: Handle,
         field: u64,
@@ -186,6 +295,57 @@ pub fn decode(frame: &UserContext) -> Result<Call, InvalidCall> {
     let d = frame.registers[5]; // Saved R10; only the cap ABI declares this operand.
     use ev_userspace_contract::syscall;
     Ok(match frame.registers[14] {
+        #[cfg(feature = "workspace-authority")]
+        syscall::MANAGED_SEND_RETIRE
+            if a != 0 && b > 0 && b < u32::MAX as u64 && c == 0 && d == 0 =>
+        {
+            Call::ManagedSendRetire {
+                process: Handle(a),
+                nonce: b as u32,
+            }
+        }
+        #[cfg(feature = "workspace-authority")]
+        syscall::MANAGED_SEND_RETIRE_INFO if a == 0 && b == 0 && c == 0 && d == 0 => {
+            Call::ManagedSendRetireInfo
+        }
+        syscall::NETWORK_NEGATIVE_PROBE
+            if (1..=4).contains(&a) && b == 0 && c == 0 && d > 0 && d < u64::MAX =>
+        {
+            Call::NetworkNegativeProbe {
+                operation: a,
+                cut: d,
+            }
+        }
+        syscall::NETWORK_RETIREMENT
+            if a <= 1 && b > 0 && c > 0 && b != c && d > 0 && d < u64::MAX =>
+        {
+            Call::NetworkRetirement {
+                operation: a,
+                driver: Handle(b),
+                service: Handle(c),
+                extra: d,
+            }
+        }
+        #[cfg(feature = "workspace-authority")]
+        syscall::IMAGE_CONTROL if b == 9 && a > 0 && c > 0 && c < u64::MAX && d == 0 => {
+            Call::PrepareWorkspaceProcess {
+                creator: Handle(a),
+                process: Handle(c),
+            }
+        }
+        syscall::IMAGE_CONTROL => {
+            let operation =
+                ev_userspace_contract::root_v4::dynamic::Operation::decode(b).ok_or(InvalidCall)?;
+            if a == 0 || !operation.operands(c, d) {
+                return Err(InvalidCall);
+            }
+            Call::ImageControl {
+                creator: Handle(a),
+                operation,
+                operand: c,
+                extra: d,
+            }
+        }
         0 => Call::Yield,
         syscall::DISPLAY_INFO if (1..=6).contains(&b) && c == 0 => Call::DisplayInfo {
             capability: Handle(a),
@@ -195,6 +355,25 @@ pub fn decode(frame: &UserContext) -> Result<Call, InvalidCall> {
             capability: Handle(a),
             field: b,
         },
+        syscall::PROCESS_JOB_INFO if b <= 8 && c == 0 => Call::ProcessJobInfo {
+            capability: Handle(a),
+            field: b,
+        },
+        syscall::PROCESS_JOB_INFO_INFO if a == 0 && b == 0 && c == 0 && d == 0 => {
+            Call::ProcessJobInfoInfo
+        }
+        syscall::SERVING_ORIGIN if a != 0 && b != 0 && c < 8 => Call::ServingOrigin {
+            endpoint: Handle(a),
+            nonce: b,
+            field: c,
+        },
+        syscall::SERVING_ORIGIN_INFO if a == 0 && b == 0 && c == 0 && d == 0 => {
+            Call::ServingOriginInfo
+        }
+        syscall::SELF_IDENTITY if a <= 2 && b == 0 && c == 0 => Call::SelfIdentity { field: a },
+        syscall::SELF_IDENTITY_INFO if a == 0 && b == 0 && c == 0 && d == 0 => {
+            Call::SelfIdentityInfo
+        }
         syscall::ENQUEUE_MANAGED_READ if d > 0 && d < u32::MAX as u64 => Call::EnqueueManagedRead {
             process: Handle(a),
             source: Handle(b),
@@ -207,6 +386,85 @@ pub fn decode(frame: &UserContext) -> Result<Call, InvalidCall> {
         syscall::STOP_PROCESS if b == 0 && c == 0 => Call::StopProcess(Handle(a)),
         syscall::PROCESS_IDENTITY if b == 0 && c == 0 => Call::ProcessIdentity(Handle(a)),
         syscall::RECEIVE_EVENT if b == 0 && c == 0 && d == 0 => Call::ReceiveEvent(Handle(a)),
+        syscall::PORT_BYTE_BATCH_INFO if a == 0 && b == 0 && c == 0 && d == 0 => {
+            Call::PortByteBatchInfo
+        }
+        syscall::PORT_INPUT_BYTES4 if b <= u16::MAX as u64 && c > 0 && c < u64::MAX && d == 0 => {
+            Call::PortInputBytes4 {
+                capability: Handle(a),
+                port: b,
+                deadline: c,
+            }
+        }
+        syscall::PORT_OUTPUT_BYTES4
+            if b <= u16::MAX as u64 && c > 0 && c < u64::MAX && d <= u32::MAX as u64 =>
+        {
+            Call::PortOutputBytes4 {
+                capability: Handle(a),
+                port: b,
+                deadline: c,
+                value: d,
+            }
+        }
+        syscall::PORT_BATCH_INFO if a == 0 && b == 0 && c == 0 && d == 0 => Call::PortBatchInfo,
+        syscall::PORT_WORDS256_INFO if a == 0 && b == 0 && c == 0 && d == 0 => {
+            Call::PortWords256Info
+        }
+        #[cfg(feature = "workspace-authority")]
+        syscall::SESSION_POWER_INFO if a <= 1 && b == 0 && c == 0 && d == 0 => {
+            Call::SessionPowerInfo { restart: a == 1 }
+        }
+        #[cfg(feature = "workspace-authority")]
+        syscall::SESSION_POWER_INFO
+            if a == syscall::SESSION_POWER_READY_QUERY
+                && crate::session_power::Readiness::decode(b, c, d).is_some() =>
+        {
+            Call::SessionPowerReady {
+                nonce: b,
+                frame: c,
+                input: d,
+            }
+        }
+        #[cfg(feature = "workspace-authority")]
+        syscall::SESSION_POWER if a <= 2 && b != 0 && c != 0 && b != c && d > 0 && d < u64::MAX => {
+            Call::SessionPower {
+                operation: a,
+                block: Handle(b),
+                nic: Handle(c),
+                extra: d,
+            }
+        }
+        syscall::PORT_INPUT_WORDS256 if b <= u16::MAX as u64 && c > 0 && c < u64::MAX => {
+            Call::PortInputWords256 {
+                capability: Handle(a),
+                port: b,
+                deadline: c,
+                buffer: d,
+            }
+        }
+        syscall::PORT_OUTPUT_WORDS256 if b <= u16::MAX as u64 && c > 0 && c < u64::MAX => {
+            Call::PortOutputWords256 {
+                capability: Handle(a),
+                port: b,
+                deadline: c,
+                buffer: d,
+            }
+        }
+        syscall::PORT_INPUT_WORDS4 if b <= u16::MAX as u64 && c > 0 && c < u64::MAX && d == 0 => {
+            Call::PortInputWords4 {
+                capability: Handle(a),
+                port: b,
+                deadline: c,
+            }
+        }
+        syscall::PORT_OUTPUT_WORDS4 if b <= u16::MAX as u64 && c > 0 && c < u64::MAX => {
+            Call::PortOutputWords4 {
+                capability: Handle(a),
+                port: b,
+                deadline: c,
+                value: d,
+            }
+        }
         syscall::PORT_INPUT if b <= u16::MAX as u64 && matches!(c, 1 | 2 | 4) && d == 0 => {
             Call::PortInput {
                 capability: Handle(a),
@@ -334,6 +592,203 @@ pub fn decode(frame: &UserContext) -> Result<Call, InvalidCall> {
 mod tests {
     use super::*;
     #[test]
+    fn managed_retirement_numbers_hash_and_profile_scoping_are_additive() {
+        use ev_userspace_contract::syscall;
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            [
+                syscall::MANAGED_SEND_RETIRE,
+                syscall::MANAGED_SEND_RETIRE_INFO
+            ],
+            [61, 62]
+        );
+        assert_eq!(syscall::MANAGED_SEND_RETIRE_V1, 0x0000_0001_0003_0001);
+        assert_eq!(
+            <[u8; 32]>::from(Sha256::digest(syscall::MANAGED_SEND_RETIRE_ABI_DESCRIPTION)),
+            syscall::MANAGED_SEND_RETIRE_ABI
+        );
+        let mut f = UserContext::ZERO;
+        f.registers[14] = syscall::MANAGED_SEND_RETIRE_INFO;
+        #[cfg(feature = "workspace-authority")]
+        {
+            assert_eq!(decode(&f), Ok(Call::ManagedSendRetireInfo));
+            for r in [8, 9, 11, 5] {
+                f.registers[r] = 1;
+                assert_eq!(decode(&f), Err(InvalidCall));
+                f.registers[r] = 0;
+            }
+            f.registers[14] = syscall::MANAGED_SEND_RETIRE;
+            f.registers[8] = (1u64 << 48) | 257;
+            for nonce in [1, u32::MAX as u64 - 1] {
+                f.registers[9] = nonce;
+                assert_eq!(
+                    decode(&f),
+                    Ok(Call::ManagedSendRetire {
+                        process: Handle((1u64 << 48) | 257),
+                        nonce: nonce as u32
+                    })
+                );
+            }
+            for nonce in [0, u32::MAX as u64, 1u64 << 32, u64::MAX] {
+                f.registers[9] = nonce;
+                assert_eq!(decode(&f), Err(InvalidCall));
+            }
+            f.registers[9] = 1;
+            for r in [11, 5] {
+                f.registers[r] = 1;
+                assert_eq!(decode(&f), Err(InvalidCall));
+                f.registers[r] = 0;
+            }
+            f.registers[8] = 0;
+            assert_eq!(decode(&f), Err(InvalidCall));
+        }
+        #[cfg(not(feature = "workspace-authority"))]
+        {
+            assert_eq!(decode(&f), Err(InvalidCall));
+            f.registers[14] = syscall::MANAGED_SEND_RETIRE;
+            f.registers[8] = 257;
+            f.registers[9] = 1;
+            assert_eq!(decode(&f), Err(InvalidCall));
+        }
+    }
+    #[test]
+    fn self_identity_extension_has_exact_field_shape_and_independent_negotiation() {
+        use ev_userspace_contract::syscall;
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            [syscall::SELF_IDENTITY, syscall::SELF_IDENTITY_INFO],
+            [59, 60]
+        );
+        assert_eq!(syscall::SELF_IDENTITY_V1, 0x0000_0001_0003_0001);
+        assert_eq!(
+            <[u8; 32]>::from(Sha256::digest(syscall::SELF_IDENTITY_ABI_DESCRIPTION)),
+            syscall::SELF_IDENTITY_ABI
+        );
+        let mut f = UserContext::ZERO;
+        f.registers[14] = syscall::SELF_IDENTITY_INFO;
+        assert_eq!(decode(&f), Ok(Call::SelfIdentityInfo));
+        for r in [8, 9, 11, 5] {
+            f.registers[r] = 1;
+            assert_eq!(decode(&f), Err(InvalidCall));
+            f.registers[r] = 0;
+        }
+        f.registers[14] = syscall::SELF_IDENTITY;
+        f.registers[5] = u64::MAX;
+        for field in 0..3 {
+            f.registers[8] = field;
+            assert_eq!(decode(&f), Ok(Call::SelfIdentity { field }));
+        }
+        for field in [3, 256, u64::MAX] {
+            f.registers[8] = field;
+            assert_eq!(decode(&f), Err(InvalidCall));
+        }
+        f.registers[8] = 0;
+        for r in [9, 11] {
+            f.registers[r] = 1;
+            assert_eq!(decode(&f), Err(InvalidCall));
+            f.registers[r] = 0;
+        }
+    }
+    #[test]
+    fn serving_origin_negotiation_is_additive_and_full_width_scalar_shape_is_exact() {
+        use ev_userspace_contract::syscall;
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            [syscall::SERVING_ORIGIN, syscall::SERVING_ORIGIN_INFO],
+            [57, 58]
+        );
+        assert_eq!(syscall::SERVING_ORIGIN_V1, 0x0000_0001_0008_0001);
+        assert_eq!(
+            <[u8; 32]>::from(Sha256::digest(syscall::SERVING_ORIGIN_ABI_DESCRIPTION)),
+            syscall::SERVING_ORIGIN_ABI
+        );
+        let mut frame = UserContext::ZERO;
+        frame.registers[14] = syscall::SERVING_ORIGIN_INFO;
+        assert_eq!(decode(&frame), Ok(Call::ServingOriginInfo));
+        for register in [8, 9, 11, 5] {
+            frame.registers[register] = 1;
+            assert_eq!(decode(&frame), Err(InvalidCall));
+            frame.registers[register] = 0;
+        }
+        frame.registers[14] = syscall::SERVING_ORIGIN;
+        frame.registers[8] = u64::MAX;
+        frame.registers[9] = (1u64 << 48) + 1;
+        for field in 0..8 {
+            for compiler_live in [0, 1, u64::MAX] {
+                frame.registers[11] = field;
+                frame.registers[5] = compiler_live;
+                assert_eq!(
+                    decode(&frame),
+                    Ok(Call::ServingOrigin {
+                        endpoint: Handle(u64::MAX),
+                        nonce: (1u64 << 48) + 1,
+                        field
+                    })
+                );
+                assert_eq!(frame.registers[5], compiler_live);
+            }
+        }
+        for (register, value) in [(8, 0), (9, 0), (11, 8), (11, u64::MAX)] {
+            let mut bad = frame;
+            bad.registers[register] = value;
+            assert_eq!(decode(&bad), Err(InvalidCall));
+        }
+        // A new descriptor must never reinterpret Receive34's four-output ABI.
+        frame = UserContext::ZERO;
+        frame.registers[14] = syscall::RECEIVE_RPC;
+        frame.registers[8] = 0x1234;
+        assert_eq!(decode(&frame), Ok(Call::ReceiveRpc(Handle(0x1234))));
+        for register in [9, 11, 5] {
+            let mut bad = frame;
+            bad.registers[register] = 1;
+            assert_eq!(decode(&bad), Err(InvalidCall));
+        }
+    }
+    #[test]
+    fn image_control52_is_total_typed_and_cannot_wrap_an_unknown_op_into_cleanup() {
+        use ev_userspace_contract::root_v4::dynamic::Operation;
+        let mut f = UserContext::ZERO;
+        f.registers[14] = ev_userspace_contract::syscall::IMAGE_CONTROL;
+        f.registers[8] = 123;
+        for (op, operand, extra) in [
+            (0, 0, 0),
+            (1, 100, 0),
+            (2, 1, 4096u64 << 32),
+            (3, 2, 0),
+            (4, 1, 0),
+            (5, 1, 0),
+            (6, 1, 0),
+            (7, 2, 0),
+            (8, 0, 0),
+        ] {
+            f.registers[9] = op;
+            f.registers[11] = operand;
+            f.registers[5] = extra;
+            assert_eq!(
+                decode(&f),
+                Ok(Call::ImageControl {
+                    creator: Handle(123),
+                    operation: Operation::decode(op).unwrap(),
+                    operand,
+                    extra
+                })
+            );
+        }
+        for op in [9, 255, 256, u32::MAX as u64, u64::MAX] {
+            f.registers[9] = op;
+            assert_eq!(decode(&f), Err(InvalidCall));
+        }
+        f.registers[9] = 0;
+        f.registers[11] = 0;
+        f.registers[5] = 0;
+        f.registers[8] = 0;
+        assert_eq!(decode(&f), Err(InvalidCall));
+        for id in [53, 54, u64::MAX] {
+            f.registers[14] = id;
+            assert_eq!(decode(&f), Err(InvalidCall));
+        }
+    }
+    #[test]
     fn fault_info_is_bounded_scalar_and_keeps_legacy_observe_unchanged() {
         let mut frame = UserContext::ZERO;
         frame.registers[14] = ev_userspace_contract::syscall::FAULT_INFO;
@@ -399,6 +854,64 @@ mod tests {
         for reserved in [1, 256, 0x8000100000, u64::MAX] {
             frame.registers[11] = reserved;
             assert_eq!(decode(&frame), Err(InvalidCall));
+        }
+    }
+    #[test]
+    fn process_job_info_extension_is_negotiated_and_preserves_full_width_scalar_operands() {
+        use ev_userspace_contract::syscall;
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            (
+                syscall::JOB_INFO,
+                syscall::NETWORK_NEGATIVE_PROBE,
+                syscall::PROCESS_JOB_INFO,
+                syscall::PROCESS_JOB_INFO_INFO
+            ),
+            (42, 54, 55, 56)
+        );
+        assert_eq!(syscall::PROCESS_JOB_INFO_V1, 0x0000_0001_0009_0003);
+        assert_eq!(
+            <[u8; 32]>::from(Sha256::digest(syscall::PROCESS_JOB_INFO_ABI_DESCRIPTION)),
+            syscall::PROCESS_JOB_INFO_ABI
+        );
+        assert_ne!(syscall::PROCESS_JOB_INFO_ABI, syscall::PORT_BATCH_ABI);
+        let mut frame = UserContext::ZERO;
+        frame.registers[14] = syscall::PROCESS_JOB_INFO;
+        for r10 in [0, 1, u64::MAX] {
+            frame.registers[5] = r10;
+            for capability in [0, 256, 256 | (1 << 63), u64::MAX] {
+                frame.registers[8] = capability;
+                for field in 0..=8 {
+                    frame.registers[9] = field;
+                    assert_eq!(
+                        decode(&frame),
+                        Ok(Call::ProcessJobInfo {
+                            capability: Handle(capability),
+                            field
+                        })
+                    );
+                    assert_eq!(frame.registers[5], r10);
+                }
+            }
+        }
+        for field in [9, 256, 1 << 63, u64::MAX] {
+            frame.registers[9] = field;
+            assert_eq!(decode(&frame), Err(InvalidCall));
+        }
+        frame.registers[9] = 0;
+        for reserved in [1, 256, 1 << 63, u64::MAX] {
+            frame.registers[11] = reserved;
+            assert_eq!(decode(&frame), Err(InvalidCall));
+        }
+        frame = UserContext::ZERO;
+        frame.registers[14] = syscall::PROCESS_JOB_INFO_INFO;
+        assert_eq!(decode(&frame), Ok(Call::ProcessJobInfoInfo));
+        for index in [8, 9, 11, 5] {
+            for reserved in [1, 256, 1 << 63, u64::MAX] {
+                frame.registers[index] = reserved;
+                assert_eq!(decode(&frame), Err(InvalidCall));
+            }
+            frame.registers[index] = 0;
         }
     }
     #[test]
@@ -782,6 +1295,141 @@ mod port_scalar_tests {
     use super::*;
     use ev_userspace_contract::syscall;
     #[test]
+    fn sector_decode_preserves_full_byte_address_and_denies_malformed_negotiation() {
+        let mut f = UserContext::ZERO;
+        f.registers[14] = syscall::PORT_WORDS256_INFO;
+        assert_eq!(decode(&f), Ok(Call::PortWords256Info));
+        for register in [8, 9, 11, 5] {
+            f.registers[register] = 1;
+            assert!(decode(&f).is_err());
+            f.registers[register] = 0;
+        }
+        for number in [syscall::PORT_INPUT_WORDS256, syscall::PORT_OUTPUT_WORDS256] {
+            f.registers[14] = number;
+            f.registers[8] = u64::MAX;
+            f.registers[9] = 65535;
+            f.registers[11] = 1;
+            for address in [0, 1, 0x8000003001, u64::MAX] {
+                f.registers[5] = address;
+                let expected = if number == syscall::PORT_INPUT_WORDS256 {
+                    Call::PortInputWords256 {
+                        capability: Handle(u64::MAX),
+                        port: 65535,
+                        deadline: 1,
+                        buffer: address,
+                    }
+                } else {
+                    Call::PortOutputWords256 {
+                        capability: Handle(u64::MAX),
+                        port: 65535,
+                        deadline: 1,
+                        buffer: address,
+                    }
+                };
+                assert_eq!(decode(&f), Ok(expected)); // Actual ownership is a later independent join.
+            }
+            f.registers[9] = 65536;
+            assert!(decode(&f).is_err());
+            f.registers[9] = 0x1e8;
+            for cut in [0, u64::MAX] {
+                f.registers[11] = cut;
+                assert!(decode(&f).is_err());
+            }
+        }
+    }
+    #[test]
+    fn byte_batch_negotiation_and_operands_are_total_and_never_truncate() {
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            <[u8; 32]>::from(Sha256::digest(syscall::PORT_BYTE_BATCH_ABI_DESCRIPTION)),
+            syscall::PORT_BYTE_BATCH_ABI
+        );
+        let mut f = UserContext::ZERO;
+        f.registers[14] = syscall::PORT_BYTE_BATCH_INFO;
+        assert_eq!(decode(&f), Ok(Call::PortByteBatchInfo));
+        for register in [8, 9, 11, 5] {
+            for value in [1, u64::MAX] {
+                f.registers[register] = value;
+                assert_eq!(decode(&f), Err(InvalidCall));
+            }
+            f.registers[register] = 0;
+        }
+        for number in [syscall::PORT_INPUT_BYTES4, syscall::PORT_OUTPUT_BYTES4] {
+            f.registers[14] = number;
+            f.registers[8] = u64::MAX;
+            f.registers[9] = 65535;
+            f.registers[11] = 1;
+            assert!(decode(&f).is_ok()); // Full-width handle is checked by authority.
+            for port in [65536, 1 << 32, u64::MAX] {
+                f.registers[9] = port;
+                assert_eq!(decode(&f), Err(InvalidCall));
+            }
+            f.registers[9] = 0x310;
+            for cut in [0, u64::MAX] {
+                f.registers[11] = cut;
+                assert_eq!(decode(&f), Err(InvalidCall));
+            }
+            f.registers[11] = 512;
+        }
+        f.registers[5] = u32::MAX as u64;
+        assert!(
+            matches!(decode(&f),Ok(Call::PortOutputBytes4{value,..}) if value==u32::MAX as u64)
+        );
+        for high in [1 << 32, u64::MAX] {
+            f.registers[5] = high;
+            assert_eq!(decode(&f), Err(InvalidCall));
+        }
+        f.registers[14] = syscall::PORT_INPUT_BYTES4;
+        for extra in [1, u32::MAX as u64, u64::MAX] {
+            f.registers[5] = extra;
+            assert_eq!(decode(&f), Err(InvalidCall));
+        }
+    }
+    #[test]
+    fn negotiated_word_batch_has_exact_shape_and_separate_identity() {
+        use sha2::{Digest, Sha256};
+        assert_eq!(
+            <[u8; 32]>::from(Sha256::digest(syscall::PORT_BATCH_ABI_DESCRIPTION)),
+            syscall::PORT_BATCH_ABI
+        );
+        assert_eq!(syscall::PORT_BATCH_V1, 0x0000_0001_0004_0002);
+        let mut f = UserContext::ZERO;
+        f.registers[14] = syscall::PORT_BATCH_INFO;
+        assert_eq!(decode(&f), Ok(Call::PortBatchInfo));
+        for register in [8, 9, 11, 5] {
+            f.registers[register] = 1;
+            assert_eq!(decode(&f), Err(InvalidCall));
+            f.registers[register] = 0;
+        }
+        for number in [syscall::PORT_INPUT_WORDS4, syscall::PORT_OUTPUT_WORDS4] {
+            f.registers[14] = number;
+            f.registers[8] = u64::MAX;
+            f.registers[9] = 0x1e8;
+            f.registers[11] = 1024;
+            assert!(decode(&f).is_ok());
+            for port in [65536, u64::MAX] {
+                f.registers[9] = port;
+                assert_eq!(decode(&f), Err(InvalidCall));
+            }
+            f.registers[9] = 0x1e8;
+            for cut in [0, u64::MAX] {
+                f.registers[11] = cut;
+                assert_eq!(decode(&f), Err(InvalidCall));
+            }
+            f.registers[11] = 1024;
+        }
+        f.registers[5] = u64::MAX;
+        assert!(matches!(
+            decode(&f),
+            Ok(Call::PortOutputWords4 {
+                value: u64::MAX,
+                ..
+            })
+        ));
+        f.registers[14] = syscall::PORT_INPUT_WORDS4;
+        assert_eq!(decode(&f), Err(InvalidCall));
+    }
+    #[test]
     fn port_operands_reject_truncation_overflow_and_undeclared_inputs() {
         let mut f = UserContext::ZERO;
         f.registers[8] = u64::MAX; // Handles remain full width for authority lookup.
@@ -933,6 +1581,98 @@ mod native_self_reply_tests {
                 before.rsp,
                 before.ss
             )
+        );
+    }
+}
+
+#[cfg(test)]
+mod network_retirement_tests {
+    use super::*;
+    #[test]
+    fn fixed_scalar_retirement_decode_requires_exact_operation_pair_and_extra() {
+        for operation in [0, 1] {
+            let mut f = UserContext::ZERO;
+            f.registers[14] = ev_userspace_contract::syscall::NETWORK_RETIREMENT;
+            f.registers[8] = operation;
+            f.registers[9] = 7;
+            f.registers[11] = 8;
+            f.registers[5] = 8192;
+            assert_eq!(
+                decode(&f),
+                Ok(Call::NetworkRetirement {
+                    operation,
+                    driver: Handle(7),
+                    service: Handle(8),
+                    extra: 8192,
+                })
+            );
+            for (index, value) in [(8, 2), (9, 0), (11, 0), (11, 7), (5, 0), (5, u64::MAX)] {
+                let mut bad = f;
+                bad.registers[index] = value;
+                assert_eq!(decode(&bad), Err(InvalidCall));
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod negative_probe_decode_tests {
+    use super::*;
+    #[test]
+    fn only_exact_finite_root_probe_arm_shape_decodes() {
+        for operation in 1..=4 {
+            let mut f = UserContext::ZERO;
+            f.registers[14] = ev_userspace_contract::syscall::NETWORK_NEGATIVE_PROBE;
+            f.registers[8] = operation;
+            f.registers[5] = 8192;
+            assert_eq!(
+                decode(&f),
+                Ok(Call::NetworkNegativeProbe {
+                    operation,
+                    cut: 8192
+                })
+            );
+            for (index, value) in [(8, 0), (8, 5), (9, 1), (11, 1), (5, 0), (5, u64::MAX)] {
+                let mut bad = f;
+                bad.registers[index] = value;
+                assert_eq!(decode(&bad), Err(InvalidCall));
+            }
+        }
+    }
+}
+
+#[cfg(all(test, feature = "workspace-authority"))]
+mod workspace_prepare_decode_tests {
+    use super::*;
+    #[test]
+    fn prepare9_carries_only_actual_creator_and_process_caps_and_preserves_legacy_operations() {
+        let mut frame = UserContext::ZERO;
+        frame.registers[14] = ev_userspace_contract::syscall::IMAGE_CONTROL;
+        frame.registers[8] = 17;
+        frame.registers[9] = 9;
+        frame.registers[11] = 23;
+        assert_eq!(
+            decode(&frame),
+            Ok(Call::PrepareWorkspaceProcess {
+                creator: Handle(17),
+                process: Handle(23)
+            })
+        );
+        for (register, value) in [(8, 0), (9, 10), (11, 0), (11, u64::MAX), (5, 1)] {
+            let mut bad = frame;
+            bad.registers[register] = value;
+            assert_eq!(decode(&bad), Err(InvalidCall));
+        }
+        frame.registers[9] = 0;
+        frame.registers[11] = 0;
+        assert_eq!(
+            decode(&frame),
+            Ok(Call::ImageControl {
+                creator: Handle(17),
+                operation: ev_userspace_contract::root_v4::dynamic::Operation::Initialize,
+                operand: 0,
+                extra: 0
+            })
         );
     }
 }

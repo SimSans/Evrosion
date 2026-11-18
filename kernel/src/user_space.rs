@@ -24,13 +24,239 @@ const DATA: u64 = 3 * FRAME_SIZE;
 const STACK: u64 = 5 * FRAME_SIZE;
 const PRIVATE: u64 = 7 * FRAME_SIZE;
 pub(crate) type UserRoot = PrivateUserRoot<MAX_PRIVATE_PAGES>;
+const SHARED_SLOTS: usize = if cfg!(feature = "test-m6-network") {
+    4
+} else if cfg!(feature = "test-m6-session") {
+    3
+} else {
+    2
+};
 pub(crate) struct PrivateUserRoot<const N: usize> {
     tables: [PhysicalFrame; 4],
     mappings: PrivateUserMappings<N>,
     leaf: *mut u64,
     offset: u64,
     bits: u8,
-    shared: [Option<(u64, MappingLease)>; 2],
+    shared: [Option<(u64, MappingLease)>; SHARED_SLOTS],
+}
+#[cfg(feature = "test-m8-workspace")]
+pub(crate) struct CapturedIoBuffer<'a> {
+    span: ev_kernel::user::PrivateIoBuffer<'a>,
+    offset: u64,
+    bits: u8,
+}
+#[cfg(feature = "test-m8-workspace")]
+impl CapturedIoBuffer<'_> {
+    pub fn snapshot(&self, bytes: &mut [u8; 512]) -> Result<(), &'static str> {
+        self.span.read(&mut IoRam(self.offset, self.bits), bytes)
+    }
+    pub fn publish(&self, bytes: &[u8; 512]) -> Result<(), &'static str> {
+        self.span.write(&mut IoRam(self.offset, self.bits), bytes)
+    }
+}
+#[cfg(feature = "test-m8-workspace")]
+struct IoRam(u64, u8);
+#[cfg(feature = "test-m8-workspace")]
+// SAFETY: exact affine RAM frame and checked byte through retained direct map;
+// volatile byte access creates no persistent alias and never targets MMIO.
+unsafe impl ev_kernel::memory_extent::RamAccess for IoRam {
+    type Error = &'static str;
+    fn read(&mut self, frame: &PhysicalFrame, byte: usize) -> Result<u8, Self::Error> {
+        if byte >= FRAME_SIZE as usize {
+            return Err("PIO RAM byte");
+        }
+        let p = direct_address(self.0, frame.start(), self.1).map_err(|_| "PIO direct map")?;
+        // SAFETY: exact retained frame and bounded byte, checked direct mapping.
+        Ok(unsafe { (p as *const u8).add(byte).read_volatile() })
+    }
+    fn write(&mut self, frame: &PhysicalFrame, byte: usize, value: u8) -> Result<(), Self::Error> {
+        if byte >= FRAME_SIZE as usize {
+            return Err("PIO RAM byte");
+        }
+        let p = direct_address(self.0, frame.start(), self.1).map_err(|_| "PIO direct map")?;
+        // SAFETY: actual exclusive private RAM while its user owner is captured.
+        unsafe { (p as *mut u8).add(byte).write_volatile(value) };
+        Ok(())
+    }
+}
+
+/// Captured V4 Root only. This borrows immutable root identity, while the
+/// separate affine dynamic-table owner exclusively authorizes actual writes.
+#[cfg(feature = "test-m6-network")]
+pub(crate) struct DynamicLeaf<'a, const N: usize> {
+    root: &'a PrivateUserRoot<N>,
+    table: u64,
+}
+#[cfg(feature = "test-m6-network")]
+impl<const N: usize> DynamicLeaf<'_, N> {
+    pub fn root(&self) -> u64 {
+        self.root.root()
+    }
+    pub fn table(&self) -> u64 {
+        self.table
+    }
+    pub fn private_entry(&self, index: usize) -> Result<u64, &'static str> {
+        if index >= 512 {
+            return Err("dynamic private index");
+        }
+        // SAFETY: exact retained Root PT0, checked index under captured guard.
+        Ok(unsafe { self.root.leaf.add(index).read_volatile() })
+    }
+    pub fn exclusive_user_branch(&self) -> Result<(), &'static str> {
+        let slot = (self.root.base() >> 39) as usize;
+        for i in 0..512 {
+            // SAFETY: actual retained Root tables, captured IF0/AP exclusion.
+            let pml4 = unsafe {
+                self.root
+                    .pointer(self.root.tables[0].start())
+                    .add(i)
+                    .read_volatile()
+            };
+            if i != slot && pml4 & USER != 0 {
+                return Err("foreign user root branch");
+            }
+            if i == slot
+                && pml4 & !((1 << 5) | (1 << 6))
+                    != self.root.tables[1].start() | PRESENT | WRITABLE | USER
+            {
+                return Err("foreign current user branch");
+            }
+            // SAFETY: actual retained private PDPT, checked loop index.
+            let pdpt = unsafe {
+                self.root
+                    .pointer(self.root.tables[1].start())
+                    .add(i)
+                    .read_volatile()
+            };
+            if i > 0 && pdpt != 0 {
+                return Err("foreign user PDPT branch");
+            }
+            // SAFETY: actual retained private PD, checked loop index.
+            let directory = unsafe { self.directory().add(i).read_volatile() };
+            if i > 1 && directory != 0 {
+                return Err("foreign Root data directory");
+            }
+        }
+        Ok(())
+    }
+    fn directory(&self) -> *mut u64 {
+        self.root.pointer(self.root.tables[2].start())
+    }
+    pub fn entry(&self, index: usize) -> Result<u64, &'static str> {
+        if index >= 512 {
+            return Err("dynamic leaf index");
+        }
+        // SAFETY: exact retained PT frame, checked index and captured IF0 owner.
+        Ok(unsafe { self.root.pointer(self.table).add(index).read_volatile() })
+    }
+    pub fn attached(&self) -> Result<bool, &'static str> {
+        // SAFETY: fixed PD1 of this exact retained private Root.
+        let entry = unsafe { self.directory().add(1).read_volatile() } & !((1 << 5) | (1 << 6));
+        if entry == 0 {
+            return Ok(false);
+        }
+        if entry != self.table | PRESENT | WRITABLE | USER | (1 << 63) {
+            return Err("foreign dynamic directory");
+        }
+        Ok(true)
+    }
+    /// # Safety
+    /// Caller owns the actual initialized PT/control/extent and all partial
+    /// receipts; the captured Root cannot resume until complete readback.
+    pub unsafe fn write(&mut self, index: usize, entry: u64) -> Result<(), &'static str> {
+        use ev_userspace_contract::root_v4::dynamic as d;
+        if index >= 512 {
+            return Err("dynamic leaf index");
+        }
+        if entry != 0 {
+            let allowed = index == d::CONTROL
+                || (d::STAGING_FIRST..d::STAGING_FIRST + d::WINDOW_PAGES).contains(&index)
+                || d::READONLY_FIRST
+                    .iter()
+                    .any(|n| (*n..*n + d::WINDOW_PAGES).contains(&index));
+            let flags = entry & !ADDRESS_MASK;
+            if !allowed
+                || entry & ADDRESS_MASK == 0
+                || flags != PRESENT | USER | (1 << 63)
+                    && flags != PRESENT | USER | WRITABLE | (1 << 63)
+            {
+                return Err("dynamic leaf permission");
+            }
+            if d::READONLY_FIRST
+                .iter()
+                .any(|n| (*n..*n + d::WINDOW_PAGES).contains(&index))
+                && flags & WRITABLE != 0
+            {
+                return Err("writable dynamic reader");
+            }
+            if (index == d::CONTROL
+                || (d::STAGING_FIRST..d::STAGING_FIRST + d::WINDOW_PAGES).contains(&index))
+                && flags & WRITABLE == 0
+            {
+                return Err("readonly dynamic writer");
+            }
+        }
+        // SAFETY: fixed checked data-only entry in the captured owned table.
+        unsafe {
+            self.root
+                .pointer(self.table)
+                .add(index)
+                .write_volatile(entry)
+        };
+        if self.entry(index)? != entry {
+            return Err("dynamic leaf readback");
+        }
+        Ok(())
+    }
+    /// # Safety
+    /// All512 PT entries initialized/read back and retained; no other writer.
+    pub unsafe fn attach(&mut self) -> Result<(), &'static str> {
+        if self.attached()? {
+            return Err("dynamic directory occupied");
+        }
+        // SAFETY: exclusive captured PD1, preflighted empty slot and real PT.
+        unsafe {
+            self.directory()
+                .add(1)
+                .write_volatile(self.table | PRESENT | USER | WRITABLE | (1 << 63))
+        };
+        if !self.attached()? {
+            return Err("dynamic directory readback");
+        }
+        self.flush();
+        Ok(())
+    }
+    pub fn flush(&self) {
+        let current: u64;
+        // SAFETY: constructor verified actual distinct controller CR3, IF0,
+        // PCID off and parked APs. Reload flushes nonglobal user translations;
+        // every future Root resume unconditionally reloads its own CR3.
+        unsafe {
+            asm!("mov {}, cr3",out(reg)current,options(nomem,nostack,preserves_flags));
+            asm!("mov cr3, {}",in(reg)current,options(nostack,preserves_flags));
+        }
+    }
+    /// # Safety
+    /// Every user PTE detached/read back first, actual Root remains captured or
+    /// terminated; owner retains this frame until flush and later scrub.
+    pub unsafe fn detach(&mut self) -> Result<(), &'static str> {
+        let attached = self.attached()?;
+        for i in 0..512 {
+            if self.entry(i)? != 0 {
+                return Err("dynamic table still mapped");
+            }
+        }
+        if !attached {
+            return Ok(());
+        }
+        // SAFETY: actual owned empty PT under exclusive captured controller.
+        unsafe { self.directory().add(1).write_volatile(0) };
+        if self.attached()? {
+            return Err("dynamic directory detach");
+        }
+        self.flush();
+        Ok(())
+    }
 }
 
 /// Narrow borrowed access to this root's owned PD. No raw pointer/general
@@ -43,6 +269,44 @@ pub(crate) struct DisplayDirectory<'a, const N: usize = MAX_PRIVATE_PAGES> {
 pub(crate) struct SurfaceLeaf<'a, const N: usize = MAX_PRIVATE_PAGES> {
     root: &'a mut PrivateUserRoot<N>,
     window: ev_kernel::surface_layout::Window,
+}
+/// Selected V5's checked closed-window mapper owns all extent claims outside
+/// private-page metadata. This guard never derives backing or authority.
+#[cfg(feature = "test-m8-workspace")]
+pub(crate) struct WorkspaceLeaf<'a, const N: usize> {
+    root: &'a mut PrivateUserRoot<N>,
+    first: usize,
+    pages: usize,
+}
+#[cfg(feature = "test-m8-workspace")]
+impl<const N: usize> WorkspaceLeaf<'_, N> {
+    pub(crate) fn entry(&self, index: usize) -> Result<u64, &'static str> {
+        if index < self.first || index >= self.first + self.pages {
+            return Err("workspace leaf range");
+        }
+        // SAFETY: constructor checked the exact private leaf and finite range.
+        Ok(unsafe { self.root.leaf.add(index).read_volatile() })
+    }
+    /// # Safety
+    /// Retained actual extent lease authorizes this exact frame and permission;
+    /// every target slot was preflighted before the first write. CPU is stopped.
+    pub(crate) unsafe fn write(&mut self, index: usize, entry: u64) -> Result<(), &'static str> {
+        self.entry(index)?;
+        if entry != 0 {
+            let flags = entry & !ADDRESS_MASK;
+            if entry & ADDRESS_MASK == 0
+                || !matches!(flags, 0x8000_0000_0000_0005 | 0x8000_0000_0000_0007)
+            {
+                return Err("workspace NX RAM flags");
+            }
+        }
+        // SAFETY: actual inactive private leaf; borrowed finite checked range.
+        unsafe { self.root.leaf.add(index).write_volatile(entry) };
+        if self.entry(index)? != entry {
+            return Err("workspace leaf readback");
+        }
+        Ok(())
+    }
 }
 #[cfg(any(feature = "test-m4-display", feature = "test-m4-desktop"))]
 impl<const N: usize> SurfaceLeaf<'_, N> {
@@ -162,6 +426,96 @@ impl<const N: usize> DisplayDirectory<'_, N> {
 const _: () = assert!(core::mem::size_of::<UserRoot>() <= 2048);
 impl<const N: usize> PrivateUserRoot<N> {
     /// # Safety
+    /// Actual admitted owner was captured on the sole BSP, controller CR3
+    /// restored, IF0/AP exclusion and all private claims retained throughout.
+    #[cfg(feature = "test-m8-workspace")]
+    pub(crate) unsafe fn io_buffer_captured(
+        &self,
+        address: u64,
+        controller: u64,
+    ) -> Result<CapturedIoBuffer<'_>, &'static str> {
+        let (current, cr4, flags): (u64, u64, u64);
+        // SAFETY: privileged readback of actual captured CPU state only.
+        unsafe {
+            asm!("mov {}, cr3", out(reg) current, options(nomem, nostack, preserves_flags));
+            asm!("mov {}, cr4", out(reg) cr4, options(nomem, nostack, preserves_flags));
+            asm!("pushfq", "pop {}", out(reg) flags, options(preserves_flags));
+        }
+        if current & ADDRESS_MASK == self.root()
+            || current & ADDRESS_MASK != controller & ADDRESS_MASK
+            || cr4 & ((1 << 12) | (1 << 17)) != 0
+            || flags & (1 << 9) != 0
+        {
+            return Err("PIO owner not captured");
+        }
+        let slot = (self.base() >> 39) as usize;
+        // SAFETY: actual retained table frames, fixed own PML4 slot/PDPT0/PD0,
+        // serialized IF0 capture. No user pointer selects a page-table frame.
+        let path = unsafe {
+            [
+                self.pointer(self.tables[0].start())
+                    .add(slot)
+                    .read_volatile(),
+                self.pointer(self.tables[1].start()).read_volatile(),
+                self.pointer(self.tables[2].start()).read_volatile(),
+            ]
+        };
+        ev_kernel::user::private_io_walk(&self.tables, path)
+            .map_err(|_| "PIO private path mismatch")?;
+        let span = self
+            .mappings
+            .io_buffer(address, |index| {
+                // SAFETY: bounded PT index from the exact retained private ledger.
+                Ok(unsafe { self.leaf.add(index).read_volatile() })
+            })
+            .map_err(|_| "PIO requires exact private RW/NX span")?;
+        // Every physical address is checked before the first copy or IN/OUT.
+        for frame in span.frames() {
+            direct_address(self.offset, frame.start(), self.bits).map_err(|_| "PIO direct map")?;
+        }
+        Ok(CapturedIoBuffer {
+            span,
+            offset: self.offset,
+            bits: self.bits,
+        })
+    }
+    /// # Safety
+    /// Actual admitted Root was captured on BSP with controller CR3 restored,
+    /// IF0, APs parked; caller owns this exact PT frame and no aliasing writer.
+    /// This grants only PD1/fixed data entries, never general image mutation.
+    #[cfg(feature = "test-m6-network")]
+    pub(crate) unsafe fn dynamic_leaf_captured(
+        &self,
+        table: &PhysicalFrame,
+        controller: u64,
+    ) -> Result<DynamicLeaf<'_, N>, &'static str> {
+        let (current, cr4, flags): (u64, u64, u64);
+        // SAFETY: privileged actual capture readback, no user data operands.
+        unsafe {
+            asm!("mov {}, cr3",out(reg)current,options(nomem,nostack,preserves_flags));
+            asm!("mov {}, cr4",out(reg)cr4,options(nomem,nostack,preserves_flags));
+            asm!("pushfq","pop {}",out(reg)flags,options(preserves_flags));
+        }
+        if current & ADDRESS_MASK == self.root()
+            || current & ADDRESS_MASK != controller & ADDRESS_MASK
+            || cr4 & ((1 << 12) | (1 << 17)) != 0
+            || flags & (1 << 9) != 0
+            || self
+                .tables
+                .iter()
+                .chain(self.mappings.frames())
+                .any(|f| f.start() == table.start())
+        {
+            return Err("invalid captured dynamic root");
+        }
+        let leaf = DynamicLeaf {
+            root: self,
+            table: table.start(),
+        };
+        leaf.attached()?;
+        Ok(leaf)
+    }
+    /// # Safety
     /// Same physical-memory/CPU conditions as new. The measured image's selected
     /// root slot must be absent from the original root. This root remains inactive
     /// until all initialized bytes and permissions have been checked below.
@@ -224,7 +578,7 @@ impl<const N: usize> PrivateUserRoot<N> {
     /// # Safety
     /// Actual held native Root plan/bytes/allocator and restored CR3/IF0/AP
     /// exclusion. Package mappings belong to the separate outer native owner.
-    #[cfg(feature = "test-m5-native")]
+    #[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
     pub(crate) unsafe fn load_native_root(
         offset: u64,
         bits: u8,
@@ -244,9 +598,31 @@ impl<const N: usize> PrivateUserRoot<N> {
         unsafe { Self::load_private_record(offset, bits, original, image, Some(record), frames) }
     }
     /// # Safety
+    /// Exact held V4 plan, restored controller CR3/IF0 and exclusive allocator.
+    /// A V3 record cannot pass this named parser or the plan-layout check.
+    #[cfg(feature = "test-m6-network")]
+    pub(crate) unsafe fn load_root_v4(
+        offset: u64,
+        bits: u8,
+        original: u64,
+        image: &ev_kernel::executable::Image<'_>,
+        startup: &[u8; ev_userspace_contract::root_v4::SIZE],
+        frames: &mut BootstrapFrames,
+    ) -> Result<Self, &'static str> {
+        if image.startup_layout() != ev_kernel::executable::StartupLayout::RootV4
+            || image.layout() != ev_kernel::executable::LayoutReservation::Legacy
+        {
+            return Err("not RootV4 private layout");
+        }
+        let record = ev_kernel::startup_record::Record::root_v4(startup)
+            .map_err(|_| "invalid RootV4 startup")?;
+        // SAFETY: same owned inactive loader; exact typed V4 record above.
+        unsafe { Self::load_private_record(offset, bits, original, image, Some(record), frames) }
+    }
+    /// # Safety
     /// Same actual initialized private-frame/root ownership as the named wrappers.
     /// The private typed record has already parsed its exact version/length.
-    unsafe fn load_private_record(
+    pub(crate) unsafe fn load_private_record(
         offset: u64,
         bits: u8,
         original: u64,
@@ -350,7 +726,7 @@ impl<const N: usize> PrivateUserRoot<N> {
             leaf: ptr::null_mut(),
             offset,
             bits,
-            shared: [None, None],
+            shared: [const { None }; SHARED_SLOTS],
         };
         let pointers = result
             .tables
@@ -447,6 +823,46 @@ impl<const N: usize> PrivateUserRoot<N> {
             root: self,
             window: ev_kernel::surface_layout::Window::Auxiliary,
         })
+    }
+    /// # Safety
+    /// Selected typed load plan, actual held/stopped root and controller CR3 at
+    /// IF0/PCID0/AP exclusion. The trusted V5 mapper fixes the closed range and
+    /// retains every real extent lease until all PTEs are detached/read back.
+    #[cfg(feature = "test-m8-workspace")]
+    pub(crate) unsafe fn workspace_leaf_inactive(
+        &mut self,
+        first: usize,
+        pages: usize,
+    ) -> Result<WorkspaceLeaf<'_, N>, &'static str> {
+        if pages == 0 || first == 0 || first.checked_add(pages).is_none_or(|end| end > 509) {
+            return Err("workspace leaf bounds");
+        }
+        // SAFETY: same captured actual root/IF/PCID exclusion as Display guard.
+        unsafe {
+            self.display_directory_inactive()?;
+        }
+        Ok(WorkspaceLeaf {
+            root: self,
+            first,
+            pages,
+        })
+    }
+    #[cfg(feature = "test-m8-workspace")]
+    pub(crate) fn workspace_entry(&self, index: usize) -> Result<u64, &'static str> {
+        if index >= 512 {
+            return Err("workspace entry index");
+        }
+        // SAFETY: retained actual immutable PT; serialized controller read only.
+        Ok(unsafe { self.leaf.add(index).read_volatile() })
+    }
+    #[cfg(feature = "test-m8-workspace")]
+    pub(crate) fn workspace_private_entry(&self, index: usize) -> Result<u64, &'static str> {
+        if index >= 512 {
+            return Err("workspace private index");
+        }
+        self.mappings
+            .entry(self.base() + index as u64 * FRAME_SIZE)
+            .map_err(|_| "workspace private metadata")
     }
     fn code_label(&self, label: *const u8) -> u64 {
         let delta = (label as u64)

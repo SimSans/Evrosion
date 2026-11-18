@@ -9,8 +9,10 @@ pub mod critical_progress;
 pub mod desktop;
 #[cfg(feature = "test-owner-client")]
 pub mod owner_console;
-#[cfg(feature = "test-store-client")]
+#[cfg(any(feature = "test-store-client", feature = "workspace-storage"))]
 pub mod store_io;
+#[cfg(feature = "workspace-storage")]
+pub mod workspace;
 use ev_userspace_contract::Bootstrap;
 
 pub const SECTOR_BYTES: usize = 512;

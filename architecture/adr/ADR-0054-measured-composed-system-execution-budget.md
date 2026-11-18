@@ -1,11 +1,11 @@
 # ADR-0054 — Measured composed System execution budget
 
 Status: Accepted bounded experiment refinement; complete five-cold execution verified.
-Date: 2026-11-11. Documented mechanism refinement; health and authority guarantees stay.
+Date: 2026-11-11. Founder mandate Level B; health and authority guarantees stay.
 
 ## Evidence and problem
 
-The [first composed System attempt](../../docs/release/0.1-preview.md#validation-and-provenance)
+The first composed System attempt (local engineering archive)
 retains both source-bound System/Recovery builds and the actual failed VM before
 follow-up changes. Good's durable Admission is followed by fresh Root query Q2
 at tick4888, actual critical Shell readiness at4917 and fresh Root Q3 at4920.
@@ -73,7 +73,7 @@ Every failed attempt remains immutable.
 
 ## First measured result
 
-The [next retained attempt](../../docs/release/0.1-preview.md#validation-and-provenance)
+The next retained attempt (local engineering archive)
 independently accepts the complete first SystemFull phase:16,643 elapsed ticks,
 753 matched calls, actual App/Shell replacement, all10 timing records, committed
 Bad2 selection and complete retirement. Block uses14,166 of16,384 CPU ticks;
@@ -85,7 +85,7 @@ the generic host parser rejects the legitimate Shell fault before the first GUI
 frame. The outer attempt remains failed. This validates the bounded execution
 refinement for the first phase, not the complete five-cold recovery proof.
 
-The later [complete five-cold proof](../../docs/release/0.1-preview.md#validation-and-provenance)
+The later complete five-cold proof (local engineering archive)
 passes under this bound after ADR-0055 removes the self-notification deadlock.
 That Full phase takes15,746 ticks with Block13,413/16,384; all CPU credits remain
 unchanged. Earlier measurements remain historical facts, not promises that

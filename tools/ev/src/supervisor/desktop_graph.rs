@@ -87,6 +87,21 @@ pub(super) fn build_actor(
     spec: ActorBuild<'_>,
     artifacts: &mut Vec<Artifact>,
 ) -> Result<Vec<u8>, String> {
+    let binary = spec.package;
+    build_actor_bin(root, directory, toolchain, tool, spec, binary, artifacts)
+}
+/// Some packages expose two independent service executables. Retain and admit
+/// the selected binary, rather than assuming Cargo package and binary names
+/// coincide or copying a previously built actor into a new role.
+pub(super) fn build_actor_bin(
+    root: &Path,
+    directory: &Path,
+    toolchain: &Toolchain,
+    tool: &Path,
+    spec: ActorBuild<'_>,
+    binary: &str,
+    artifacts: &mut Vec<Artifact>,
+) -> Result<Vec<u8>, String> {
     let ActorBuild {
         package,
         feature,
@@ -94,12 +109,30 @@ pub(super) fn build_actor(
     } = spec;
     let target = root.join(format!("target/{name}"));
     let mut command = Command::new("rustup");
-    command.current_dir(root).args(["run",&toolchain.channel,"cargo","build","--locked","--offline","-p",package,"--bin",package,"--release","--features",feature,"--target","x86_64-unknown-none","--target-dir"]).arg(&target)
-        .env("CARGO_ENCODED_RUSTFLAGS",format!("-C\x1frelocation-model=static\x1f-C\x1fcode-model=large\x1f-C\x1fforce-frame-pointers=yes\x1f-C\x1fdebuginfo=1\x1f-C\x1flink-arg=--no-pie\x1f--remap-path-prefix={}=/evrosion",root.display())).env("RUSTUP_AUTO_INSTALL","0").env("CARGO_TERM_COLOR","never");
+    command.current_dir(root).args(["run",&toolchain.channel,"cargo","build","--locked","--offline","-p",package,"--bin",binary,"--release","--features",feature,"--target","x86_64-unknown-none","--target-dir"]).arg(&target)
+        .env("CARGO_ENCODED_RUSTFLAGS",format!("-C\x1frelocation-model=static\x1f-C\x1fcode-model=large\x1f-C\x1fforce-frame-pointers=yes\x1f-C\x1fdebuginfo=1\x1f-C\x1flink-arg=--no-pie\x1f--cfg\x1fcurve25519_dalek_backend=\"serial\"\x1f--remap-path-prefix={}=/evrosion",root.display())).env("RUSTUP_AUTO_INSTALL","0").env("CARGO_TERM_COLOR","never");
+    let document = feature.split(',').any(|f| f == "document-workflow");
+    let network_root =
+        package == "ev-root-supervisor" && feature.split(',').any(|f| f == "native-network");
+    // V4 retains its measured ordinary O3/16-unit profile. The smaller Native3
+    // Root has a different image bound and uses its separately measured O2
+    // profile. Applying that profile to V4 overlaps its fixed stack; size-only
+    // V4 fits the image but exceeds the guarded stack census.
+    if document && !network_root {
+        command.env("CARGO_PROFILE_RELEASE_CODEGEN_UNITS", "1");
+        command.env(
+            "CARGO_PROFILE_RELEASE_OPT_LEVEL",
+            if package == "ev-root-supervisor" {
+                "2"
+            } else {
+                "s"
+            },
+        );
+    }
     build::logged(&mut command, &directory.join(format!("{name}-build.log")))?;
     let raw_path = directory.join(format!("{name}.unstripped.elf"));
     fs::copy(
-        target.join("x86_64-unknown-none/release").join(package),
+        target.join("x86_64-unknown-none/release").join(binary),
         &raw_path,
     )
     .map_err(|e| e.to_string())?;

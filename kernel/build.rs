@@ -1,4 +1,23 @@
+mod workspace_bundle_input;
 fn main() {
+    println!("cargo:rerun-if-env-changed=EVROSION_WORKSPACE_BUNDLE");
+    if std::env::var_os("CARGO_FEATURE_TEST_M8_WORKSPACE_RUN").is_some() {
+        let bundle=std::env::var_os("EVROSION_WORKSPACE_BUNDLE").expect("test-m8-workspace-run requires actual EVROSION_WORKSPACE_BUNDLE; no placeholder provenance");
+        let path = std::path::PathBuf::from(bundle);
+        assert!(
+            std::fs::metadata(&path)
+                .expect("actual V5 bundle file")
+                .len()
+                > 0,
+            "empty V5 bundle forbidden"
+        );
+        println!("cargo:rerun-if-changed={}", path.display());
+        let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap())
+            .join("workspace-bundle.rs");
+        let bytes = std::fs::read(path).expect("read actual measured V5 producer bundle");
+        std::fs::write(out, workspace_bundle_input::with_optional_ingress(bytes))
+            .expect("retain actual V5 producer bundle with explicit absent-ingress compatibility");
+    }
     println!("cargo:rustc-check-cfg=cfg(ev_shared_active_mutation_probe)");
     let directory =
         std::env::var("CARGO_MANIFEST_DIR").expect("Cargo supplies the manifest directory");
@@ -124,9 +143,16 @@ fn main() {
             "APP_B",
             "DISPLAY",
             "BAD_SHELL",
+            "NET_DRIVER",
+            "NET_SERVICE",
         ] {
+            let profile = if matches!(name, "NET_DRIVER" | "NET_SERVICE") {
+                "test-m6-network"
+            } else {
+                "test-m5-native"
+            };
             stub += &format!(
-                "#[cfg(feature=\"test-m5-native\")]pub const M5_NATIVE_{name}_IMAGE:&[u8]=&[];#[cfg(feature=\"test-m5-native\")]pub const M5_NATIVE_{name}_SHA:[u8;32]=[0;32];"
+                "#[cfg(feature=\"{profile}\")]pub const M5_NATIVE_{name}_IMAGE:&[u8]=&[];#[cfg(feature=\"{profile}\")]pub const M5_NATIVE_{name}_SHA:[u8;32]=[0;32];"
             );
         }
         for name in [

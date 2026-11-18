@@ -78,8 +78,15 @@ fn root_token(
     binding.prepare(a, s, target).unwrap()
 }
 fn fixture() -> Fixture {
+    fixture_with_owner(false)
+}
+fn fixture_with_owner(control: bool) -> Fixture {
     let mut a = Authority::new();
-    let owner = a.create_space().unwrap();
+    let owner = if control {
+        a.create_control_space().unwrap()
+    } else {
+        a.create_space().unwrap()
+    };
     let memory = a
         .create_root(owner, Kind::Memory, Rights::READ | common())
         .unwrap();
@@ -1049,6 +1056,160 @@ fn active_send_late_controller_capacity_failure_commits_no_private_parent() {
     assert!(
         f.a.authorize(f.owner, f.file, Kind::Endpoint, Rights::SEND)
             .is_ok()
+    );
+}
+
+#[test]
+fn v4_unused_legacy_read_source_retirement_restores_selected_grant_at_64_slots() {
+    // Portable Authority/Registry/selected-mailbox mechanism, not a simulated
+    // guest boot: the remaining graph handles model the actual V4 shape.
+    const STARTUP: usize = ev_userspace_contract::root_v4::CURRENT_GRANTS;
+    const CHANNELS: usize = ev_userspace_contract::root_v4::graph::CHANNELS.len();
+    const CHILD_CONTROLS: usize = ev_userspace_contract::root_v4::graph::CHILDREN.len() * 2;
+    const DOWNLOADED: usize = 2;
+    let mut f = fixture_with_owner(true);
+    assert_eq!(f.a.slot_capacity(f.owner), Ok(64));
+    assert_eq!((STARTUP, CHANNELS, CHILD_CONTROLS), (29, 17, 16));
+    assert_eq!(STARTUP + CHANNELS + CHILD_CONTROLS + DOWNLOADED, 64);
+
+    // The Kernel retains the image independently; Root only holds READ, with
+    // no mapped extent or other loan to invalidate by closing that handle.
+    let custody = f.a.create_space().unwrap();
+    let image_source =
+        f.a.create_root(custody, Kind::Memory, Rights::READ | common())
+            .unwrap();
+    let unused =
+        f.a.derive(custody, image_source, f.owner, Rights::READ)
+            .unwrap();
+    let image_identity =
+        f.a.authorize(custody, image_source, Kind::Memory, Rights::READ)
+            .unwrap()
+            .identity();
+    assert_eq!(
+        f.a.authorize(f.owner, unused, Kind::Memory, Rights::READ)
+            .unwrap()
+            .identity(),
+        image_identity
+    );
+    assert!(
+        f.a.authorize(f.owner, unused, Kind::Memory, Rights::MAP)
+            .is_err()
+    );
+    // This fixture's Root allocations are contiguous and none were closed.
+    // Include its real live process/channel/source handles in the startup29
+    // bucket, then retain the other actual graph owners and both images.
+    let existing = (unused.0 & 255) as usize + 1;
+    assert!(existing < STARTUP);
+    for _ in existing..STARTUP {
+        f.a.derive(f.owner, f.catalog[0].root, f.owner, Rights::READ)
+            .unwrap();
+    }
+    for _ in 0..CHANNELS {
+        f.a.create_root(f.owner, Kind::Endpoint, Rights::SEND | common())
+            .unwrap();
+    }
+    for _ in 0..CHILD_CONTROLS / 2 {
+        f.a.create_root(f.owner, Kind::Job, Rights::CONTROL)
+            .unwrap();
+        f.a.create_root(f.owner, Kind::Process, Rights::CONTROL)
+            .unwrap();
+    }
+    for _ in 0..DOWNLOADED {
+        f.a.create_root(f.owner, Kind::Memory, Rights::READ | Rights::MAP)
+            .unwrap();
+    }
+    let before = f.a.metadata_usage();
+    assert!(matches!(
+        f.r.prepare_active_send(&mut f.a, &f.s, f.owner, f.process, f.file),
+        Err(service::Error::Authority(CapError::Capacity))
+    ));
+    // The private parent is staged before the Root-local child; refusal must
+    // leave neither a parent nor altered original File/custody authority.
+    assert_eq!(f.a.metadata_usage(), before);
+    let file_identity =
+        f.a.authorize(f.owner, f.file, Kind::Endpoint, Rights::SEND)
+            .unwrap()
+            .identity();
+    f.a.close(f.owner, unused).unwrap();
+    assert!(
+        f.a.authorize(f.owner, unused, Kind::Memory, Rights::READ)
+            .is_err()
+    );
+    let after_close = f.a.metadata_usage();
+    assert_eq!(after_close, (before.0, before.1 - 1, before.2, before.3));
+    assert_eq!(
+        f.a.authorize(custody, image_source, Kind::Memory, Rights::READ)
+            .unwrap()
+            .identity(),
+        image_identity
+    );
+    assert_eq!(f.a.slot_capacity(f.owner), Ok(64));
+
+    let (branch, child) =
+        f.r.prepare_active_send(&mut f.a, &f.s, f.owner, f.process, f.file)
+            .unwrap();
+    assert_eq!(branch.metadata(), f.target);
+    assert_eq!(child.0 & 255, unused.0 & 255);
+    assert_ne!(child, unused);
+    assert_eq!(
+        f.a.authorize(
+            f.owner,
+            child,
+            Kind::Endpoint,
+            Rights::SEND | Rights::DERIVE | Rights::TRANSFER,
+        )
+        .unwrap()
+        .identity(),
+        file_identity
+    );
+    assert!(
+        f.a.authorize(f.owner, child, Kind::Endpoint, Rights::RECEIVE)
+            .is_err()
+    );
+    let ticket = f
+        .route
+        .enqueue(
+            &mut f.a,
+            &f.s,
+            &f.r,
+            f.root,
+            f.send,
+            child,
+            b"EVREAD01",
+            Deadline::after(0, 100).unwrap(),
+            0,
+        )
+        .unwrap();
+    let delivered = f
+        .route
+        .receive(&mut f.a, &f.s, &f.r, f.root, f.target.thread, 0)
+        .unwrap();
+    assert_eq!(delivered.ticket, ticket);
+    let selected = delivered.capability.unwrap();
+    assert_eq!(
+        f.a.authorize(f.target.domain, selected, Kind::Endpoint, Rights::SEND)
+            .unwrap()
+            .identity(),
+        file_identity
+    );
+    branch
+        .retire(&mut f.a)
+        .unwrap_or_else(|rejected| panic!("{:?}", rejected.error));
+    assert!(
+        f.a.authorize(f.target.domain, selected, Kind::Endpoint, Rights::SEND)
+            .is_err()
+    );
+    assert_eq!(
+        f.a.authorize(f.owner, f.file, Kind::Endpoint, Rights::SEND)
+            .unwrap()
+            .identity(),
+        file_identity
+    );
+    assert_eq!(
+        f.a.authorize(custody, image_source, Kind::Memory, Rights::READ)
+            .unwrap()
+            .identity(),
+        image_identity
     );
 }
 

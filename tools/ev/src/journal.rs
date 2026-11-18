@@ -449,6 +449,7 @@ pub fn run() -> Result<()> {
         storage::immutable_new(&manifest_path, &bytes)?;
         let manifest: Manifest =
             serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        manifest.validate_policy_rows()?;
         if manifest.fixture.as_deref() != Some(FIXTURE) {
             return Err("selected build is not the journal fixture".into());
         }

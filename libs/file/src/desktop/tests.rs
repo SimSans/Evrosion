@@ -12,6 +12,7 @@ struct State {
     reads: u64,
     writes: Vec<u32>,
     flushes: u64,
+    fail_read: bool,
 }
 struct Device {
     state: Rc<RefCell<State>>,
@@ -28,6 +29,9 @@ impl SectorIo for Device {
         }
         let mut s = self.state.borrow_mut();
         s.reads += 1;
+        if s.fail_read {
+            return Err(());
+        }
         *out = s.bytes[(u64::from(self.region.physical_start()) + lba) as usize];
         Ok(())
     }
@@ -63,6 +67,7 @@ fn state() -> Rc<RefCell<State>> {
         reads: 0,
         writes: Vec::new(),
         flushes: 0,
+        fail_read: false,
     }))
 }
 fn device(state: &Rc<RefCell<State>>, region: Region) -> Device {
@@ -214,6 +219,30 @@ fn scalar_metadata_reads_actual_content_with_no_mutation_and_no_cross_object_sel
         g.metadata_word(12, MetadataQuery::counter(), DEADLINE),
         Ok(0)
     );
+}
+
+#[test]
+fn failed_metadata_read_returns_no_word_and_store_poison_prevents_later_reuse() {
+    let state = state();
+    let mut gateway = gateway(&state);
+    let writes = state.borrow().writes.len();
+    let flushes = state.borrow().flushes;
+    state.borrow_mut().fail_read = true;
+    let failure = gateway
+        .metadata_word(10, MetadataQuery::counter(), DEADLINE)
+        .unwrap_err();
+    assert_eq!(failure, Error::Backend(ev_store::Error::Io(())));
+    assert_eq!(failure.code(), crate::ErrorCode::Io);
+    let reads = state.borrow().reads;
+    state.borrow_mut().fail_read = false;
+    let failure = gateway
+        .metadata_word(10, MetadataQuery::digest_word(0).unwrap(), DEADLINE)
+        .unwrap_err();
+    assert_eq!(failure, Error::Backend(ev_store::Error::NeedsRecovery));
+    assert_eq!(failure.code(), crate::ErrorCode::NeedsRecovery);
+    assert_eq!(state.borrow().reads, reads);
+    assert_eq!(state.borrow().writes.len(), writes);
+    assert_eq!(state.borrow().flushes, flushes);
 }
 
 #[test]

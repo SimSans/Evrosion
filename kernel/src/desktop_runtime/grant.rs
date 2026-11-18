@@ -98,7 +98,9 @@ impl Runtime<'_, '_> {
             extended(frame, 1, 0, 0);
             return;
         }
-        let snapshot = self.snapshots[usize::from(selection.wire == Channel::PrivateRead.index())];
+        let snapshot = self.snapshots[usize::from(
+            matches!(selection.wire,w if w==Channel::PrivateRead.index()||w==Channel::PrivateWrite.index()),
+        )];
         if snapshot.stage != 6 || snapshot.tick < selection.tick || snapshot.words == [0; 4] {
             extended(frame, 1, 0, 0);
             return;
@@ -122,6 +124,28 @@ impl Runtime<'_, '_> {
                 return;
             }
         };
+        #[cfg(feature = "test-m7-document")]
+        let document_payload = self
+            .document_request
+            .filter(|(target, _)| *target == actual)
+            .map(|(_, request)| {
+                ev_userspace_contract::document_control::Granted::new(
+                    request.nonce(),
+                    if selection.wire == Channel::NotesRead.index()
+                        || selection.wire == Channel::NotesWrite.index()
+                    {
+                        ev_userspace_contract::document::Choice::Notes
+                    } else {
+                        ev_userspace_contract::document::Choice::Private
+                    },
+                    request.operation().access(),
+                )
+                .unwrap()
+                .encode()
+            });
+        #[cfg(not(feature = "test-m7-document"))]
+        let document_payload: Option<[u8; 8]> = None;
+        let payload = document_payload.unwrap_or(*b"EVREAD01");
         let result = self.grants.route.as_mut().unwrap().enqueue(
             self.a,
             self.s,
@@ -129,7 +153,7 @@ impl Runtime<'_, '_> {
             self.token,
             inbox,
             one_shot,
-            b"EVREAD01",
+            &payload,
             self.stop,
             crate::timer::now(),
         );
@@ -245,6 +269,10 @@ impl Runtime<'_, '_> {
         }
         self.open = None;
         self.awaiting_open = None;
+        #[cfg(feature = "test-m7-document")]
+        {
+            self.document_request = None;
+        }
         self.selection = None;
         self.picker = None;
     }

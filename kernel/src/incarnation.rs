@@ -38,6 +38,10 @@ impl Token {
     pub fn job(self) -> JobId {
         self.job
     }
+    #[cfg(feature = "workspace-authority")]
+    pub(crate) fn destination(self) -> SpaceId {
+        self.destination
+    }
 }
 
 /// Trusted kernel target description; never accepted from a userspace request.
@@ -68,6 +72,8 @@ pub enum Error {
     Bootstrap(ev_userspace_contract::Error),
     SequenceExhausted,
     RecoveryRequired,
+    #[cfg(feature = "workspace-authority")]
+    SharedBacking,
     Scheduler(scheduler::Error),
     Binding(bootstrap_binding::Error),
     Authority(capability::Error),
@@ -359,11 +365,60 @@ impl<'a> Bindings<'a> {
         )
         .map_err(|_| Error::ImageMismatch)
     }
+    /// V4 record from this same actual bound token/27 grants. Other typed
+    /// selections cannot use it, and it never changes the immutable selection.
+    pub fn bootstrap_record_v4(
+        &self,
+        token: Token,
+    ) -> Result<[u8; ev_userspace_contract::root_v4::SIZE], Error> {
+        let current = self.matching(token)?;
+        if self.phase != Phase::Bound || !self.manifest.is_root_v4() {
+            return Err(Error::Busy);
+        }
+        let mut handles = [0; ev_userspace_contract::root_v4::CURRENT_GRANTS];
+        if current.grants.handles().len() != handles.len() {
+            return Err(Error::ImageMismatch);
+        }
+        for (i, h) in current.grants.handles().iter().enumerate() {
+            handles[i] = h.0;
+        }
+        let limits = self.manifest.limits();
+        ev_userspace_contract::root_v4::encode_full_graph(
+            ev_userspace_contract::Context {
+                epoch: token.epoch.get(),
+                incarnation: token.number,
+                process: token.process.diagnostic_id(),
+                limits: [
+                    scheduler::Resource::CpuTicks,
+                    scheduler::Resource::Frames,
+                    scheduler::Resource::Processes,
+                    scheduler::Resource::Threads,
+                ]
+                .map(|r| limits.limit(r)),
+                manifest: token.manifest,
+                authority: token.authority,
+            },
+            handles,
+        )
+        .map_err(|_| Error::ImageMismatch)
+    }
     fn expected_startup(
         &self,
         token: Token,
         image: &crate::executable::Image<'_>,
     ) -> Result<Option<crate::loaded_image::Startup>, Error> {
+        #[cfg(feature = "workspace-authority")]
+        if self.manifest.is_root_v5() {
+            return self.expected_startup_v5(token, image);
+        }
+        if self.manifest.is_root_v4() {
+            let record = self.bootstrap_record_v4(token)?;
+            return Ok(Some(crate::loaded_image::Startup {
+                address: image.bootstrap_page().ok_or(Error::ImageMismatch)?,
+                bytes: record.len(),
+                digest: Sha256::digest(record).into(),
+            }));
+        }
         if self.manifest.has_root_record() {
             let record = if self.manifest.is_native_root() {
                 self.bootstrap_record_native(token)?
@@ -384,6 +439,57 @@ impl<'a> Bindings<'a> {
                     digest: Sha256::digest(record).into(),
                 }))
         }
+    }
+    /// Exact kernel-captured Root identity and installed37 destination grants.
+    #[cfg(feature = "workspace-authority")]
+    pub fn bootstrap_record_v5(
+        &self,
+        token: Token,
+    ) -> Result<[u8; ev_userspace_contract::root_v5::SIZE], Error> {
+        let current = self.matching(token)?;
+        if self.phase != Phase::Bound || !self.manifest.is_root_v5() {
+            return Err(Error::Busy);
+        }
+        let mut handles = [0; ev_userspace_contract::root_v5::CURRENT_GRANTS];
+        if current.grants.handles().len() != handles.len() {
+            return Err(Error::ImageMismatch);
+        }
+        for (i, h) in current.grants.handles().iter().enumerate() {
+            handles[i] = h.0;
+        }
+        let limits = self.manifest.limits();
+        ev_userspace_contract::root_v5::encode_full_graph(
+            ev_userspace_contract::Context {
+                epoch: token.epoch.get(),
+                incarnation: token.number,
+                process: token.process.diagnostic_id(),
+                limits: [
+                    scheduler::Resource::CpuTicks,
+                    scheduler::Resource::Frames,
+                    scheduler::Resource::Processes,
+                    scheduler::Resource::Threads,
+                ]
+                .map(|r| limits.limit(r)),
+                manifest: token.manifest,
+                authority: token.authority,
+            },
+            handles,
+        )
+        .map_err(|_| Error::ImageMismatch)
+    }
+    #[cfg(feature = "workspace-authority")]
+    #[inline(never)]
+    fn expected_startup_v5(
+        &self,
+        token: Token,
+        image: &crate::executable::Image<'_>,
+    ) -> Result<Option<crate::loaded_image::Startup>, Error> {
+        let record = self.bootstrap_record_v5(token)?;
+        Ok(Some(crate::loaded_image::Startup {
+            address: image.bootstrap_page().ok_or(Error::ImageMismatch)?,
+            bytes: record.len(),
+            digest: Sha256::digest(record).into(),
+        }))
     }
 
     /// Transfer loaded-image ownership into the active record only after every
@@ -418,6 +524,61 @@ impl<'a> Bindings<'a> {
         }
         // All fallible work is complete. Exclusive scheduler access prevents a
         // dispatch between hold release and publication of the owning Active.
+        self.phase = Phase::Active;
+        Ok(Active {
+            binding: self,
+            image,
+        })
+    }
+    /// Additive selected V5 admission: actual shared source RAM was already
+    /// charged to this Root subtree before its first instruction. Borrow each
+    /// initialized owner, exact source identity and allocator through commit;
+    /// a user quota, sampled usage or unrelated backing cannot release hold.
+    #[cfg(feature = "workspace-authority")]
+    #[allow(clippy::result_large_err, clippy::too_many_arguments)]
+    pub fn activate_root_v5<L: LoadedExecutable, const N: usize>(
+        mut self,
+        authority: &Authority,
+        scheduler: &mut Scheduler,
+        token: Token,
+        thread: ThreadId,
+        image: L,
+        allocator: &crate::memory::BootstrapFrames,
+        extents: &[Option<crate::memory_extent::BoundedMemoryExtent<N>>;
+             ev_userspace_contract::root_v5::CURRENT_GRANTS],
+    ) -> Result<Active<'a, L>, Rejected<'a, L>> {
+        let checked = (|| {
+            if !self.manifest.is_root_v5() || self.catalog.len() != extents.len() {
+                return Err(Error::SharedBacking);
+            }
+            let private = self.check_activation(authority, scheduler, token, &image)?;
+            let mut shared = 0u64;
+            for (index, extent) in extents.iter().enumerate() {
+                if let Some(extent) = extent {
+                    let charge = extent
+                        .root_shared_charge(
+                            authority,
+                            allocator,
+                            scheduler,
+                            token.job,
+                            self.custody,
+                            self.catalog[index].root,
+                        )
+                        .map_err(|_| Error::SharedBacking)?;
+                    shared = shared.checked_add(charge).ok_or(Error::SharedBacking)?;
+                }
+            }
+            scheduler
+                .admit_workspace_root(token.process, token.job, thread, private, shared)
+                .map_err(Error::Scheduler)
+        })();
+        if let Err(error) = checked {
+            return Err(Rejected {
+                binding: self,
+                image,
+                error,
+            });
+        }
         self.phase = Phase::Active;
         Ok(Active {
             binding: self,
@@ -493,6 +654,195 @@ impl<'a> Bindings<'a> {
             .map_err(|e| self.fail(Error::Executable(e)))
     }
 
+    pub(crate) fn check_dynamic_root(
+        &self,
+        authority: &Authority,
+        scheduler: &Scheduler,
+        caller: SpaceId,
+        creator: Handle,
+    ) -> Result<crate::dynamic_image::RootIdentity, Error> {
+        self.check_dynamic_root_profile(authority, scheduler, caller, creator, false)
+    }
+
+    #[cfg(feature = "workspace-authority")]
+    pub(crate) fn check_workspace_dynamic_root(
+        &self,
+        authority: &Authority,
+        scheduler: &Scheduler,
+        caller: SpaceId,
+        creator: Handle,
+        thread: ThreadId,
+    ) -> Result<crate::dynamic_image::RootIdentity, Error> {
+        let root = self.check_dynamic_root_profile(authority, scheduler, caller, creator, true)?;
+        if scheduler.thread_process(thread).map_err(Error::Scheduler)? != root.token.process
+            || !matches!(
+                scheduler.state(thread),
+                Ok(crate::scheduler::State::Running(_))
+            )
+        {
+            return Err(Error::WrongJob);
+        }
+        let current = self.current.as_ref().ok_or(Error::StaleToken)?;
+        if self.catalog.len() != ev_userspace_contract::root_v5::CURRENT_GRANTS {
+            return Err(Error::StaleToken);
+        }
+        // New service/endpoint handles legitimately extend the destination
+        // table. Revalidate every original V5 source/branch/grant identity
+        // without treating that table as an admission-time exact handle set.
+        for (index, grant) in self.manifest.grants().enumerate() {
+            let source = self
+                .catalog
+                .iter()
+                .find(|source| source.selector == grant.selector && source.kind == grant.kind)
+                .ok_or(Error::StaleToken)?;
+            let branch = *current
+                .branches
+                .handles()
+                .get(index)
+                .ok_or(Error::StaleToken)?;
+            let installed = *current
+                .grants
+                .handles()
+                .get(index)
+                .ok_or(Error::StaleToken)?;
+            authority
+                .require_child(
+                    root.token.branches,
+                    branch,
+                    self.custody,
+                    source.root,
+                    grant.kind,
+                    grant.rights
+                        | capability::Rights::DERIVE
+                        | capability::Rights::TRANSFER
+                        | capability::Rights::REVOKE,
+                )
+                .map_err(Error::Authority)?;
+            authority
+                .require_child(
+                    caller,
+                    installed,
+                    root.token.branches,
+                    branch,
+                    grant.kind,
+                    grant.rights,
+                )
+                .map_err(Error::Authority)?;
+        }
+        Ok(root)
+    }
+
+    fn check_dynamic_root_profile(
+        &self,
+        authority: &Authority,
+        scheduler: &Scheduler,
+        caller: SpaceId,
+        creator: Handle,
+        workspace: bool,
+    ) -> Result<crate::dynamic_image::RootIdentity, Error> {
+        #[cfg(feature = "workspace-authority")]
+        let profile_matches = if workspace {
+            self.manifest.is_root_v5()
+        } else {
+            self.manifest.is_root_v4()
+        };
+        #[cfg(not(feature = "workspace-authority"))]
+        let profile_matches = !workspace && self.manifest.is_root_v4();
+        if self.phase != Phase::Active || self.failure.is_some() || !profile_matches {
+            return Err(Error::Busy);
+        }
+        let current = self.current.as_ref().ok_or(Error::StaleToken)?;
+        let token = current.token;
+        if token.destination != caller || !authority.is_live_space(caller) {
+            return Err(Error::StaleToken);
+        }
+        if scheduler.process_terminated(token.process)
+            || scheduler
+                .dispatch_inhibited(token.process)
+                .map_err(Error::Scheduler)?
+            || scheduler
+                .process_job(token.process)
+                .map_err(Error::Scheduler)?
+                != token.job
+            || scheduler.job_limits(token.job).map_err(Error::Scheduler)? != self.manifest.limits()
+        {
+            return Err(Error::WrongJob);
+        }
+        #[cfg(feature = "workspace-authority")]
+        let (selector, rights_bits) = if workspace {
+            let role = ev_userspace_contract::root_v5::ROLES
+                [ev_userspace_contract::root_v5::Role::CreatorJob.selector() as usize - 1];
+            (role.role.selector(), role.rights)
+        } else {
+            let role = ev_userspace_contract::root_v4::ROLES
+                [ev_userspace_contract::root_v4::Role::CreatorJob.selector() as usize - 1];
+            (role.role.selector(), role.rights)
+        };
+        #[cfg(not(feature = "workspace-authority"))]
+        let (selector, rights_bits) = {
+            let role = ev_userspace_contract::root_v4::ROLES
+                [ev_userspace_contract::root_v4::Role::CreatorJob.selector() as usize - 1];
+            (role.role.selector(), role.rights)
+        };
+        let index = selector as usize - 1;
+        if current.grants.handles().get(index) != Some(&creator) {
+            return Err(Error::StaleToken);
+        }
+        authority
+            .authorize(
+                caller,
+                creator,
+                capability::Kind::Job,
+                capability::Rights::CONTROL,
+            )
+            .map_err(Error::Authority)?;
+        // Active Root has legitimately created service/endpoint handles. The
+        // admission-only exact destination-table check is deliberately NOT
+        // reused here. Recheck this installed CreatorJob's exact two-hop
+        // lineage in the immutable bootstrap branch and original custody.
+        let rights = capability::Rights::from_bits(rights_bits).ok_or(Error::StaleToken)?;
+        let source = self
+            .catalog
+            .iter()
+            .find(|entry| entry.selector == selector && entry.kind == capability::Kind::Job)
+            .ok_or(Error::StaleToken)?;
+        let branch = *current
+            .branches
+            .handles()
+            .get(index)
+            .ok_or(Error::StaleToken)?;
+        authority
+            .require_exact_handles(token.branches, current.branches.handles())
+            .map_err(Error::Authority)?;
+        authority
+            .require_child(
+                token.branches,
+                branch,
+                self.custody,
+                source.root,
+                capability::Kind::Job,
+                rights
+                    | capability::Rights::DERIVE
+                    | capability::Rights::TRANSFER
+                    | capability::Rights::REVOKE,
+            )
+            .map_err(Error::Authority)?;
+        authority
+            .require_child(
+                caller,
+                creator,
+                token.branches,
+                branch,
+                capability::Kind::Job,
+                rights,
+            )
+            .map_err(Error::Authority)?;
+        Ok(crate::dynamic_image::RootIdentity {
+            token,
+            domain: caller,
+            job: token.job,
+        })
+    }
     fn matching(&self, token: Token) -> Result<&Current, Error> {
         self.current
             .as_ref()
@@ -552,6 +902,45 @@ impl<'a, L: LoadedExecutable> Active<'a, L> {
     ) -> bool {
         self.binding
             .sealed_context_matches(epoch, manifest, custody, catalog)
+    }
+    /// Borrow the actual active V4 binding, not a caller-nominated PID/Job.
+    /// The permit revalidates this same live binding and CreatorJob lineage on
+    /// every operation; revocation cannot proceed through its shared borrow.
+    pub fn dynamic_image_permit<'s>(
+        &'s self,
+        authority: &Authority,
+        scheduler: &Scheduler,
+        caller: SpaceId,
+        creator: Handle,
+    ) -> Result<crate::dynamic_image::RootPermit<'s, 'a>, Error> {
+        self.binding
+            .check_dynamic_root(authority, scheduler, caller, creator)?;
+        Ok(crate::dynamic_image::RootPermit::new(
+            &self.binding,
+            caller,
+            creator,
+        ))
+    }
+    /// Selected V5 factory permit. The exact current V5 bootstrap binding and
+    /// its independently held CreatorJob lineage are checked on every use.
+    /// This does not validate a publisher, package signature or app identity.
+    #[cfg(feature = "workspace-authority")]
+    pub fn workspace_dynamic_image_permit<'s>(
+        &'s self,
+        authority: &Authority,
+        scheduler: &Scheduler,
+        caller: SpaceId,
+        creator: Handle,
+        thread: ThreadId,
+    ) -> Result<crate::dynamic_image::RootPermit<'s, 'a>, Error> {
+        self.binding
+            .check_workspace_dynamic_root(authority, scheduler, caller, creator, thread)?;
+        Ok(crate::dynamic_image::RootPermit::workspace(
+            &self.binding,
+            caller,
+            creator,
+            thread,
+        ))
     }
     pub fn token(&self) -> Token {
         self.binding.current.as_ref().unwrap().token
@@ -725,6 +1114,12 @@ mod tests {
             .unwrap_or_else(|r| panic!("admission failed: {:?}", r.error));
         assert_eq!(active.phase(), Phase::Active);
         assert_eq!(active.token(), token);
+        // A successfully admitted legacy Root is still not the V4-only
+        // dynamic loader profile, regardless of its live source handles.
+        assert!(matches!(
+            active.dynamic_image_permit(&f.a, &f.s, f.target.destination, f.catalog[0].root,),
+            Err(Error::Busy)
+        ));
         assert_eq!(
             active.initial_context().unwrap().rip,
             active.image().0.entry

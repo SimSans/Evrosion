@@ -199,7 +199,7 @@ pub(crate) struct Lifecycle {
     pub(crate) error: u64,
     pub(crate) address: u64,
 }
-fn lifecycle_syntax(line: &str, build: &str) -> Result<Lifecycle> {
+pub(crate) fn lifecycle_syntax(line: &str, build: &str) -> Result<Lifecycle> {
     use crate::boot_protocol::canonical_number as number;
     let f: Vec<_> = line.split(' ').collect();
     if line.len() > 1024
@@ -379,9 +379,15 @@ pub(crate) struct Timeline {
 }
 impl Timeline {
     pub(crate) fn observe(&mut self, step: &Step) -> Result<()> {
+        self.observe_profile(step, false)
+    }
+    pub(crate) fn observe_session(&mut self, step: &Step) -> Result<()> {
+        self.observe_profile(step, true)
+    }
+    fn observe_profile(&mut self, step: &Step, session: bool) -> Result<()> {
         if self.display.is_some_and(|d| d != step.display_process)
             || step.grants < self.grants
-            || step.grants > 3
+            || (!session && step.grants > 3)
         {
             return Err(
                 "desktop Display changed or grant history regressed/exceededscenario".into(),

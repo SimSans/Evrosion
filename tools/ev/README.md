@@ -29,12 +29,12 @@ UEFI image, symbols and source/artifact manifest. `test boot` verifies the curre
 normal kernel image. `run` builds and displays one scripted Native demonstration
 on a new private disk, with real scanout checks and ordinary cleanup. It needs a
 graphical Linux session, QEMU GTK and exactly one CPU; default timeout240 seconds.
-The [actual visible route](../../docs/release/0.1-preview.md#validation-and-provenance)
+The actual visible route (local engineering archive)
 passes; final whole0.1 readiness remains separate.
 The dedicated graphical/native/provider workflows build and validate their own
 closed fixtures. Listing a workflow does not establish its current physical PASS.
 `ipc-bench` is a separate five-VM checked SDK RPC batch; its first actual
-[baseline](../../docs/release/0.1-preview.md#validation-and-provenance)
+baseline (local engineering archive)
 passes. Delivered guest IRQ ticks alone are not calibrated elapsed latency, and
 a zero span means below resolution. Host bounds include the complete batch's
 barriers, scheduling, framing and delivery.
@@ -96,6 +96,5 @@ source build is not automatically acceptance of the earlier cumulative milestone
 
 The [dependency inventory](../../third_party/README.md) covers both locked graphs.
 [M0 acceptance](../m0/README.md) retains the original panic/GDB/rebuild workflow
-details; [M5 progress](../../docs/release/0.1-preview.md#validation-and-provenance) identifies current native
-scope. The operating system and its build/test routes are independent of any
-external development dashboard.
+details. The public [implementation status](../../docs/status/PROJECT_STATUS.md)
+identifies the current native scope.

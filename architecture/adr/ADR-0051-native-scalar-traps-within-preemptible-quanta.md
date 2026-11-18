@@ -1,7 +1,7 @@
 # ADR-0051 — Native scalar traps within preemptible quanta
 
 Status: Accepted bounded implementation refinement; bounded physical verification passed.
-Date: 2026-11-11. Documented mechanism refinement; no foundational guarantee changes.
+Date: 2026-11-11. Founder mandate Level B; no foundational guarantee changes.
 
 The desktop reference executor previously yielded its actual scheduler thread
 on every nonblocking syscall, including each mediated port instruction and clock
@@ -10,7 +10,7 @@ performs one budget clock query plus one mediated data-port access for each of
 256 words in a sector: at least512 scalar traps before command/status overhead.
 Every such trap rotated through polling actors before the driver continued.
 
-The [fourth actual Native run](../../docs/release/0.1-preview.md#validation-and-provenance)
+The fourth actual Native run (local engineering archive)
 completed Home and installation, then exhausted the unchanged16,384-tick world
 before candidate start:473,670 transitions,189 calls/188 replies and one delivered
 Root-to-Block request. Immutable package caching was safe but did not resolve the
@@ -37,7 +37,7 @@ limits and actual timer/capture/port/continuation counters. Its kernel stack
 census, resource retirement and independent disk/pixel checks must also pass.
 Counters are diagnostic observations, never completion or health receipts.
 
-The [six-phase physical Native proof](../../docs/release/0.1-preview.md#validation-and-provenance)
+The six-phase physical Native proof (local engineering archive)
 passes with the unchanged bounds. The complete graphical phase uses7,193ticks
 and382 matched calls, with actual port/syscall continuation and timer quota
 charges. All six boots complete real retirement and independent disk/pixel

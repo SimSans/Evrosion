@@ -79,7 +79,7 @@ impl Runtime<'_, '_> {
                 );
             }
         }
-        for index in 0..7 {
+        for index in 0..SLOTS {
             let Some(meta) = self.metadata(index) else {
                 continue;
             };
@@ -106,7 +106,7 @@ impl Runtime<'_, '_> {
                 continue;
             };
             let receiver =
-                (0..7).find(|&i| self.metadata(i).is_some_and(|m| m.domain == wire.receiver));
+                (0..SLOTS).find(|&i| self.metadata(i).is_some_and(|m| m.domain == wire.receiver));
             let bound = wire.bound.map(ThreadId::diagnostic_id);
             let _ = writeln!(
                 serial,

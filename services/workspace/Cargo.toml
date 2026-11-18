@@ -1,0 +1,37 @@
+[package]
+license.workspace = true
+name = "ev-workspace-service"
+version = "0.4.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "ev-workspace-service"
+path = "src/main.rs"
+required-features = ["native-actor"]
+test = false
+bench = false
+
+[features]
+native-actor = ["dep:ev-userspace-runtime", "dep:ev-block-service", "ev-block-service/workspace-storage"]
+provision-new = ["native-actor"]
+
+[dependencies]
+ev-workspace-client = { path = "../../libs/workspace-client" }
+ev-userspace-contract = { path = "../../libs/userspace-contract" }
+ev-workspace-store = { path = "../../libs/workspace-store" }
+ev-store = { path = "../../libs/store" }
+ev-file = { path = "../../libs/file" }
+sha2 = { version = "=0.10.9", default-features = false }
+ev-userspace-runtime = { path = "../../libs/userspace-runtime", optional = true }
+ev-block-service = { path = "../block", optional = true }
+
+[dev-dependencies]
+ev-workspace-editor = { path = "../../libs/workspace-editor" }
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_unsafe = "deny"
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "deny"

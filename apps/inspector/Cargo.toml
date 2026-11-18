@@ -1,0 +1,25 @@
+[package]
+license.workspace = true
+name = "ev-native-inspector"
+version = "0.4.0"
+edition = "2024"
+publish = false
+[[bin]]
+name = "ev-native-inspector"
+path = "src/main.rs"
+required-features = ["executable"]
+test = false
+bench = false
+[features]
+executable = []
+[dependencies]
+ev-userspace-contract = { path = "../../libs/userspace-contract" }
+ev-userspace-runtime = { path = "../../libs/userspace-runtime" }
+ev-workspace-client = { path = "../../libs/workspace-client" }
+ev-graphics = { path = "../../libs/graphics" }
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_unsafe = "deny"
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "deny"

@@ -116,6 +116,17 @@ pub struct ObjectView {
     pub permission_revision: u64,
     pub readable: bool,
 }
+/// Current write policy from the trusted object owner, never the app packet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct EditObjectView {
+    pub object: ObjectView,
+    pub writable: bool,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Access {
+    Read,
+    Edit,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Persistence {
     ThisIncarnation,
@@ -135,8 +146,12 @@ pub struct Selection {
     expiry: u64,
     created: u64,
     digest: [u8; 32],
+    access: Access,
 }
 impl Selection {
+    pub const fn access(&self) -> Access {
+        self.access
+    }
     pub const fn requester(&self) -> Requester {
         self.requester
     }
@@ -184,6 +199,33 @@ pub struct Consent {
 pub struct ReadDelivery<'a> {
     selection: &'a Selection,
     consent: Consent,
+}
+
+/// Incarnation-only READ/replace approval. There is no conversion from a
+/// ReadDelivery, stored READ intent or merely copied Selection metadata.
+pub struct EditDelivery<'a> {
+    selection: &'a Selection,
+    consent: Consent,
+}
+impl EditDelivery<'_> {
+    pub const fn selection(&self) -> &Selection {
+        self.selection
+    }
+    pub const fn consent(&self) -> Consent {
+        self.consent
+    }
+}
+pub trait EditHandoff {
+    type Delivered;
+    type Error;
+    /// Re-resolve the actual current object, write policy and live recipient
+    /// immediately before delivering its exact READ/replace endpoint. Actual
+    /// consent provenance, serialization, expiry and capability ownership are
+    /// the trusted integration's obligations, as for the READ handoff.
+    fn revalidate_and_deliver_edit(
+        &mut self,
+        request: EditDelivery<'_>,
+    ) -> Delivery<Self::Delivered, Self::Error>;
 }
 impl ReadDelivery<'_> {
     pub const fn selection(&self) -> &Selection {
@@ -271,6 +313,38 @@ impl Picker {
         now: u64,
         expiry: u64,
     ) -> Result<Approval, Error> {
+        self.prepare_scoped(requester, object, persistence, Access::Read, now, expiry)
+    }
+    /// Edit grants are deliberately not durable policy. Reopening/restarting
+    /// requires another explicit selection for the actual new incarnation.
+    pub fn prepare_edit(
+        &mut self,
+        requester: Requester,
+        object: EditObjectView,
+        now: u64,
+        expiry: u64,
+    ) -> Result<Approval, Error> {
+        if !object.writable {
+            return Err(Error::Denied);
+        }
+        self.prepare_scoped(
+            requester,
+            object.object,
+            Persistence::ThisIncarnation,
+            Access::Edit,
+            now,
+            expiry,
+        )
+    }
+    fn prepare_scoped(
+        &mut self,
+        requester: Requester,
+        object: ObjectView,
+        persistence: Persistence,
+        access: Access,
+        now: u64,
+        expiry: u64,
+    ) -> Result<Approval, Error> {
         if !requester.alive {
             return Err(Error::RequesterDied);
         }
@@ -306,6 +380,7 @@ impl Picker {
             expiry,
             created: now,
             digest: [0; 32],
+            access,
         };
         selection.digest = digest(nonce, &selection);
         self.pending[slot] = Some(Pending { nonce, selection });
@@ -342,9 +417,46 @@ impl Picker {
         now: u64,
         handoff: &mut H,
     ) -> Result<Delivery<H::Delivered, H::Error>, Error> {
+        let selection = self.consume(approval, consent, current, object, now, Access::Read)?;
+        Ok(handoff.revalidate_and_deliver_read(ReadDelivery {
+            selection: &selection,
+            consent,
+        }))
+    }
+    pub fn commit_edit<H: EditHandoff>(
+        &mut self,
+        approval: Approval,
+        consent: Consent,
+        current: Requester,
+        object: EditObjectView,
+        now: u64,
+        handoff: &mut H,
+    ) -> Result<Delivery<H::Delivered, H::Error>, Error> {
+        let selection =
+            self.consume(approval, consent, current, object.object, now, Access::Edit)?;
+        if !object.writable {
+            return Err(Error::Denied);
+        }
+        Ok(handoff.revalidate_and_deliver_edit(EditDelivery {
+            selection: &selection,
+            consent,
+        }))
+    }
+    fn consume(
+        &mut self,
+        approval: Approval,
+        consent: Consent,
+        current: Requester,
+        object: ObjectView,
+        now: u64,
+        access: Access,
+    ) -> Result<Selection, Error> {
         let slot = self.slot(&approval)?;
         self.pending[slot] = None;
         let selection = approval.selection;
+        if selection.access != access {
+            return Err(Error::Denied);
+        }
         if now < selection.created {
             return Err(Error::ClockReversed);
         }
@@ -379,10 +491,7 @@ impl Picker {
         if consent.displayed_action != selection.digest {
             return Err(Error::DifferentDisplayedAction);
         }
-        Ok(handoff.revalidate_and_deliver_read(ReadDelivery {
-            selection: &selection,
-            consent,
-        }))
+        Ok(selection)
     }
     /// Pending metadata only: actual already-delivered caps require their own
     /// kernel revocation/closed-domain lifecycle, not this table operation.
@@ -409,7 +518,10 @@ impl Picker {
 
 fn digest(nonce: Nonce, s: &Selection) -> [u8; 32] {
     let mut hash = Sha256::new();
-    hash.update(b"evrosion.picker.read.v1\0");
+    hash.update(match s.access {
+        Access::Read => b"evrosion.picker.read.v1\0".as_slice(),
+        Access::Edit => b"evrosion.picker.edit.v1\0".as_slice(),
+    });
     for id in [
         s.requester.user.0,
         s.requester.session.0,
@@ -434,7 +546,10 @@ fn digest(nonce: Nonce, s: &Selection) -> [u8; 32] {
     }
     hash.update(s.object.revision.content.0);
     hash.update([
-        1,
+        match s.access {
+            Access::Read => 1,
+            Access::Edit => 3,
+        },
         match s.persistence {
             Persistence::ThisIncarnation => 0,
             Persistence::RememberPerUser => 1,

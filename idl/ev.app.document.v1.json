@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "interface": "ev.app.document",
+  "version": 1,
+  "maturity": "Internal",
+  "semantic_interface": "ev.ui.document@1",
+  "wire": {
+    "bytes": 8,
+    "endianness": "little",
+    "nonce": "u32_nonzero_nonmax_monotonic_per_actual_incarnation",
+    "request_magic": "DC",
+    "requests": {"OpenRead": 1, "OpenEdit": 2, "Publish": 3},
+    "reply_magic": "DA",
+    "replies": {"Published": 0, "Denied": 1, "Malformed": 2, "Busy": 3, "Stale": 4, "Cancelled": 5},
+    "grant_magic": "DG",
+    "grant_choice_low_nibble": {"Notes": 1, "Private": 2},
+    "grant_access_high_nibble": {"Read": 1, "Edit": 2},
+    "picker_magic": "R",
+    "picker_opcodes": {"Read": 19, "Edit": 20},
+    "picker_word": "trusted_Root_request_serial_not_client_authority"
+  },
+  "transport": {
+    "request_reply_capabilities": 0,
+    "grant_capabilities": 1,
+    "grant_authority": "actual_selected_endpoint_not_wire_choice_or_access",
+    "max_outstanding_per_actual_incarnation": 1,
+    "publish_bulk": "one_owned_256_byte_ev.ui.document_snapshot",
+    "publish_deadline": "finite_absolute_monotonic_no_extension",
+    "publish_completion": "actual_current_Root_matching_ACK_releases_shared_frame",
+    "publish_timeout": "quarantine_frame_until_matching_actual_ACK_or_proven_quiescence",
+    "open_wait": "bounded_nonblocking_UI_state_no_shared_frame_loan_user_cancel_or_incarnation_retirement",
+    "open_completion": "matching_actual_protected_grant_or_refusal_never_Published_ACK",
+    "consent": "fresh_trusted_picker_confirmation_for_exact_object_and_access",
+    "edit_declaration": "separate_optional_SelectedFileEdit_package_request_not_a_grant",
+    "persistence": "actual_incarnation_only_no_serialized_runtime_handle"
+  }
+}

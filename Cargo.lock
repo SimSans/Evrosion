@@ -112,6 +112,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "curve25519-dalek"
+version = "4.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "curve25519-dalek-derive",
+ "digest",
+ "fiat-crypto",
+ "rustc_version",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "curve25519-dalek-derive"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -119,6 +146,28 @@ checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer",
  "crypto-common",
+]
+
+[[package]]
+name = "ed25519"
+version = "2.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "115531babc129696a58c64a4fef0a8bf9e9698629fb97e9e40767d235cfbcd53"
+dependencies = [
+ "signature",
+]
+
+[[package]]
+name = "ed25519-dalek"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70e796c081cee67dc755e1a36a0a172b897fab85fc3f6bc48307991f64e4eca9"
+dependencies = [
+ "curve25519-dalek",
+ "ed25519",
+ "sha2",
+ "subtle",
+ "zeroize",
 ]
 
 [[package]]
@@ -134,31 +183,44 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "ev"
 version = "0.0.0"
 dependencies = [
+ "ed25519-dalek",
  "ev-app-registry",
+ "ev-content-store",
+ "ev-desktop",
  "ev-diagnostics",
  "ev-file",
  "ev-grant-policy",
  "ev-graphics",
+ "ev-input",
  "ev-ipc-bench",
  "ev-kernel",
+ "ev-native-hello",
+ "ev-net-driver",
+ "ev-net-stack",
  "ev-picker",
  "ev-provider-test",
+ "ev-release-trust",
  "ev-root-supervisor",
  "ev-store",
  "ev-test-protocol",
+ "ev-time-contract",
+ "ev-time-proof",
  "ev-userspace-contract",
+ "ev-workspace-client",
+ "ev-workspace-store",
  "ev-zion",
  "serde",
  "serde_json",
  "sha2",
  "toml",
+ "zeroize",
 ]
 
 [[package]]
@@ -205,6 +267,14 @@ version = "0.0.0"
 dependencies = [
  "ev-userspace-contract",
  "ev-userspace-runtime",
+]
+
+[[package]]
+name = "ev-content-store"
+version = "0.0.0"
+dependencies = [
+ "ev-store",
+ "sha2",
 ]
 
 [[package]]
@@ -266,6 +336,9 @@ dependencies = [
 [[package]]
 name = "ev-graphics"
 version = "0.0.0"
+dependencies = [
+ "ev-userspace-contract",
+]
 
 [[package]]
 name = "ev-image-builder"
@@ -280,6 +353,9 @@ dependencies = [
 [[package]]
 name = "ev-input"
 version = "0.0.0"
+dependencies = [
+ "ev-userspace-contract",
+]
 
 [[package]]
 name = "ev-ipc-bench"
@@ -310,15 +386,73 @@ dependencies = [
 ]
 
 [[package]]
+name = "ev-native-editor"
+version = "0.4.0"
+dependencies = [
+ "ev-graphics",
+ "ev-userspace-contract",
+ "ev-userspace-runtime",
+ "ev-workspace-client",
+ "ev-workspace-editor",
+ "sha2",
+]
+
+[[package]]
+name = "ev-native-files"
+version = "0.4.0"
+dependencies = [
+ "ev-graphics",
+ "ev-userspace-contract",
+ "ev-userspace-runtime",
+ "ev-workspace-client",
+ "ev-workspace-service",
+ "ev-workspace-store",
+]
+
+[[package]]
 name = "ev-native-hello"
 version = "0.0.0"
 dependencies = [
+ "ev-app-registry",
  "ev-desktop",
  "ev-graphics",
  "ev-input",
  "ev-userspace-contract",
  "ev-userspace-graphics",
  "ev-userspace-runtime",
+ "ev-zion",
+]
+
+[[package]]
+name = "ev-native-inspector"
+version = "0.4.0"
+dependencies = [
+ "ev-graphics",
+ "ev-userspace-contract",
+ "ev-userspace-runtime",
+ "ev-workspace-client",
+]
+
+[[package]]
+name = "ev-net-device"
+version = "0.0.0"
+
+[[package]]
+name = "ev-net-driver"
+version = "0.0.0"
+dependencies = [
+ "ev-net-device",
+ "ev-net-stack",
+ "ev-userspace-contract",
+ "ev-userspace-runtime",
+]
+
+[[package]]
+name = "ev-net-stack"
+version = "0.0.0"
+dependencies = [
+ "ev-net-device",
+ "smoltcp",
 ]
 
 [[package]]
@@ -338,6 +472,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ev-random"
+version = "0.0.0"
+dependencies = [
+ "ev-time-contract",
+ "rand_chacha",
+ "zeroize",
+]
+
+[[package]]
 name = "ev-recovery-service"
 version = "0.0.0"
 dependencies = [
@@ -346,20 +489,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "ev-release-trust"
+version = "0.0.0"
+dependencies = [
+ "curve25519-dalek",
+ "ed25519-dalek",
+ "ev-time-contract",
+ "sha2",
+]
+
+[[package]]
 name = "ev-root-supervisor"
 version = "0.0.0"
 dependencies = [
  "ev-app-registry",
  "ev-block-service",
+ "ev-content-store",
  "ev-desktop",
  "ev-diagnostics",
  "ev-file",
  "ev-grant-policy",
  "ev-graphics",
  "ev-ipc-bench",
+ "ev-net-driver",
  "ev-picker",
  "ev-provider-test",
+ "ev-random",
+ "ev-release-trust",
  "ev-store",
+ "ev-time-contract",
+ "ev-time-proof",
  "ev-userspace-contract",
  "ev-userspace-runtime",
  "ev-zion",
@@ -378,6 +537,20 @@ name = "ev-test-protocol"
 version = "0.0.0"
 
 [[package]]
+name = "ev-time-contract"
+version = "0.0.0"
+
+[[package]]
+name = "ev-time-proof"
+version = "0.0.0"
+dependencies = [
+ "ed25519-dalek",
+ "ev-release-trust",
+ "ev-time-contract",
+ "sha2",
+]
+
+[[package]]
 name = "ev-userspace-contract"
 version = "0.0.0"
 
@@ -393,6 +566,93 @@ name = "ev-userspace-runtime"
 version = "0.0.0"
 dependencies = [
  "ev-userspace-contract",
+]
+
+[[package]]
+name = "ev-workspace-client"
+version = "0.4.0"
+dependencies = [
+ "ev-userspace-contract",
+ "ev-userspace-runtime",
+ "sha2",
+]
+
+[[package]]
+name = "ev-workspace-display"
+version = "0.4.0"
+dependencies = [
+ "ev-graphics",
+ "ev-userspace-contract",
+ "ev-userspace-runtime",
+ "ev-workspace-shell",
+]
+
+[[package]]
+name = "ev-workspace-editor"
+version = "0.0.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
+name = "ev-workspace-root"
+version = "0.4.0"
+dependencies = [
+ "ev-app-registry",
+ "ev-block-service",
+ "ev-graphics",
+ "ev-input",
+ "ev-native-files",
+ "ev-native-inspector",
+ "ev-net-driver",
+ "ev-store",
+ "ev-userspace-contract",
+ "ev-userspace-runtime",
+ "ev-workspace-client",
+ "ev-workspace-service",
+ "ev-workspace-shell",
+ "ev-zion",
+ "sha2",
+]
+
+[[package]]
+name = "ev-workspace-service"
+version = "0.4.0"
+dependencies = [
+ "ev-block-service",
+ "ev-file",
+ "ev-store",
+ "ev-userspace-contract",
+ "ev-userspace-runtime",
+ "ev-workspace-client",
+ "ev-workspace-editor",
+ "ev-workspace-store",
+ "sha2",
+]
+
+[[package]]
+name = "ev-workspace-shell"
+version = "0.0.0"
+dependencies = [
+ "ev-graphics",
+]
+
+[[package]]
+name = "ev-workspace-shell-panel"
+version = "0.4.0"
+dependencies = [
+ "ev-graphics",
+ "ev-userspace-contract",
+ "ev-userspace-runtime",
+ "ev-workspace-client",
+]
+
+[[package]]
+name = "ev-workspace-store"
+version = "0.4.0"
+dependencies = [
+ "ev-store",
+ "sha2",
 ]
 
 [[package]]
@@ -419,6 +679,12 @@ dependencies = [
  "byteorder",
  "log",
 ]
+
+[[package]]
+name = "fiat-crypto"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
 
 [[package]]
 name = "futures-core"
@@ -478,10 +744,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "hash32"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47d60b12902ba28e2730cd37e95b8c9223af2808df9e902d4df49588d1470606"
+dependencies = [
+ "byteorder",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
+
+[[package]]
+name = "heapless"
+version = "0.9.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25ba4bd83f9415b58b4ed8dc5714c76e626a105be4646c02630ad730ad3b5aa4"
+dependencies = [
+ "hash32",
+ "stable_deref_trait",
+]
 
 [[package]]
 name = "indexmap"
@@ -535,6 +820,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
+name = "managed"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -551,6 +842,15 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
+name = "ppv-lite86"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
+dependencies = [
+ "zerocopy",
+]
 
 [[package]]
 name = "proc-macro2"
@@ -577,6 +877,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
+name = "rand_chacha"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb"
+dependencies = [
+ "ppv-lite86",
+ "rand_core",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
+
+[[package]]
+name = "rustc_version"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
+dependencies = [
+ "semver",
+]
+
+[[package]]
 name = "rustix"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -586,7 +911,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -594,6 +919,12 @@ name = "rustversion"
 version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
+
+[[package]]
+name = "semver"
+version = "1.0.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
 
 [[package]]
 name = "serde"
@@ -622,7 +953,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 3.0.6",
 ]
 
 [[package]]
@@ -659,10 +990,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "signature"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de"
+
+[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
+
+[[package]]
+name = "smoltcp"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6f8b28ad56c6e35524a37dd492af5d1a47e31e1a4d175cd12f89c075f01980f"
+dependencies = [
+ "bitflags 1.3.2",
+ "byteorder",
+ "cfg-if",
+ "heapless",
+ "managed",
+]
+
+[[package]]
+name = "stable_deref_trait"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "subtle"
+version = "2.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "syn"
+version = "2.0.119"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
 
 [[package]]
 name = "syn"
@@ -685,7 +1058,7 @@ dependencies = [
  "getrandom",
  "once_cell",
  "rustix",
- "windows-sys",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -788,7 +1161,7 @@ dependencies = [
  "bumpalo",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 3.0.6",
  "wasm-bindgen-shared",
 ]
 
@@ -821,6 +1194,32 @@ name = "winnow"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
+
+[[package]]
+name = "zerocopy"
+version = "0.8.63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5fe1f8f1b06191a00962174c61aa5005e0bb391a6d80d07e24d115c01a92ed8"
+dependencies = [
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "863ad3ac83293fb4d740aedbfdc9240dd8d1a50c1099acd76ce80ce7c7230c7f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "zeroize"
+version = "1.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
 
 [[package]]
 name = "zmij"

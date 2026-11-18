@@ -120,7 +120,7 @@ foreign token and reclaim their nine charged physical frames after controlled
 quiescence. The integration proof runs after M1 allocator measurements, preserving
 that fixture's starting-pool assumptions. Strict serial/evidence parsers and the
 full cumulative regression are required; executed results are linked in
-[M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+M2 progress.
 
 These are admitted executable fixtures. The terminal UD2 is a controlled test
 boundary, not an automatic Root Supervisor failure/replacement demonstration.

@@ -1,6 +1,8 @@
 //! Native package ownership and the explicit native profile of the shared
 //! protected desktop executor. Package bytes never become ambient authority.
 pub(crate) mod backing;
+#[cfg(feature = "test-m6-network")]
+pub(crate) mod dynamic;
 pub(crate) mod image;
 pub(crate) mod profile;
 
@@ -15,6 +17,8 @@ pub(crate) struct Assets {
 }
 pub(crate) struct Proof {
     pub graph: crate::desktop_runtime::Proof,
+    #[cfg(feature = "test-m6-network-negative")]
+    pub network_no_ack_returns: u64,
     pub common_prefix: bool,
     pub app_starts: [u64; 2],
     pub app_stops: [u64; 2],
@@ -60,7 +64,7 @@ pub(crate) struct State<'a> {
     pub diagnostic_error: bool,
     pub diagnostic_queries: u64,
     /// Last actual syscall trap for each retained actor slot; diagnostics only.
-    pub last_syscall: [Option<u64>; 7],
+    pub last_syscall: [Option<u64>; profile::SLOTS],
     pub profile: profile::Profile,
 }
 impl State<'_> {

@@ -96,7 +96,7 @@ fn deliver(frame: &mut UserContext, delivery: Delivery) {
     frame.registers[9] = u64::from_le_bytes(delivery.bytes[..8].try_into().unwrap());
     frame.registers[11] = delivery.capability.map_or(0, |h| h.0);
 }
-fn idle_tick() {
+pub(crate) fn idle_tick() {
     assert!(!active());
     let deadline = Deadline::after(crate::timer::now(), 1).expect("idle deadline");
     #[cfg(feature = "test-user-wait-stall")]

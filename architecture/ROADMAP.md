@@ -1,28 +1,38 @@
 # Current implementation roadmap
 
-This roadmap applies accepted amendments to the
-[E-025 scope](plans/roadmap/E-025-initial-scope.md), PRE-M0 and R-011. The table
-records the original engineering checkpoint. This public technical edition has
-its own source identity and validation; the [source map](plans/source-map.json)
-records actual edition hashes and original source lineage.
+This working roadmap applies accepted amendments to the preserved
+[E-025 scope](plans/roadmap/E-025-initial-scope.md), PRE-M0 and R-011. Imported
+sources are historical. The source map identifies the actual public planning editions.
+
+This table tracks implementation checkpoints. The complete architectural
+direction continues through [E-026](plans/roadmap/E-026-long-term-architecture.md),
+the E/R documents and [foundations](plans/foundations/foundational-requirements.txt),
+mapped by the [architecture index](ARCHITECTURE_INDEX.md). The absence of a later
+release row does not mean the architecture is unwritten.
 
 | Gate | Current state | Scope |
 |---|---|---|
-| M0 — Toolchain & Boot | PASS, historical engineering | 21 PRE-M0 acceptance gates; [executed readiness](../docs/release/0.1-preview.md#validation-and-provenance) |
-| M1 — Kernel Spine | PASS | [Combined acceptance](M1_ACCEPTANCE.md) and [executed readiness](../docs/release/0.1-preview.md#validation-and-provenance); bounded Internal runtime |
-| M2 — Userspace | PASS | [Acceptance](M2_ACCEPTANCE.md) and [readiness](../docs/release/0.1-preview.md#validation-and-provenance): explicit authority, isolated services, typed RPC, ordinary/whole-graph restart and bounded IPC discipline |
-| M3 — Persistence | PASS | [Acceptance](M3_ACCEPTANCE.md) and [readiness](../docs/release/0.1-preview.md#validation-and-provenance): scoped File/Object, interruption-safe durable subset, measured fault/progress rollback and independent owner recovery |
+| M0 — Toolchain & Boot | PASS, tag `m0` | 21 PRE-M0 acceptance gates; executed readiness |
+| M1 — Kernel Spine | PASS | [Combined acceptance](M1_ACCEPTANCE.md) and executed readiness; bounded Internal runtime |
+| M2 — Userspace | PASS | [Acceptance](M2_ACCEPTANCE.md) and readiness: explicit authority, isolated services, typed RPC, ordinary/whole-graph restart and bounded IPC discipline |
+| M3 — Persistence | PASS | [Acceptance](M3_ACCEPTANCE.md) and readiness: scoped File/Object, interruption-safe durable subset, measured fault/progress rollback and independent owner recovery |
 | M4 — Graphics | PASS | [Acceptance](M4_ACCEPTANCE.md): actual seven-process desktop, fresh-input picker, selected File reads, App/Shell recovery and matching surface isolation regression |
 | M5 — Native Platform | PASS, bounded Internal | [Acceptance](M5_ACCEPTANCE.md): native lifecycle/data, exact grants, diagnostics/inspection, provider replacement and real System recovery |
-| 0.1 developer preview | PASS, local engineering | [Readiness](../docs/release/0.1-preview.md#validation-and-provenance): coherent demonstration, current cumulative/security checks and fresh supported-Linux guide; owner release/publication separate |
-| M6 /0.2 — Connected Developer Alpha | PLANNED | [Execution plan](M6_PLAN.md): interactive use, one virtual network path, authenticated update/recovery and one qualified physical target; all runtime gates TODO |
-| Further user-value slices | DEFERRED | Work beyond the declared 0.2 scope selected from evidence and owner priority |
+| 0.1 developer preview | PASS, local engineering | Readiness: coherent demonstration, current cumulative/security checks and fresh supported-Linux guide; owner release/publication separate |
+| M6 /0.2 — Connected Developer Alpha | PASS, bounded local VM engineering | Readiness: sustained interaction, scoped virtual networking, authenticated downloaded execution, signed update/offline recovery, two-Linux reproduction and preserving Main integration; physical M6-09 explicitly deferred |
+| Accepted 0.2 stabilization | PASS, bounded engineering | Current record: alignment, measured IPC limit, improved stack margins, independent qualification and usable graphical walkthrough |
+| M7 /0.3 native document workflow | PASS, bounded VM engineering | [Owner-selected plan](M7_PLAN.md): explicit selected-document editing, accessible contracts, durable save/reopen and failed-update recovery; progress |
+| M8 /0.4 — Recoverable Native Desktop Workspace | ACTIVE; integrated qualification incomplete | [Substantial checkpoint plan](M8_PLAN.md): real files/folders, larger documents, concurrent native windows, three-layer controls, semantic accessibility, service/update recovery and native developer/build path |
 | ADR-0003.MIGRATION | DEFERRED | Preservation-first installer; journal, verify, retain source, explicit reclaim authority |
 | ADR-0003.WINDOWS | DEFERRED | Bundled operational Windows runtime for ordinary-user releases; native independence |
 
-Next is M6-02, sustained interactive operation. The
-[road to 0.2](M6_PLAN.md) records dependencies, acceptance tests and future
-hardware inputs. Runtime implementation has not started.
+M6-01 through M6-08 and M6-10 pass in the declared virtual scope on 2026-11-15.
+The owner-approved [virtual acceptance amendment](plans/amendments/2026-11-12-m6-virtual-acceptance.md)
+defers physical qualification; it is not a physical PASS. The accepted snapshot
+and historical proofs remain intact while separately qualified stabilization
+results are separately recorded. The public [implementation status](../docs/status/PROJECT_STATUS.md)
+records current scope. Public release, official signing and general Kernel/Root replacement are
+separate gates.
 
 ## Accepted clarification of older statements
 

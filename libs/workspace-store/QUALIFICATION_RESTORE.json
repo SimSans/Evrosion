@@ -1,0 +1,79 @@
+{
+  "schema": 1,
+  "date": "2026-11-16",
+  "status": "PASS scoped atomic restore-at over real memory SectorIo",
+  "scope": "Host byte/failure model and no_std bare library check; no guest/device/power-loss/deadline/grant or whole M8 claim.",
+  "source_files": [
+    {
+      "path": "libs/workspace-store/Cargo.toml",
+      "bytes": 197,
+      "sha256": "4d08987d49bfb154b474e1c44639d53974d9d4b6b5d4fba200c664ef19795828"
+    },
+    {
+      "path": "libs/workspace-store/README.md",
+      "bytes": 1560,
+      "sha256": "f011b68f0a78aceb15df0cfa88354f8b38c4a631d17b4e74ed743b744ed7ff71"
+    },
+    {
+      "path": "libs/workspace-store/src/lib.rs",
+      "bytes": 10014,
+      "sha256": "30018fc1c815a87d225e07a8e79183696b98d6961fbccb0dd4c8a988da3428c6"
+    },
+    {
+      "path": "libs/workspace-store/src/codec.rs",
+      "bytes": 11333,
+      "sha256": "77c3989b1951a86422de084ab52ce7e79c6fb1099401bed3beb4b68965d4aeb7"
+    },
+    {
+      "path": "libs/workspace-store/src/engine.rs",
+      "bytes": 53012,
+      "sha256": "14640dcbce0710976c223b660cfe7732eb907e3c35a8d8f386a3a8534490109e"
+    },
+    {
+      "path": "libs/workspace-store/src/tests.rs",
+      "bytes": 47021,
+      "sha256": "6112a187d9651d5c8a908530af480b06d2666c157e4a340cec6651102074c0e5"
+    },
+    {
+      "path": "architecture/designs/WORKSPACE_STORAGE.md",
+      "bytes": 17148,
+      "sha256": "e64ac9b264fc060fd74b9e524ce95af7f8a921118e087c137be30c752ebcdee5"
+    }
+  ],
+  "command_receipts": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-restore-tests-01.json",
+      "sha256": "ebf3f2284d3d426b2ddfee0c9c69939958ce54b3cc520ad2079d6895d5bb6789",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-restore-format-01.json",
+      "sha256": "64ffd376cc6285b237eded60fe427bec713a6ad0d242d6ddf7e429ea157bae51",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-restore-clippy-01.json",
+      "sha256": "0c744a31a8500d6e41a2ab88d877a5f8001143980df3b942dfdecd3b665cfb3d",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-restore-bare-01.json",
+      "sha256": "c3d50150824023674d66e4e372573962409ab87f67a58e7cc0a3d1bfba874476",
+      "passed": true
+    }
+  ],
+  "test_count": 15,
+  "atomic_restore_at_io_cuts": 1578,
+  "existing_mutation_io_cuts": 5016,
+  "mirror_recovery_io_cuts": 72,
+  "provisioning_io_cuts": 108,
+  "api": "Dataset::restore_at(operation, expected_namespace, object, parent, Name, deadline) -> ReceiptKind::Restored",
+  "replay": "Distinct fingerprint tag11 binds exact expected namespace, full object/destination identities and name. Original restore retains tag5/parent/name behavior. Changed intent conflicts; cold exact retry reconciles.",
+  "workspace_integration": {
+    "receipt": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/CARGO_INTEGRATION_01.json",
+    "sha256": "300d358c80d86f9ce5d3a761b0d6dab642f8d9dd165ad7c8784f2c26771ab6c0",
+    "preimages": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/cargo-integration-01-preimages"
+  },
+  "historical_qualification": "QUALIFICATION.json remains the initial standalone snapshot, including then-present nested manifest/lock pins; integration retained the original files and removed the nested boundary. This record pins the integrated package and additive restore state.",
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

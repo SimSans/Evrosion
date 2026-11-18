@@ -1,7 +1,7 @@
 # ADR-0049 — Native Root package banks and durable App state
 
 Status: Accepted bounded implementation direction; physical native lifecycle
-pending. Date: 2026-10-27. Documented mechanism refinement; no foundational change.
+pending. Date: 2026-10-27. Founder mandate Level B; no foundational change.
 
 M4 now proves the real graphical service graph. Its Root profile has eighteen
 sources, one App executable and one measured package identity. Root cannot read

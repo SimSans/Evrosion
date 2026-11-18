@@ -109,7 +109,7 @@ producers have malformed-input and consistency tests. The current integration
 loads separate Rust Root/Echo images, performs typed exchanges and rejects excess
 authority. A distinct fault artifact writes the unmapped zero page after replying;
 Root observes the actual termination, and pending cap-free work is reclaimed.
-Executed results are linked from [M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+Executed results are linked from M2 progress.
 
 These graphs execute on the BSP with parked APs and PCID off. They are separate
 development fixtures, not replacement incarnations. Multiple unrelated services,

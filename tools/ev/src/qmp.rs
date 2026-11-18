@@ -10,6 +10,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod link_loss;
+pub(crate) use link_loss::{ReferenceLinkDown, verify_reference_link_down};
+
 const LINE_LIMIT: usize = 256 * 1024;
 const EVENT_LIMIT: usize = 128;
 const FRAME_LIMIT: usize = 16 * 1024 * 1024;
@@ -19,6 +22,8 @@ pub(crate) enum Key {
     Tab,
     Enter,
     Escape,
+    Backspace,
+    Right,
     #[cfg(test)]
     Up,
     #[cfg(test)]
@@ -30,6 +35,8 @@ impl Key {
             Self::Tab => "tab",
             Self::Enter => "ret",
             Self::Escape => "esc",
+            Self::Backspace => "backspace",
+            Self::Right => "right",
             #[cfg(test)]
             Self::Up => "up",
             #[cfg(test)]
@@ -179,6 +186,30 @@ impl Qmp {
         }
         Err("QMP event bound exhausted".into())
     }
+    /// Drain actual asynchronous RESET events through an ordinary read-only
+    /// status query. This never sends system_reset, stop, or cont.
+    pub(crate) fn poll_restart_events(&mut self) -> Result<()> {
+        let status = self.execute("query-status", json!({}))?;
+        if status.get("running").and_then(Value::as_bool) != Some(true)
+            || status.get("status").and_then(Value::as_str) != Some("running")
+        {
+            return Err("guest restart observation requires the owned VM to remain running".into());
+        }
+        Ok(())
+    }
+    /// Read-only diagnostic through this owned VM's existing monitor stream.
+    /// The returned table never establishes guest authority or quiescence.
+    pub(crate) fn usernet(&mut self) -> Result<String> {
+        let value = self.execute(
+            "human-monitor-command",
+            json!({"command-line":"info usernet"}),
+        )?;
+        let text = value
+            .as_str()
+            .filter(|s| s.len() <= 64 * 1024)
+            .ok_or("QMP usernet result is not a bounded string")?;
+        Ok(text.to_owned())
+    }
     /// Test infrastructure injects a real PS/2 key via the QEMU input device.
     /// Guest Input still reads its own scoped ports and decides what happened.
     #[cfg(test)]
@@ -223,6 +254,41 @@ impl Qmp {
         self.transcript.push(json!({"host_monotonic_ns":{"origin":"caller monotonic origin; spawn bracket retained separately in performance.json","command_sent":sent,"actual_state_observed":observed,"running":running}}));
         Ok(())
     }
+    /// Release the explicit initial -S only after the caller has verified the
+    /// actual owned loader/source. This prelaunch hold is outside the ordinary
+    /// runtime pause ledger; no guest timing observation is synthesized.
+    pub(crate) fn start_verified_prelaunch(&mut self) -> Result<()> {
+        self.start_prelaunch(false)
+    }
+    /// Test isolation for the acquisition cold-reload phase only. This fixed
+    /// backend is the reviewed network profile's `user,id=evnet`; callers
+    /// cannot substitute another device or an arbitrary QMP operation.
+    pub(crate) fn start_acquisition_cold_prelaunch(&mut self) -> Result<()> {
+        self.start_prelaunch(true)
+    }
+    fn start_prelaunch(&mut self, acquisition_cold: bool) -> Result<()> {
+        let status = self.execute("query-status", json!({}))?;
+        if status.get("running").and_then(Value::as_bool) != Some(false)
+            || status.get("status").and_then(Value::as_str) != Some("prelaunch")
+        {
+            return Err("clock profile requires actual nonrunning prelaunch state".into());
+        }
+        if acquisition_cold
+            && self.execute("set_link", json!({"name":"evnet","up":false}))? != json!({})
+        {
+            return Err("acquisition cold link-down acknowledgement is noncanonical".into());
+        }
+        if self.execute("cont", json!({}))? != json!({}) {
+            return Err("QMP initial cont acknowledgement is noncanonical".into());
+        }
+        let status = self.execute("query-status", json!({}))?;
+        if status.get("running").and_then(Value::as_bool) != Some(true)
+            || status.get("status").and_then(Value::as_str) != Some("running")
+        {
+            return Err("QMP initial cont did not observe actual running state".into());
+        }
+        Ok(())
+    }
     pub(crate) fn timing(
         &self,
         begin: crate::perf_ledger::Bracket,
@@ -242,6 +308,65 @@ impl Qmp {
         )?;
         Ok(())
     }
+    /// One released Enter through the existing real PS/2 device. Both edges
+    /// are queued in order by one command, so no post-power command is needed.
+    /// A command acknowledgement is not guest consent or shutdown evidence.
+    #[cfg(feature = "workspace")]
+    pub(crate) fn released_enter(&mut self) -> Result<()> {
+        let events = [true, false].map(
+            |down| json!({"type":"key","data":{"down":down,"key":{"type":"qcode","data":"ret"}}}),
+        );
+        if self.execute("input-send-event", json!({"events":events}))? != json!({}) {
+            return Err("QMP released Enter acknowledgement is noncanonical".into());
+        }
+        Ok(())
+    }
+    /// One bounded reference-device character, not a guest text/consent API.
+    /// Caller waits for the real guest observation before injecting the next
+    /// character so PS/2's bounded hardware queue cannot silently lose a batch.
+    pub(crate) fn ascii(&mut self, byte: u8) -> Result<()> {
+        let (code, shift) = ascii_key(byte)?;
+        let key = |code: &str, down| json!({"type":"key","data":{"down":down,"key":{"type":"qcode","data":code}}});
+        let mut events = Vec::new();
+        if shift {
+            events.push(key("shift", true));
+        }
+        events.push(key(&code, true));
+        events.push(key(&code, false));
+        if shift {
+            events.push(key("shift", false));
+        }
+        if self.execute("input-send-event", json!({"events":events}))? != json!({}) {
+            return Err("QMP ASCII acknowledgement is noncanonical".into());
+        }
+        Ok(())
+    }
+    pub(crate) fn relative(&mut self, dx: i16, dy: i16) -> Result<()> {
+        if !(-127..=127).contains(&dx) || !(-127..=127).contains(&dy) || (dx == 0 && dy == 0) {
+            return Err("relative PS/2 stimulus outside bounded packet range".into());
+        }
+        let mut events = Vec::new();
+        if dx != 0 {
+            events.push(json!({"type":"rel","data":{"axis":"x","value":dx}}));
+        }
+        if dy != 0 {
+            events.push(json!({"type":"rel","data":{"axis":"y","value":dy}}));
+        }
+        if self.execute("input-send-event", json!({"events":events}))? != json!({}) {
+            return Err("QMP relative acknowledgement is noncanonical".into());
+        }
+        Ok(())
+    }
+    pub(crate) fn left_button(&mut self, down: bool) -> Result<()> {
+        let reply = self.execute(
+            "input-send-event",
+            json!({"events":[{"type":"btn","data":{"down":down,"button":"left"}}]}),
+        )?;
+        if reply != json!({}) {
+            return Err("QMP button acknowledgement is noncanonical".into());
+        }
+        Ok(())
+    }
     /// Capture actual scanout. Guest-provided pixel buffers are not substituted
     /// for the framebuffer. The bounded filename cannot escape the owned run.
     pub(crate) fn capture(&mut self, index: u32) -> Result<(PathBuf, Ppm)> {
@@ -257,9 +382,84 @@ impl Qmp {
         let frame = Ppm::parse(fs::read(&path).map_err(|e| e.to_string())?)?;
         Ok((path, frame))
     }
+    /// Lossless actual scanout for bounded M8 interaction traces. QEMU encodes
+    /// the captured display; no guest buffer, scaling or synthesized pixels.
+    #[cfg(feature = "workspace")]
+    pub(crate) fn capture_png(&mut self, index: u32) -> Result<PathBuf> {
+        let path = self.directory.join(format!("screen-{index:03}.png"));
+        if fs::symlink_metadata(&path).is_ok() {
+            return Err("actual PNG capture exists".into());
+        }
+        self.execute("screendump", json!({"filename":path,"format":"png"}))?;
+        let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+        if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > FRAME_LIMIT as u64 {
+            return Err("actual PNG capture invalid".into());
+        }
+        let b = fs::read(&path).map_err(|e| e.to_string())?;
+        if b.get(..8) != Some(b"\x89PNG\r\n\x1a\n") || b.get(12..16) != Some(b"IHDR") {
+            return Err("QEMU PNG header refused".into());
+        }
+        let w = u32::from_be_bytes(b.get(16..20).ok_or("PNG width absent")?.try_into().unwrap());
+        let h = u32::from_be_bytes(
+            b.get(20..24)
+                .ok_or("PNG height absent")?
+                .try_into()
+                .unwrap(),
+        );
+        if w < 640 || h < 480 || w > 4096 || h > 4096 {
+            return Err("workspace scanout geometry refused".into());
+        }
+        Ok(path)
+    }
     pub(crate) fn transcript(&self) -> &[Value] {
         &self.transcript
     }
+}
+
+fn ascii_key(byte: u8) -> Result<(String, bool)> {
+    if byte.is_ascii_lowercase() || byte.is_ascii_digit() {
+        return Ok((char::from(byte).to_string(), false));
+    }
+    if byte.is_ascii_uppercase() {
+        return Ok((char::from(byte.to_ascii_lowercase()).to_string(), true));
+    }
+    let (code, shift) = match byte {
+        b' ' => ("spc", false),
+        b'!' => ("1", true),
+        b'@' => ("2", true),
+        b'#' => ("3", true),
+        b'$' => ("4", true),
+        b'%' => ("5", true),
+        b'^' => ("6", true),
+        b'&' => ("7", true),
+        b'*' => ("8", true),
+        b'(' => ("9", true),
+        b')' => ("0", true),
+        b'-' => ("minus", false),
+        b'_' => ("minus", true),
+        b'=' => ("equal", false),
+        b'+' => ("equal", true),
+        b'[' => ("bracket_left", false),
+        b'{' => ("bracket_left", true),
+        b']' => ("bracket_right", false),
+        b'}' => ("bracket_right", true),
+        b'\\' => ("backslash", false),
+        b'|' => ("backslash", true),
+        b';' => ("semicolon", false),
+        b':' => ("semicolon", true),
+        b'\'' => ("apostrophe", false),
+        b'"' => ("apostrophe", true),
+        b'`' => ("grave_accent", false),
+        b'~' => ("grave_accent", true),
+        b',' => ("comma", false),
+        b'<' => ("comma", true),
+        b'.' => ("dot", false),
+        b'>' => ("dot", true),
+        b'/' => ("slash", false),
+        b'?' => ("slash", true),
+        _ => return Err("QMP ASCII stimulus must be one printable US-layout byte".into()),
+    };
+    Ok((code.into(), shift))
 }
 
 /// Exact P6 decoder for QEMU's scanout evidence; no pixel modification/scaling.
@@ -353,6 +553,125 @@ impl Ppm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "workspace")]
+    #[test]
+    fn released_enter_has_exact_ordered_edges_and_failed_ack_has_no_completion_or_followup() {
+        for accepted in [true, false] {
+            let (mut qmp, peer) = pair();
+            let worker = std::thread::spawn(move || {
+                let mut peer = BufReader::new(peer);
+                let mut commands = Vec::new();
+                for index in 0..if accepted { 2 } else { 1 } {
+                    let mut raw = String::new();
+                    peer.read_line(&mut raw).unwrap();
+                    let command: Value = serde_json::from_str(&raw).unwrap();
+                    let returned = if index == 0 && !accepted {
+                        json!({"unexpected":true})
+                    } else {
+                        json!({})
+                    };
+                    let mut reply =
+                        serde_json::to_vec(&json!({"return":returned,"id":command["id"]})).unwrap();
+                    reply.push(b'\n');
+                    peer.get_mut().write_all(&reply).unwrap();
+                    commands.push(command);
+                }
+                if !accepted {
+                    peer.get_mut()
+                        .set_read_timeout(Some(Duration::from_millis(50)))
+                        .unwrap();
+                    let mut raw = String::new();
+                    assert!(peer.read_line(&mut raw).is_err());
+                }
+                commands
+            });
+            let mut complete = false;
+            let result = qmp.released_enter().map(|()| {
+                complete = true;
+            });
+            assert_eq!(result.is_ok(), accepted);
+            assert_eq!(complete, accepted);
+            if complete {
+                qmp.ascii(b'x').unwrap();
+            }
+            let commands = worker.join().unwrap();
+            assert_eq!(commands.len(), if accepted { 2 } else { 1 });
+            assert_eq!(commands[0]["execute"], "input-send-event");
+            assert_eq!(
+                commands[0]["arguments"]["events"],
+                json!([
+                    {"type":"key","data":{"down":true,"key":{"type":"qcode","data":"ret"}}},
+                    {"type":"key","data":{"down":false,"key":{"type":"qcode","data":"ret"}}}
+                ])
+            );
+        }
+    }
+    #[test]
+    fn ascii_reference_transport_has_distinct_printable_make_break_pairs_and_bounded_mouse_events()
+    {
+        let mut distinct = std::collections::BTreeSet::new();
+        for byte in 0..=255 {
+            let mapped = ascii_key(byte);
+            assert_eq!(mapped.is_ok(), (0x20..=0x7e).contains(&byte));
+            if let Ok(pair) = mapped {
+                assert!(distinct.insert(pair));
+            }
+        }
+        let (mut qmp, peer) = pair();
+        let worker = std::thread::spawn(move || {
+            let mut peer = BufReader::new(peer);
+            let mut commands = Vec::new();
+            for _ in 0..5 {
+                let mut raw = String::new();
+                peer.read_line(&mut raw).unwrap();
+                let command: Value = serde_json::from_str(&raw).unwrap();
+                let mut reply =
+                    serde_json::to_vec(&json!({"return":{},"id":command["id"]})).unwrap();
+                reply.push(b'\n');
+                peer.get_mut().write_all(&reply).unwrap();
+                commands.push(command);
+            }
+            commands
+        });
+        qmp.ascii(b'A').unwrap();
+        qmp.ascii(b'?').unwrap();
+        qmp.ascii(b'a').unwrap();
+        qmp.relative(-100, 52).unwrap();
+        qmp.left_button(true).unwrap();
+        let count = qmp.transcript().len();
+        assert!(qmp.ascii(b'\n').is_err());
+        assert!(qmp.relative(128, 0).is_err());
+        assert!(qmp.relative(0, 0).is_err());
+        assert_eq!(qmp.transcript().len(), count);
+        let commands = worker.join().unwrap();
+        assert_eq!(
+            commands[0]["arguments"]["events"][0]["data"]["key"]["data"],
+            "shift"
+        );
+        assert_eq!(
+            commands[0]["arguments"]["events"][1]["data"]["key"]["data"],
+            "a"
+        );
+        assert_eq!(
+            commands[0]["arguments"]["events"].as_array().unwrap().len(),
+            4
+        );
+        assert_eq!(
+            commands[1]["arguments"]["events"][1]["data"]["key"]["data"],
+            "slash"
+        );
+        assert_eq!(
+            commands[2]["arguments"]["events"].as_array().unwrap().len(),
+            2
+        );
+        assert_eq!(commands[3]["arguments"]["events"][0]["data"]["axis"], "x");
+        assert_eq!(commands[3]["arguments"]["events"][0]["data"]["value"], -100);
+        assert_eq!(commands[4]["arguments"]["events"][0]["type"], "btn");
+        assert_eq!(
+            commands[4]["arguments"]["events"][0]["data"]["button"],
+            "left"
+        );
+    }
     fn pair() -> (Qmp, UnixStream) {
         let (client, server) = UnixStream::pair().unwrap();
         (
@@ -367,6 +686,92 @@ mod tests {
             },
             server,
         )
+    }
+    #[test]
+    fn verified_prelaunch_requires_both_actual_states_and_closed_cont_ack() {
+        for (replies, expected) in [
+            (
+                vec![
+                    json!({"status":"prelaunch","running":false}),
+                    json!({}),
+                    json!({"status":"running","running":true}),
+                ],
+                true,
+            ),
+            (vec![json!({"status":"paused","running":false})], false),
+            (vec![json!({"status":"prelaunch","running":true})], false),
+            (
+                vec![
+                    json!({"status":"prelaunch","running":false}),
+                    json!({"unexpected":true}),
+                ],
+                false,
+            ),
+            (
+                vec![
+                    json!({"status":"prelaunch","running":false}),
+                    json!({}),
+                    json!({"status":"prelaunch","running":false}),
+                ],
+                false,
+            ),
+        ] {
+            let (mut qmp, mut server) = pair();
+            let worker = std::thread::spawn(move || {
+                let mut reader = BufReader::new(server.try_clone().unwrap());
+                for (index, reply) in replies.into_iter().enumerate() {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    let request: Value = serde_json::from_str(&line).unwrap();
+                    assert_eq!(
+                        request["execute"],
+                        if index == 1 { "cont" } else { "query-status" }
+                    );
+                    writeln!(server, "{}", json!({"return":reply,"id":request["id"]})).unwrap();
+                }
+            });
+            assert_eq!(qmp.start_verified_prelaunch().is_ok(), expected);
+            worker.join().unwrap();
+        }
+    }
+    #[test]
+    fn acquisition_cold_disconnects_only_fixed_backend_before_first_cont() {
+        for (link_reply, good) in [(json!({}), true), (json!({"ignored":true}), false)] {
+            let (mut qmp, mut server) = pair();
+            let worker = std::thread::spawn(move || {
+                let mut reader = BufReader::new(server.try_clone().unwrap());
+                let commands = if good { 4 } else { 2 };
+                for index in 0..commands {
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    let request: Value = serde_json::from_str(&line).unwrap();
+                    let (name, args, reply) = match index {
+                        0 => (
+                            "query-status",
+                            json!({}),
+                            json!({"status":"prelaunch","running":false}),
+                        ),
+                        1 => (
+                            "set_link",
+                            json!({"name":"evnet","up":false}),
+                            link_reply.clone(),
+                        ),
+                        2 => ("cont", json!({}), json!({})),
+                        _ => (
+                            "query-status",
+                            json!({}),
+                            json!({"status":"running","running":true}),
+                        ),
+                    };
+                    assert_eq!(request["execute"], name);
+                    assert_eq!(request["arguments"], args);
+                    writeln!(server, "{}", json!({"return":reply,"id":request["id"]})).unwrap();
+                }
+            });
+            assert_eq!(qmp.start_acquisition_cold_prelaunch().is_ok(), good);
+            assert_eq!(qmp.transcript.len(), if good { 8 } else { 4 });
+            worker.join().unwrap();
+        }
     }
     #[test]
     fn owned_long_evidence_path_connects_without_an_external_socket_alias() {
@@ -399,6 +804,38 @@ mod tests {
         let qmp = Qmp::connect(&directory, Instant::now() + Duration::from_secs(2)).unwrap();
         assert_eq!(qmp.transcript.len(), 3);
         server.join().unwrap();
+    }
+    #[test]
+    fn usernet_is_one_readonly_command_and_preserves_exact_bounded_table() {
+        for (reply, good) in [
+            (
+                json!("Hub -1 (evnet):\r\n TCP[TIME_WAIT] 10.0.2.15:49152\r\n"),
+                true,
+            ),
+            (json!({}), false),
+            (json!("x".repeat(65537)), false),
+        ] {
+            let (mut qmp, mut server) = pair();
+            let expected = reply.clone();
+            let peer = std::thread::spawn(move || {
+                let mut line = String::new();
+                BufReader::new(server.try_clone().unwrap())
+                    .read_line(&mut line)
+                    .unwrap();
+                let request: Value = serde_json::from_str(&line).unwrap();
+                assert_eq!(request["execute"], "human-monitor-command");
+                assert_eq!(request["arguments"], json!({"command-line":"info usernet"}));
+                writeln!(server, "{}", json!({"return":reply,"id":request["id"]})).unwrap();
+            });
+            let result = qmp.usernet();
+            if good {
+                assert_eq!(result.unwrap(), expected.as_str().unwrap());
+            } else {
+                assert!(result.is_err());
+            }
+            assert_eq!(qmp.transcript.len(), 2);
+            peer.join().unwrap();
+        }
     }
     #[test]
     fn command_uses_real_sequence_and_tolerates_bounded_events() {

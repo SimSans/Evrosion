@@ -71,6 +71,7 @@ impl State {
                         ev_store::LastFailureReason::MissingProgress => 2,
                         ev_store::LastFailureReason::StorageFailure => 3,
                         ev_store::LastFailureReason::AttemptBudgetExhausted => 4,
+                        ev_store::LastFailureReason::CriticalComponentFault => 5,
                     },
                     supervisor_image: f.supervisor_image,
                     process_stamp: f.process_stamp,
@@ -134,7 +135,20 @@ impl State {
 /// causes formatting, data mutation, retry or a synthetic KnownGood/health claim.
 #[inline(never)]
 pub fn inspect<D: SectorIo>(device: D, deadline: u64) -> (D, State) {
-    let mut store = match Store::open(ReadOnly(device), deadline) {
+    inspect_open(Store::open(ReadOnly(device), deadline), deadline)
+}
+#[cfg(feature = "native-network")]
+pub(crate) fn inspect_downloaded_v2<D: SectorIo>(device: D, deadline: u64) -> (D, State) {
+    inspect_open(
+        Store::open_downloaded_v2(ReadOnly(device), deadline),
+        deadline,
+    )
+}
+fn inspect_open<D: SectorIo>(
+    opened: Result<Store<ReadOnly<D>>, ev_store::RejectedDevice<ReadOnly<D>>>,
+    deadline: u64,
+) -> (D, State) {
+    let mut store = match opened {
         Ok(store) => store,
         Err(rejected) => {
             let state = match rejected.error {

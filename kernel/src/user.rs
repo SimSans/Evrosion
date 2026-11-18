@@ -16,6 +16,9 @@ pub enum UserPermission {
     ReadWrite,
     ReadExecute,
 }
+#[cfg(all(test, feature = "workspace-authority"))]
+#[path = "user_io_buffer_tests.rs"]
+mod io_buffer_tests;
 
 struct OwnedPage {
     frame: PhysicalFrame,
@@ -30,7 +33,101 @@ pub struct PrivateUserMappings<const N: usize> {
     // frame iteration/retirement order without 512 owned-frame slots per root.
     pages: [Option<OwnedPage>; N],
 }
+/// A fixed sector span borrowed from actual affine private RAM claims. Shared
+/// mappings have no claim in this ledger and cannot become an I/O buffer.
+#[cfg(feature = "workspace-authority")]
+pub struct PrivateIoBuffer<'a> {
+    parts: [Option<(&'a PhysicalFrame, usize, usize)>; 2],
+}
+/// Exact three-level path to the owned private PT for this2MiB window. The
+/// physical HAL reads these entries from retained PML4/PDPT/PD frames at IF0.
+#[cfg(feature = "workspace-authority")]
+pub fn private_io_walk(tables: &[PhysicalFrame; 4], actual: [u64; 3]) -> Result<(), MapError> {
+    for (entry, child) in actual.into_iter().zip(&tables[1..]) {
+        if entry & !((1 << 5) | (1 << 6)) != child.start() | PRESENT | WRITABLE | USER {
+            return Err(MapError::Address);
+        }
+    }
+    Ok(())
+}
+#[cfg(feature = "workspace-authority")]
+impl PrivateIoBuffer<'_> {
+    pub fn frames(&self) -> impl Iterator<Item = &PhysicalFrame> {
+        self.parts.iter().flatten().map(|p| p.0)
+    }
+    pub fn read<R: crate::memory_extent::RamAccess>(
+        &self,
+        ram: &mut R,
+        bytes: &mut [u8; 512],
+    ) -> Result<(), R::Error> {
+        let mut at = 0;
+        for &(frame, offset, count) in self.parts.iter().flatten() {
+            for i in 0..count {
+                bytes[at] = ram.read(frame, offset + i)?;
+                at += 1;
+            }
+        }
+        Ok(())
+    }
+    pub fn write<R: crate::memory_extent::RamAccess>(
+        &self,
+        ram: &mut R,
+        bytes: &[u8; 512],
+    ) -> Result<(), R::Error> {
+        let mut at = 0;
+        for &(frame, offset, count) in self.parts.iter().flatten() {
+            for i in 0..count {
+                ram.write(frame, offset + i, bytes[at])?;
+                at += 1;
+            }
+        }
+        Ok(())
+    }
+}
 impl<const N: usize> PrivateUserMappings<N> {
+    /// Preflight the entire byte-addressed sector before any copy or port I/O.
+    /// The callback reads actual retained hardware PTEs; A/D changes alone are
+    /// ignored. Both pages must match exclusive private RW/NX ownership exactly.
+    #[cfg(feature = "workspace-authority")]
+    pub fn io_buffer(
+        &self,
+        address: u64,
+        mut actual: impl FnMut(usize) -> Result<u64, MapError>,
+    ) -> Result<PrivateIoBuffer<'_>, MapError> {
+        let offset = address.checked_sub(self.base).ok_or(MapError::Address)?;
+        let end = offset.checked_add(512).ok_or(MapError::Address)?;
+        if end > ENTRIES as u64 * FRAME_SIZE {
+            return Err(MapError::Address);
+        }
+        let first = (offset / FRAME_SIZE) as usize;
+        let last = ((end - 1) / FRAME_SIZE) as usize;
+        let mut parts = [None; 2];
+        let mut remaining = 512;
+        for index in first..=last {
+            let page = self
+                .pages
+                .iter()
+                .flatten()
+                .find(|p| usize::from(p.index) == index)
+                .ok_or(MapError::Missing)?;
+            if page.permission != UserPermission::ReadWrite {
+                return Err(MapError::Address);
+            }
+            let expected = page.frame.start() | PRESENT | USER | WRITABLE | NO_EXECUTE;
+            if actual(index)? & !((1 << 5) | (1 << 6)) != expected {
+                return Err(MapError::Address);
+            }
+            let byte = if index == first {
+                (offset % FRAME_SIZE) as usize
+            } else {
+                0
+            };
+            let count = remaining.min(FRAME_SIZE as usize - byte);
+            parts[index - first] = Some((&page.frame, byte, count));
+            remaining -= count;
+        }
+        Ok(PrivateIoBuffer { parts })
+    }
     pub fn new(slot: usize) -> Result<Self, MapError> {
         if !(1..256).contains(&slot) || N == 0 || N > ENTRIES {
             return Err(MapError::Address);

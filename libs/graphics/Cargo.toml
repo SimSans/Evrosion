@@ -1,10 +1,15 @@
 [package]
+license = "Apache-2.0"
 name="ev-graphics"
 version.workspace=true
 edition.workspace=true
 publish.workspace=true
-license = "Apache-2.0"
+[dependencies]
+ev-userspace-contract={path="../userspace-contract"}
 [lints.rust]
 unsafe_code="forbid"
 [lints.clippy]
 all="warn"
+
+[features]
+owner-ui=[]

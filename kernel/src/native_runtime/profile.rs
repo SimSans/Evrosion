@@ -15,9 +15,14 @@ pub(crate) struct Slot {
     pub continuations: u64,
     pub charged_cpu_ticks: u64,
 }
+pub(crate) const SLOTS: usize = if cfg!(feature = "test-m6-network") {
+    9
+} else {
+    7
+};
 pub(crate) struct Profile {
     pub started: u64,
-    pub slots: [Slot; 7],
+    pub slots: [Slot; SLOTS],
 }
 impl Profile {
     pub fn new(started: u64) -> Self {
@@ -45,8 +50,12 @@ impl Profile {
             128 => {
                 slot.syscalls += 1;
                 match number {
-                    ev_userspace_contract::syscall::PORT_INPUT => slot.port_in += 1,
-                    ev_userspace_contract::syscall::PORT_OUTPUT => slot.port_out += 1,
+                    ev_userspace_contract::syscall::PORT_INPUT
+                    | ev_userspace_contract::syscall::PORT_INPUT_WORDS4
+                    | ev_userspace_contract::syscall::PORT_INPUT_BYTES4 => slot.port_in += 1,
+                    ev_userspace_contract::syscall::PORT_OUTPUT
+                    | ev_userspace_contract::syscall::PORT_OUTPUT_WORDS4
+                    | ev_userspace_contract::syscall::PORT_OUTPUT_BYTES4 => slot.port_out += 1,
                     ev_userspace_contract::syscall::YIELD => slot.yields += 1,
                     _ => {}
                 }

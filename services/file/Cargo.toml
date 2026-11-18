@@ -1,9 +1,9 @@
 [package]
+license.workspace = true
 name="ev-file-service"
 version.workspace=true
 edition.workspace=true
 publish.workspace=true
-license.workspace = true
 [[bin]]
 name="ev-file-service"
 path="src/main.rs"
@@ -11,6 +11,7 @@ required-features=["executable"]
 test=false
 bench=false
 [features]
+native-session=["desktop"]
 executable=[]
 server=["executable","dep:ev-block-service","ev-block-service/test-store-client"]
 app=["executable"]

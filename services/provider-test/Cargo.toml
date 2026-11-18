@@ -1,10 +1,10 @@
 [package]
+license.workspace = true
 name = "ev-provider-test"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
 
-license.workspace = true
 [[bin]]
 name = "ev-provider-test"
 path = "src/main.rs"

@@ -131,8 +131,12 @@ macro_rules! ev_entry_point {
                 }
                 let start = core::ptr::addr_of!(__ev_kernel_start) as u64;
                 let end = core::ptr::addr_of!(__ev_kernel_end) as u64;
-                let boot = backend::adapt(raw, start, end);
-                $handler(boot)
+                let mut boot = backend::adapt(raw, start, end);
+                // Keep the one validated handoff here. The Internal handler
+                // borrows it and may transfer its non-Clone memory map once;
+                // passing the large structure by value retains extra copies
+                // down the entire Kernel call chain.
+                $handler(boot.as_mut().map_err(|error| *error))
             }
         }
     };

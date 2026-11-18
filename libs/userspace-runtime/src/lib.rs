@@ -8,6 +8,7 @@ pub use ev_userspace_contract::syscall;
 
 pub mod cap_echo;
 pub mod discipline;
+pub mod execution;
 pub mod rpc;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

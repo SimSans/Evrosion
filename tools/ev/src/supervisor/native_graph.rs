@@ -61,7 +61,7 @@ fn admit(bytes: &[u8], child: Child) -> Result<(Image, u64), String> {
         plan.required_frames(),
     ))
 }
-fn admit_root_stack(plan: &ev_kernel::executable::Image<'_>) -> Result<(), String> {
+pub(super) fn admit_root_stack(plan: &ev_kernel::executable::Image<'_>) -> Result<(), String> {
     let first = native::ROOT_STACK_FIRST_PAGE;
     let end = first + native::ROOT_STACK_PAGES;
     for guard in [first - 1, end, 507, 508] {
@@ -110,12 +110,15 @@ fn base_catalogue(
     base::encode(make(graph)).map_err(|e| format!("Native measured base: {e:?}"))
 }
 
+#[allow(clippy::too_many_arguments)] // Explicit measured duration profile is not hidden in build flags.
 pub(crate) fn extend_native_graph(
     root: &Path,
     directory: &Path,
     toolchain: &Toolchain,
     recipe_input: &str,
     boot_mode: native::catalogue::BootMode,
+    session: bool,
+    document: bool,
     artifacts: &mut Vec<Artifact>,
     bundle: &Path,
 ) -> Result<(), String> {
@@ -161,7 +164,7 @@ pub(crate) fn extend_native_graph(
         (
             Child::Block,
             "ev-block-service",
-            "native-driver",
+            "native-driver,pio-word4",
             "m5-native-block",
             "M5_NATIVE_BLOCK",
         ),
@@ -180,6 +183,17 @@ pub(crate) fn extend_native_graph(
             "M5_NATIVE_DISPLAY",
         ),
     ] {
+        let selected_feature = if session {
+            format!("{feature},native-session")
+        } else {
+            feature.to_owned()
+        };
+        let selected_feature = if document && matches!(child, Child::Shell | Child::App) {
+            format!("{selected_feature},document-workflow")
+        } else {
+            selected_feature
+        };
+        let feature = selected_feature.as_str();
         let bytes = build_actor(
             root,
             directory,
@@ -212,14 +226,27 @@ pub(crate) fn extend_native_graph(
         &tool,
         ActorBuild {
             package: "ev-native-hello",
-            feature: "native-b",
+            feature: if document {
+                "native-b,document-workflow"
+            } else if session {
+                "native-b,native-session"
+            } else {
+                "native-b"
+            },
             name: "m5-native-app-b",
         },
         artifacts,
     )?;
     let (b_row, b_frames) = admit(&b, Child::App)?;
-    let a = crate::native_package::native_hello(&app_a.ok_or("Native A image missing")?, input)?;
-    let b = crate::native_package::native_hello(&b, input)?;
+    let package = if document {
+        crate::native_package::document_hello
+    } else if session {
+        crate::native_package::session_hello
+    } else {
+        crate::native_package::native_hello
+    };
+    let a = package(&app_a.ok_or("Native A image missing")?, input)?;
+    let b = package(&b, input)?;
     if a.app != b.app
         || a.executable == b.executable
         || a.package == b.package
@@ -252,7 +279,13 @@ pub(crate) fn extend_native_graph(
         &tool,
         ActorBuild {
             package: "ev-desktop",
-            feature: "native-bad-shell",
+            feature: if document {
+                "native-bad-shell,document-workflow"
+            } else if session {
+                "native-bad-shell,native-session"
+            } else {
+                "native-bad-shell"
+            },
             name: "m5-native-bad-shell",
         },
         artifacts,
@@ -275,7 +308,13 @@ pub(crate) fn extend_native_graph(
         &tool,
         ActorBuild {
             package: "ev-root-supervisor",
-            feature: "native-root",
+            feature: if document {
+                "document-workflow"
+            } else if session {
+                "native-root,native-session"
+            } else {
+                "native-root"
+            },
             name: "m5-native-root",
         },
         artifacts,
@@ -324,9 +363,12 @@ pub(crate) fn extend_native_graph(
     };
     let draft = catalogue::encode(description([1; 32]))
         .map_err(|e| format!("Native catalogue draft: {e:?}"))?;
-    let layout = ev_root_supervisor::native_plan::layout_measurement(
-        &Catalogue::decode(&draft).map_err(|e| format!("Native draft readback: {e:?}"))?,
-    );
+    let parsed = Catalogue::decode(&draft).map_err(|e| format!("Native draft readback: {e:?}"))?;
+    let layout = if session {
+        ev_root_supervisor::native_plan::session_layout_measurement(&parsed)
+    } else {
+        ev_root_supervisor::native_plan::layout_measurement(&parsed)
+    };
     let bytes =
         catalogue::encode(description(layout)).map_err(|e| format!("Native catalogue: {e:?}"))?;
     let catalogue_sha = Sha256::digest(bytes).into();

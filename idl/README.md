@@ -33,5 +33,17 @@ The same schema declares a bounded non-reentrant synchronous method. Generated
 connects it to kernel-protected calls and scheduler waits. Timeout ends the wait
 while late execution remains tracked until acknowledgement or verified death.
 Actual Root/Echo boot proofs include expiry, discarded late responses and stale
-completion rejection. General capability-bearing RPC, generated lock checks and
-the full AF-IPC-001–010 gate remain M2 work.
+completion rejection. Bounded M2 acceptance
+also records capability-bearing RPC and AF-IPC-001–010 coverage. This bootstrap
+generator remains a deliberately small subset; broader public IDL/contract and
+compatibility coverage must not be inferred from that proof.
+
+M8 adds separate Internal [workspace@1](ev.internal.workspace.v1.json) and
+[File@2](ev.internal.file.v2.json) controls. They preserve File@1 bytes, describe
+dynamic generation-bearing objects and namespace operations, and carry bounded
+larger-file staging/chunk metadata over separately owned MemoryObject loans.
+Actual receive routes and authenticated callers supply authority; wire IDs and
+names do not. [ADR-0105](../architecture/adr/ADR-0105-versioned-workspace-and-large-file-contracts.md)
+defines exact revision/hash confirmation, uncertainty, scoped operation/transfer
+IDs, canonical encoding and actual adapter obligations. These generated host
+codecs do not establish actual RPC/grant/storage/VM acceptance or a Stable SDK.

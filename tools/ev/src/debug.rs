@@ -39,11 +39,20 @@ pub fn run(
                 .replace('"', "\\\"")
         )
     };
-    let mut commands = format!(
-        "set pagination off\nset confirm off\nset remotetimeout 10\nset tcp connect-timeout 10\nset tcp auto-retry on\nset substitute-path /evrosion {}\nfile {}\ntarget remote 127.0.0.1:{port}\nhbreak evrosion_kernel_entry\n",
-        quote(root),
+    let mut commands = "set pagination off\nset confirm off\nset remotetimeout 10\nset tcp connect-timeout 10\nset tcp auto-retry on\n".to_owned();
+    let toolchain = crate::toolchain::Toolchain::load(root)?;
+    let probe = Command::new("rustup");
+    for map in crate::build::reproducible::discover_maps(root, &toolchain.channel, &probe)? {
+        commands.push_str(&format!(
+            "set substitute-path {} {}\n",
+            quote(Path::new(map.to)),
+            quote(&map.from)
+        ));
+    }
+    commands.push_str(&format!(
+        "file {}\ntarget remote 127.0.0.1:{port}\nhbreak evrosion_kernel_entry\n",
         quote(kernel)
-    );
+    ));
     if batch {
         commands.push_str("continue\nprintf \"EV_GDB_ENTRY_PC=%p\\n\", $pc\ninfo line *$pc\nbt\ndelete breakpoints\n");
         if panic {

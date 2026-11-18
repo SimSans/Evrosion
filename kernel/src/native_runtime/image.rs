@@ -1,7 +1,12 @@
 //! Outer native Root owner. Actual package mapping claims stay outside the
 //! bounded UserRoot/LoadedImage metadata and cannot be retired while leased.
 use super::backing::PackageBank;
+#[cfg(not(feature = "test-m6-network"))]
 use crate::executable_runtime::{NativeLoadedImage as LoadedImage, NativeLoadedRoot as LoadedRoot};
+#[cfg(feature = "test-m6-network")]
+use crate::executable_runtime::{
+    NetworkLoadedImage as LoadedImage, NetworkLoadedRoot as LoadedRoot,
+};
 use ev_kernel::{
     capability::Authority,
     executable::{Image, LayoutReservation},
@@ -14,7 +19,10 @@ use ev_kernel::{
     surface_layout::{PAGES, Window},
     user::USER,
 };
+#[cfg(not(feature = "test-m6-network"))]
 const NATIVE_PRIVATE_PAGES: usize = ev_kernel::executable::NATIVE_ROOT_MAX_PRIVATE_PAGES;
+#[cfg(feature = "test-m6-network")]
+const NATIVE_PRIVATE_PAGES: usize = ev_kernel::executable::ROOT_V4_MAX_PRIVATE_PAGES;
 const AD: u64 = (1 << 5) | (1 << 6);
 
 pub(crate) enum Error {
@@ -78,7 +86,7 @@ impl NativeRootImage {
         &mut self,
         plan: &Image<'_>,
         metadata: Metadata,
-        startup: &[u8; ev_userspace_contract::root_v2::native::SIZE],
+        startup: &[u8; crate::desktop_runtime::profile::root_abi::SIZE],
         offset: u64,
         bits: u8,
         original: u64,
@@ -95,9 +103,15 @@ impl NativeRootImage {
             window.verify_private(plan).map_err(|_| Error::Layout)?;
         }
         // SAFETY: exact named profile3 parser; all overlap checks precede RAM allocation.
-        self.loaded =
-            unsafe { LoadedImage::load_native_root(offset, bits, original, plan, startup, frames) }
-                .map_err(Error::Root)?;
+        #[cfg(not(feature = "test-m6-network"))]
+        // SAFETY: exact Native3 typed startup and inactive ownership above.
+        let loaded =
+            unsafe { LoadedImage::load_native_root(offset, bits, original, plan, startup, frames) };
+        #[cfg(feature = "test-m6-network")]
+        // SAFETY: exact V4 typed startup and inactive ownership above.
+        let loaded =
+            unsafe { LoadedImage::load_root_v4(offset, bits, original, plan, startup, frames) };
+        self.loaded = loaded.map_err(Error::Root)?;
         self.metadata = Some(metadata);
         self.private_frames = plan.required_frames();
         Ok(())

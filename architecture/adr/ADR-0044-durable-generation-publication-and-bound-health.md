@@ -101,7 +101,7 @@ rollback must actually run A again, preserve B's last-failure capsule and keep
 the changed mutable data. A final read-only boot must leave every disk byte
 unchanged.
 
-The separate [missing-progress execution](../../docs/release/0.1-preview.md#validation-and-provenance)
+The separate missing-progress execution (local engineering archive)
 is PASS across five fresh VMs using one retained kernel/catalogue and a distinct
 measured silent B image. B emits generic Ready, remains alive without
 CriticalReady, and is observed live from tick1628 through1710 before its ordinary
@@ -116,8 +116,8 @@ the runners reject relabeling one outcome as the other.
 Generation execution has its own finite 2048-tick/2048-CPU-per-actor development
 profile, while the earlier block and journal profiles retain 1024. The parent
 keeps its 4096 aggregate CPU budget, and the transition bound stays 100000. This
-is justified by the preserved [first deadline failure](../../docs/release/0.1-preview.md#validation-and-provenance)
-and [diagnostic execution](../../docs/release/0.1-preview.md#validation-and-provenance):
+is justified by the preserved first deadline failure (local engineering archive)
+and diagnostic execution (local engineering archive):
 manual recovery was actively publishing call91 with 26 completed mutations;
 the previous reply was eight ticks before the inherited stop. The driver alone
 had consumed 799 CPU ticks. A larger elapsed bound without adequate child CPU
@@ -133,7 +133,7 @@ reuse, monotonic exhaustion, probation, matching admission and durable failure
 retention. Physical acceptance additionally requires the current-format
 fifteen-VM interruption suite and five-VM A/B suite, independent read-only disk
 inspection, exact component measurements and complete resource retirement.
-See [M3 progress](../../docs/release/0.1-preview.md#validation-and-provenance) for executed evidence.
+See M3 progress for executed evidence.
 
 MissingProgress uses the same 2048-tick/per-actor CPU profile and 100000-transition
 bound, with matching actual child/ancestor accounting. Phase elapsed totals are

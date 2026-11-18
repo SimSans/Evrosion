@@ -1,8 +1,7 @@
 # Invariant register
 
 Extracted from the [Pre-M0 implementation package](plans/roadmap/PRE-M0-implementation-package-v1.md) on 2026-09-20.
-This is a public technical edition of the canonical record. Published source
-hashes and original lineage are recorded in the architecture source map.
+This is the working canonical file; the imported package remains unchanged.
 
 ### Authority and ownership
 
@@ -76,11 +75,11 @@ independent-host; see EXC-0002), repeated machine-detected boots, deliberate
 panic with build identity and symbolization, and validated boot information.
 Authority, kernel, IPC, resource, lifecycle, evolution and user-guarantee proofs
 remain pending until their milestones. Results are in
-[M0 readiness](../docs/release/0.1-preview.md#validation-and-provenance); coverage is tracked in
+M0 readiness; coverage is tracked in
 [architecture tests](../tests/architecture/README.md).
 
 M1-01 adds bounded, safe-Rust bootstrap frame selection and real boot checks
-([progress and limits](../docs/release/0.1-preview.md#validation-and-provenance)), supporting INV-KERN-004,
+(progress and limits), supporting INV-KERN-004,
 INV-KERN-005 and the boot handoff portion of INV-M0-004. This is partial kernel
 mechanism coverage, not a PASS for user isolation, capabilities or fault containment.
 
@@ -93,7 +92,7 @@ authority/isolation proofs remain pending until user roots and exception handlin
 M1-06b/c now adds bounded BSP hardware coverage for INV-KERN-003 and scalar
 INV-AUTH-002/003 enforcement: private integer user contexts exchange attenuated
 capabilities, survive ordinary peer faults, and block/wake on arrival or an
-absolute deadline. [Progress and limits](../docs/release/0.1-preview.md#validation-and-provenance) links
+absolute deadline. Progress and limits links
 executed evidence. This does not establish arbitrary-process isolation, physical
 resource reclamation, SMP scheduling, supervisor fault subscriptions or full
 M1 acceptance. The prior historical slice scopes remain as originally recorded.
@@ -102,7 +101,7 @@ M1 acceptance. The prior historical slice scopes remain as originally recorded.
 M1 aggregate acceptance now covers the bounded kernel mechanisms above, including
 physical reclamation, capability-routed fault diagnostics, runtime allocation,
 x87/SSE isolation and hierarchical resource attribution. AF-003/005/009 have
-executed host and CPL3 evidence. [M1 readiness](../docs/release/0.1-preview.md#validation-and-provenance)
+executed host and CPL3 evidence. M1 readiness
 records the final gate and explicit Internal/BSP limits; earlier paragraphs retain
 their historical slice scope. BAC/restart, synchronous RPC and later subsystem
 invariants remain pending their own proofs.
@@ -110,7 +109,7 @@ invariants remain pending their own proofs.
 
 Current bounded M2–M5 execution coverage is reconciled in [M2](M2_ACCEPTANCE.md),
 [M3](M3_ACCEPTANCE.md), [M4](M4_ACCEPTANCE.md) and [M5/0.1](M5_ACCEPTANCE.md).
-The [final current-code regression and readiness](../docs/release/0.1-preview.md#validation-and-provenance)
+The final current-code regression and readiness
 retain actual authority/IPC/retirement, durable-cut and recovery negatives plus
 native lifecycle, exact selected grants, App/Shell containment, diagnostics and
 provider replacement. This does not promote every general invariant to universal
@@ -118,3 +117,11 @@ runtime coverage: Internal/BSP/non-DMA/fixed-owner limits and model-only branche
 remain explicit. INV-M0-001 passes the two-clean-build comparison; measured
 cross-context artifact differences remain under the active nonhermetic scope,
 without waiving that comparison or claiming production-grade reproduction.
+
+The later M6 readiness adds bounded reference
+network/time/entropy, authenticated downloaded execution, signed recovery and
+actual two-Linux whole-target reproduction for snapshot14. Earlier cross-context
+differences retain their historical source scope. General invariant coverage,
+hermetic production builds, physical hardware, full owner-layer/accessibility UX
+and arbitrary common-root reconstruction remain separate obligations. The
+[stabilization plan](M6_STABILIZATION_PLAN.md) qualifies changed source separately.

@@ -16,7 +16,39 @@ use std::{
 
 const OUTPUT_LIMIT: u64 = 1024 * 1024;
 
-struct ChildGuard(Child);
+/// Only the explicit V4 Recovery workflows use the independent Native3
+/// footer with nine retained profile slots. Ordinary network grammar stays strict.
+pub(crate) fn network_recovery_fixture(fixture: Option<&str>) -> bool {
+    matches!(
+        fixture,
+        Some("m6-network-recovery" | "m6-network-recovery-owner" | "m7-document-recovery")
+    )
+}
+pub(crate) fn check_network_fixture(
+    fixture: Option<&str>,
+    serial: &[u8],
+    build: &str,
+    status: Option<i32>,
+) -> Result<()> {
+    if network_recovery_fixture(fixture) {
+        boot_protocol::check_network_recovery(serial, build, status)
+    } else {
+        boot_protocol::check_network(serial, build, status)
+    }
+}
+pub(crate) fn record_network_fixture(
+    fixture: Option<&str>,
+    serial: &[u8],
+    build: &str,
+) -> Result<crate::native_protocol::Record> {
+    if network_recovery_fixture(fixture) {
+        crate::native3_protocol::record_network_recovery(serial, build)
+    } else {
+        crate::native_protocol::record_network(serial, build)
+    }
+}
+
+pub(crate) struct ChildGuard(pub(crate) Child);
 impl Drop for ChildGuard {
     fn drop(&mut self) {
         // Always reap our direct child, including on timeout and I/O failures.
@@ -32,7 +64,39 @@ pub fn supervised(command: &mut Command, logs: &[&Path], timeout: Duration) -> R
     supervised_until(command, logs, timeout, None)
 }
 
-fn supervised_until(
+/// Manual host supervision has no automatic lifetime expiry or input stimuli.
+/// Kernel operation deadlines and Job windows remain independently enforced.
+fn supervised_session(
+    command: &mut Command,
+    logs: &[&Path],
+    clock: Option<(&mut crate::vm_clock::Prepared, &Path)>,
+) -> Result<ExitStatus> {
+    let mut child = ChildGuard(
+        command
+            .stdin(Stdio::inherit())
+            .spawn()
+            .map_err(|e| e.to_string())?,
+    );
+    if let Some((clock, run)) = clock {
+        clock.verify_and_start(&mut child.0, run)?;
+    }
+    loop {
+        for path in logs {
+            if fs::metadata(path).map_err(|e| e.to_string())?.len() > OUTPUT_LIMIT {
+                return Err(format!(
+                    "session diagnostic retention bound exceeded: {}",
+                    path.display()
+                ));
+            }
+        }
+        if let Some(status) = child.0.try_wait().map_err(|e| e.to_string())? {
+            return Ok(status);
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+
+pub(crate) fn supervised_until(
     command: &mut Command,
     logs: &[&Path],
     timeout: Duration,
@@ -256,6 +320,92 @@ pub(crate) struct NativeBoot<'a> {
     pub disk: &'a crate::storage::Disk,
     pub phase: crate::native_io::Phase,
 }
+pub(crate) struct DocumentBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub phase: Option<crate::document_io::Phase>,
+}
+/// Explicit finite failure qualification on the ordinary offline document guest.
+/// Only Cut expects SIGKILL; Cold retains the normal completed-session grammar.
+pub(crate) struct DocumentInterruptionBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub phase: crate::document_interruption::Phase,
+}
+/// Explicit finite graphical qualification; the manual launch never selects it.
+pub(crate) struct DocumentGuideBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub phase: crate::document_guide::Phase,
+}
+pub(crate) struct CompatibilityBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub phase: crate::document_compatibility::Phase,
+}
+pub(crate) struct DocumentAcquisitionBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub phase: crate::acquisition_io::Phase,
+}
+pub(crate) struct DocumentUpdateBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub phase: crate::system_health_io::Phase,
+}
+pub(crate) struct SessionBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub phase: Option<crate::session_io::Phase>,
+}
+pub(crate) struct OwnerNetworkBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub mode: crate::network_mode::Mode,
+}
+/// Separate finite owner-control qualification; manual launches never select it.
+pub(crate) struct OwnerUiProbeBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub mode: crate::network_mode::Mode,
+    pub phase: crate::owner_ui_io::Phase,
+}
+
+pub(crate) struct NetworkBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub probe: Option<crate::network_io::Goal>,
+}
+pub(crate) struct NetworkNegativeBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub goal: crate::network_negative_contract::Goal,
+}
+
+pub(crate) struct SystemHealthBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub phase: crate::system_health_io::Phase,
+}
+
+pub(crate) struct AcquisitionBoot<'a> {
+    pub manifest: &'a Path,
+    pub evidence: &'a Path,
+    pub disk: &'a crate::storage::Disk,
+    pub phase: crate::acquisition_io::Phase,
+}
 pub(crate) struct IpcBenchBoot<'a> {
     pub manifest: &'a Path,
     pub evidence: &'a Path,
@@ -302,10 +452,56 @@ enum Experiment {
     Display,
     Desktop,
     Native(crate::native_io::Phase),
+    Session(Option<crate::session_io::Phase>),
+    Document(Option<crate::document_io::Phase>),
+    DocumentInterruption(crate::document_interruption::Phase),
+    DocumentGuide(crate::document_guide::Phase),
+    Compatibility(crate::document_compatibility::Phase),
+    DocumentAcquisition(crate::acquisition_io::Phase),
+    DocumentUpdate(crate::system_health_io::Phase),
+    Network(Option<crate::network_io::Goal>),
+    Negative(crate::network_negative_contract::Goal),
+    OwnerNetwork(crate::network_mode::Mode),
+    OwnerUiProbe(crate::network_mode::Mode, crate::owner_ui_io::Phase),
+    Acquisition(crate::acquisition_io::Phase),
+    SystemHealth(crate::system_health_io::Phase),
     Native3(crate::native3_io::Phase),
     Provider(crate::provider_protocol::Images),
     IpcBench(crate::ipc_bench_protocol::Images),
 }
+// A relative server bind must itself fit sockaddr_un; the FD-relative
+// client cannot shorten QEMU's bind argument. Retained owner/document sessions
+// and the explicitly selected graphical guide bind in their private run folder.
+fn qmp_placement(
+    root: &Path,
+    directory: &Path,
+    experiment: Option<Experiment>,
+) -> Result<(PathBuf, String)> {
+    let relative = directory
+        .strip_prefix(root)
+        .map_err(|_| "private QMP socket escaped root")?;
+    let (cwd, socket) = if matches!(
+        experiment,
+        Some(
+            Experiment::OwnerNetwork(_)
+                | Experiment::Document(None)
+                | Experiment::DocumentInterruption(_)
+                | Experiment::DocumentGuide(_)
+                | Experiment::Compatibility(_)
+                | Experiment::DocumentAcquisition(_)
+                | Experiment::DocumentUpdate(_)
+        )
+    ) {
+        (directory.to_owned(), PathBuf::from("qmp.sock"))
+    } else {
+        (root.to_owned(), relative.join("qmp.sock"))
+    };
+    Ok((
+        cwd,
+        format!("unix:{},server=on,wait=off", qemu_path(&socket)?),
+    ))
+}
+
 struct SelectedBoot<'a> {
     manifest: &'a Path,
     evidence: &'a Path,
@@ -324,6 +520,17 @@ impl Experiment {
             Self::Display => "m4-display",
             Self::Desktop => "m4-desktop",
             Self::Native(_) => "m5-native",
+            Self::Session(_) => "m6-session",
+            Self::Document(Some(_)) => "m7-document",
+            Self::DocumentInterruption(_) => "m7-document",
+            Self::Document(None) | Self::DocumentGuide(_) => "m7-document-session",
+            Self::Compatibility(_) => "m7-document-network",
+            Self::DocumentAcquisition(_) => "m7-document-network",
+            Self::DocumentUpdate(phase) => phase.mode().document_fixture(),
+            Self::Network(_) | Self::Acquisition(_) => "m6-network",
+            Self::OwnerNetwork(mode) | Self::OwnerUiProbe(mode, _) => mode.owner_fixture(),
+            Self::SystemHealth(phase) => phase.fixture(),
+            Self::Negative(goal) => goal.fixture(),
             Self::Native3(phase) => phase.fixture(),
             Self::Provider(_) => "m5-provider",
             Self::IpcBench(_) => "m5-ipc-bench",
@@ -508,6 +715,315 @@ pub(crate) fn boot_native_presented(
             owner: None,
         }),
         visible,
+    )
+}
+
+pub(crate) fn boot_document(options: &BootOptions, selection: DocumentBoot<'_>) -> Result<()> {
+    if options.cpus != 1 || options.runs != 1 || options.debug || options.expect_panic {
+        return Err("document workflow requires one non-debug single-CPU VM".into());
+    }
+    boot_selected_presented(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::Document(selection.phase),
+            owner: None,
+        }),
+        selection.phase.is_none(),
+    )
+}
+
+pub(crate) fn boot_document_interruption(
+    options: &BootOptions,
+    selection: DocumentInterruptionBoot<'_>,
+) -> Result<()> {
+    if options.cpus != 1 || options.runs != 1 || options.debug || options.expect_panic {
+        return Err("document interruption requires one non-debug single-CPU VM".into());
+    }
+    boot_selected(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::DocumentInterruption(selection.phase),
+            owner: None,
+        }),
+    )
+}
+
+pub(crate) fn boot_document_guide(
+    options: &BootOptions,
+    selection: DocumentGuideBoot<'_>,
+) -> Result<()> {
+    if options.cpus != 1 || options.runs != 1 || options.debug || options.expect_panic {
+        return Err("document guide requires one non-debug single-CPU VM".into());
+    }
+    boot_selected_presented(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::DocumentGuide(selection.phase),
+            owner: None,
+        }),
+        true,
+    )
+}
+
+pub(crate) fn boot_compatibility(
+    options: &BootOptions,
+    selection: CompatibilityBoot<'_>,
+) -> Result<()> {
+    if options.cpus != 1 || options.runs != 1 || options.debug || options.expect_panic {
+        return Err("saved0.2 compatibility requires one non-debug single-CPU VM".into());
+    }
+    boot_selected_presented(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::Compatibility(selection.phase),
+            owner: None,
+        }),
+        false,
+    )
+}
+
+pub(crate) fn boot_document_acquisition(
+    options: &BootOptions,
+    selection: DocumentAcquisitionBoot<'_>,
+) -> Result<()> {
+    if options.cpus != 1
+        || options.runs != 1
+        || options.debug
+        || options.expect_panic
+        || options.timeout_seconds != crate::acquisition_io::TIMEOUT_SECONDS
+    {
+        return Err("document acquisition requires one finite600s non-debug single-CPU VM".into());
+    }
+    boot_selected(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::DocumentAcquisition(selection.phase),
+            owner: None,
+        }),
+    )
+}
+
+pub(crate) fn boot_document_update(
+    options: &BootOptions,
+    selection: DocumentUpdateBoot<'_>,
+) -> Result<()> {
+    if options.cpus != 1
+        || options.runs != 1
+        || options.debug
+        || options.expect_panic
+        || options.timeout_seconds != crate::acquisition_io::TIMEOUT_SECONDS
+    {
+        return Err("document update requires one finite600s non-debug single-CPU VM".into());
+    }
+    boot_selected(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::DocumentUpdate(selection.phase),
+            owner: None,
+        }),
+    )
+}
+
+pub(crate) fn boot_session(options: &BootOptions, selection: SessionBoot<'_>) -> Result<()> {
+    if options.cpus != 1 || options.runs != 1 || options.debug || options.expect_panic {
+        return Err("developer session requires one non-debug single-CPU VM".into());
+    }
+    boot_selected_presented(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::Session(selection.phase),
+            owner: None,
+        }),
+        selection.phase.is_none(),
+    )
+}
+
+pub(crate) fn boot_network(options: &BootOptions, selection: NetworkBoot<'_>) -> Result<()> {
+    if options.cpus != 1 || options.runs != 1 || options.debug || options.expect_panic {
+        return Err("network session requires one non-debug single-CPU VM".into());
+    }
+    boot_selected_presented(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::Network(selection.probe),
+            owner: None,
+        }),
+        selection.probe.is_none(),
+    )
+}
+
+pub(crate) fn boot_network_negative(
+    options: &BootOptions,
+    selection: NetworkNegativeBoot<'_>,
+) -> Result<()> {
+    if options.cpus != 1 || options.runs != 1 || options.debug || options.expect_panic {
+        return Err("network negative probe requires one finite non-debug single-CPU VM".into());
+    }
+    boot_selected_presented(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::Negative(selection.goal),
+            owner: None,
+        }),
+        false,
+    )
+}
+
+pub(crate) fn boot_system_health(
+    options: &BootOptions,
+    selection: SystemHealthBoot<'_>,
+) -> Result<()> {
+    if options.cpus != 1
+        || options.runs != 1
+        || options.debug
+        || options.expect_panic
+        || options.timeout_seconds != crate::acquisition_io::TIMEOUT_SECONDS
+    {
+        return Err("System health requires one finite600s non-debug single-CPU VM".into());
+    }
+    boot_selected_presented(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::SystemHealth(selection.phase),
+            owner: None,
+        }),
+        false,
+    )
+}
+
+/// Only a complete checked normal boot may return an authenticated restart
+/// intent. The caller must still match the durable selector and retained set.
+pub(crate) fn boot_owner_network(
+    options: &BootOptions,
+    selection: OwnerNetworkBoot<'_>,
+) -> Result<Option<crate::restart_protocol::Intent>> {
+    if options.cpus != 1
+        || options.runs != 1
+        || options.debug
+        || options.expect_panic
+        || options.batch
+    {
+        return Err("owner network requires one manual non-debug single-CPU boot".into());
+    }
+    let bytes = fs::read(selection.manifest).map_err(|e| e.to_string())?;
+    let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    manifest.validate_policy_rows()?;
+    if manifest.profile != "release"
+        || manifest.fixture.as_deref() != Some(selection.mode.owner_fixture())
+    {
+        return Err("owner network mode/profile differs from retained fixture".into());
+    }
+    boot_selected_presented(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::OwnerNetwork(selection.mode),
+            owner: None,
+        }),
+        true,
+    )?;
+    if fs::read(selection.manifest).map_err(|e| e.to_string())? != bytes {
+        return Err("owner network retained manifest changed during boot".into());
+    }
+    let serial = crate::acquisition_io::bounded(
+        &selection.evidence.join("boot/run-001/serial.log"),
+        1024 * 1024,
+    )?;
+    let intents = crate::restart_protocol::records(&serial, &manifest.build_id)?;
+    Ok(intents.into_iter().next())
+}
+
+pub(crate) fn boot_owner_ui_probe(
+    options: &BootOptions,
+    selection: OwnerUiProbeBoot<'_>,
+) -> Result<Option<crate::restart_protocol::Intent>> {
+    if options.cpus != 1
+        || options.runs != 1
+        || options.debug
+        || options.expect_panic
+        || options.batch
+    {
+        return Err("owner UI probe requires one finite non-debug single-CPU VM".into());
+    }
+    boot_selected_presented(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::OwnerUiProbe(selection.mode, selection.phase),
+            owner: None,
+        }),
+        false,
+    )?;
+    let manifest: Manifest =
+        serde_json::from_slice(&fs::read(selection.manifest).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    let serial = crate::acquisition_io::bounded(
+        &selection.evidence.join("boot/run-001/serial.log"),
+        1024 * 1024,
+    )?;
+    Ok(
+        crate::restart_protocol::records(&serial, &manifest.build_id)?
+            .into_iter()
+            .next(),
+    )
+}
+
+pub(crate) fn boot_acquisition(
+    options: &BootOptions,
+    selection: AcquisitionBoot<'_>,
+) -> Result<()> {
+    if options.cpus != 1
+        || options.runs != 1
+        || options.debug
+        || options.expect_panic
+        || options.timeout_seconds != crate::acquisition_io::TIMEOUT_SECONDS
+    {
+        return Err("acquisition requires one finite600s non-debug single-CPU VM".into());
+    }
+    boot_selected_presented(
+        options,
+        Some(SelectedBoot {
+            manifest: selection.manifest,
+            evidence: selection.evidence,
+            disk: Some(selection.disk),
+            experiment: Experiment::Acquisition(selection.phase),
+            owner: None,
+        }),
+        false,
     )
 }
 
@@ -699,14 +1215,34 @@ fn boot_selected_presented(
             matches!(
                 s.experiment,
                 Experiment::Native(crate::native_io::Phase::InstallFull)
+                    | Experiment::Session(None)
+                    | Experiment::Document(None)
+                    | Experiment::DocumentGuide(_)
+                    | Experiment::Network(None)
+                    | Experiment::Negative(_)
+                    | Experiment::OwnerNetwork(_)
             )
         })
     {
-        return Err("visible presentation requires the explicitly selected Native demo".into());
+        return Err(
+            "visible presentation requires an explicitly selected manual session or Native demo"
+                .into(),
+        );
     }
     let current = std::env::current_dir().map_err(|error| error.to_string())?;
     let root = crate::doctor::workspace(&current, options.root.as_deref())?;
-    let output = root.join("build/m0");
+    let output = root.join(
+        if storage.as_ref().is_some_and(|s| {
+            matches!(
+                s.experiment,
+                Experiment::Document(None) | Experiment::DocumentGuide(_)
+            )
+        }) {
+            crate::document_session::ARTIFACTS
+        } else {
+            "build/m0"
+        },
+    );
     let manifest_path = storage.as_ref().map_or_else(
         || output.join("manifest.json"),
         |selection| selection.manifest.to_owned(),
@@ -715,6 +1251,7 @@ fn boot_selected_presented(
         .map_err(|error| format!("build manifest: {error}; run cargo ev build first"))?;
     let manifest: Manifest = serde_json::from_slice(&manifest_bytes)
         .map_err(|error| format!("build manifest: {error}"))?;
+    manifest.validate_policy_rows()?;
     if manifest.schema != 1
         || !manifest.qemu_test_exit
         || manifest.build_id.len() != 64
@@ -751,6 +1288,19 @@ fn boot_selected_presented(
                 | "m5-native"
                 | "m5-native-system"
                 | "m5-native-recovery"
+                | "m6-session"
+                | "m7-document"
+                | "m7-document-session"
+                | "m7-document-network"
+                | "m7-document-system"
+                | "m7-document-recovery"
+                | "m6-network"
+                | "m6-network-negative"
+                | "m6-network-system"
+                | "m6-network-recovery"
+                | "m6-network-owner"
+                | "m6-network-system-owner"
+                | "m6-network-recovery-owner"
                 | "m5-provider"
                 | "m5-ipc-bench"
         )
@@ -766,6 +1316,7 @@ fn boot_selected_presented(
     }
     let host = Host::detect(&current);
     let qemu = host.executable("qemu-system-x86_64")?;
+    let qemu_hash = build::hash_file(&qemu)?;
     let (code, vars_template) = firmware(&current, options, &host)?;
     let code_hash = build::hash_file(&code)?;
     let vars_hash = build::hash_file(&vars_template)?;
@@ -776,8 +1327,17 @@ fn boot_selected_presented(
             _ => None,
         })
         .filter(|control| control.mode == ev_userspace_contract::store_test::Mode::Cut);
+    let document_interruption = storage.as_ref().and_then(|s| match s.experiment {
+        Experiment::DocumentInterruption(phase) => Some(phase),
+        _ => None,
+    });
+    let document_cut = document_interruption == Some(crate::document_interruption::Phase::Cut);
     let kind = if cut.is_some() {
         "store-cut"
+    } else if document_cut {
+        "document-interruption-cut"
+    } else if document_interruption.is_some() {
+        "document-interruption-cold"
     } else if options.debug {
         "debug"
     } else if options.expect_panic {
@@ -809,6 +1369,81 @@ fn boot_selected_presented(
         let desktop = storage
             .as_ref()
             .is_some_and(|s| matches!(s.experiment, Experiment::Desktop));
+        let network = storage.as_ref().is_some_and(|s| {
+            matches!(
+                s.experiment,
+                Experiment::Network(_)
+                    | Experiment::Acquisition(_)
+                    | Experiment::Negative(_)
+                    | Experiment::OwnerNetwork(_)
+                    | Experiment::OwnerUiProbe(_, _)
+                    | Experiment::SystemHealth(_)
+                    | Experiment::Compatibility(_)
+                    | Experiment::DocumentAcquisition(_)
+                    | Experiment::DocumentUpdate(_)
+            )
+        });
+        let document_update = storage
+            .as_ref()
+            .is_some_and(|s| matches!(s.experiment, Experiment::DocumentUpdate(_)));
+        let document_acquisition = storage
+            .as_ref()
+            .is_some_and(|s| matches!(s.experiment, Experiment::DocumentAcquisition(_)));
+        let system_health = storage.as_ref().and_then(|s| match s.experiment {
+            Experiment::SystemHealth(phase) | Experiment::DocumentUpdate(phase) => Some(phase),
+            _ => None,
+        });
+        let acquisition = storage.as_ref().and_then(|s| match s.experiment {
+            Experiment::Acquisition(phase) | Experiment::DocumentAcquisition(phase) => Some(phase),
+            _ => None,
+        });
+        let network_probe = storage.as_ref().and_then(|s| match s.experiment {
+            Experiment::Network(goal) => goal,
+            _ => None,
+        });
+        let negative = storage.as_ref().and_then(|s| match s.experiment {
+            Experiment::Negative(goal) => Some(goal),
+            _ => None,
+        });
+        let owner_ui_probe = storage.as_ref().and_then(|s| match s.experiment {
+            Experiment::OwnerUiProbe(mode, phase) => Some((mode, phase)),
+            _ => None,
+        });
+        let missing_entropy = network_probe == Some(crate::network_io::Goal::MissingEntropy);
+        let session = storage.as_ref().is_some_and(|s| {
+            matches!(
+                s.experiment,
+                Experiment::Session(_)
+                    | Experiment::Document(_)
+                    | Experiment::DocumentInterruption(_)
+                    | Experiment::DocumentGuide(_)
+                    | Experiment::Compatibility(_)
+                    | Experiment::DocumentAcquisition(_)
+                    | Experiment::DocumentUpdate(_)
+                    | Experiment::Network(_)
+                    | Experiment::Acquisition(_)
+                    | Experiment::Negative(_)
+                    | Experiment::OwnerNetwork(_)
+                    | Experiment::OwnerUiProbe(_, _)
+                    | Experiment::SystemHealth(_)
+            )
+        });
+        let document_phase = storage.as_ref().and_then(|s| match s.experiment {
+            Experiment::Document(phase) => phase,
+            _ => None,
+        });
+        let document_guide = storage.as_ref().and_then(|s| match s.experiment {
+            Experiment::DocumentGuide(phase) => Some(phase),
+            _ => None,
+        });
+        let compatibility = storage.as_ref().and_then(|s| match s.experiment {
+            Experiment::Compatibility(phase) => Some(phase),
+            _ => None,
+        });
+        let session_phase = storage.as_ref().and_then(|s| match s.experiment {
+            Experiment::Session(phase) => phase,
+            _ => None,
+        });
         let native = storage.as_ref().and_then(|s| match s.experiment {
             Experiment::Native(phase) => Some(phase),
             _ => None,
@@ -817,7 +1452,7 @@ fn boot_selected_presented(
             Experiment::Native3(phase) => Some(phase),
             _ => None,
         });
-        if display || desktop || native.is_some() || native3.is_some() {
+        if display || desktop || native.is_some() || native3.is_some() || session {
             use std::os::unix::fs::PermissionsExt;
             fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
                 .map_err(|e| e.to_string())?;
@@ -832,12 +1467,18 @@ fn boot_selected_presented(
             "-machine".into(),
             "q35,accel=tcg".into(),
             "-cpu".into(),
-            "max".into(),
+            if missing_entropy {
+                "max,rdrand=off"
+            } else {
+                "max"
+            }
+            .into(),
             "-smp".into(),
             options.cpus.to_string(),
             "-m".into(),
             "256M".into(),
             "-nodefaults".into(),
+            "-no-user-config".into(),
             "-no-reboot".into(),
             "-display".into(),
             if visible { "gtk,gl=off" } else { "none" }.into(),
@@ -850,7 +1491,8 @@ fn boot_selected_presented(
             "-device".into(),
             "isa-debug-exit,iobase=0xf4,iosize=0x04".into(),
             "-chardev".into(),
-            if owner_input.is_some() || desktop || native.is_some() || native3.is_some() {
+            if owner_input.is_some() || desktop || native.is_some() || native3.is_some() || session
+            {
                 format!("stdio,id=com1,signal=off,logfile={}", qemu_path(&serial)?)
             } else {
                 format!("file,id=com1,path={}", qemu_path(&serial)?)
@@ -872,19 +1514,26 @@ fn boot_selected_presented(
         if let Some(disk) = storage.as_ref().and_then(|s| s.disk) {
             arguments.extend(disk.arguments(&root)?);
         }
-        if display || desktop || native.is_some() || native3.is_some() {
+        if network {
             arguments.extend([
-                "-qmp".into(),
-                format!(
-                    "unix:{},server=on,wait=off",
-                    qemu_path(
-                        directory
-                            .join("qmp.sock")
-                            .strip_prefix(&root)
-                            .map_err(|_| "private QMP socket escaped root")?
-                    )?
-                ),
+                "-S".into(),
+                "-device".into(),
+                crate::vm_profile::NIC.into(),
+                "-netdev".into(),
+                crate::vm_profile::NETDEV.into(),
+                "-rtc".into(),
+                crate::vm_profile::RTC.into(),
             ]);
+        }
+        let mut qemu_cwd = root.clone();
+        if display || desktop || native.is_some() || native3.is_some() || session {
+            let (cwd, qmp) = qmp_placement(
+                &root,
+                &directory,
+                storage.as_ref().map(|selected| selected.experiment),
+            )?;
+            qemu_cwd = cwd;
+            arguments.extend(["-qmp".into(), qmp]);
         }
         let debug_port = if options.debug {
             let socket = std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| e.to_string())?;
@@ -896,8 +1545,24 @@ fn boot_selected_presented(
         };
         build::write_json(
             &directory.join("qemu-command.json"),
-            &json!({"program":qemu,"arguments":arguments,"cwd":root}),
+            &json!({"program":qemu,"arguments":arguments,"cwd":qemu_cwd}),
         )?;
+        if network {
+            let qualified = if missing_entropy {
+                crate::vm_profile::qualify_missing_entropy(&qemu, &arguments)?
+            } else {
+                crate::vm_profile::qualify(&qemu, &arguments)?
+            };
+            crate::storage::json_new(
+                &directory.join("vm-source-qualification.json"),
+                &serde_json::to_value(qualified).map_err(|e| e.to_string())?,
+            )?;
+        }
+        let mut clock = if network {
+            Some(crate::vm_clock::prepare(&root, &directory, &qemu)?)
+        } else {
+            None
+        };
         println!(
             "Boot {index}/{} (TCG, timeout {}s); {}",
             options.runs,
@@ -907,13 +1572,178 @@ fn boot_selected_presented(
         let mut command = Command::new(&qemu);
         command
             .args(&arguments)
-            .current_dir(&root)
+            .current_dir(&qemu_cwd)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(stderr);
+        if network {
+            // These process hooks could replace the reviewed crypto/backend
+            // despite the executable hash. The local host/loader stays trusted.
+            for key in ["LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT", "QEMU_PLUGIN"] {
+                command.env_remove(key);
+            }
+        }
+        if let Some(clock) = &clock {
+            clock.apply(&mut command)?;
+        }
         let start = Instant::now();
         let mut owner_eof = false;
-        let result = if storage
+        let result = if let Some(phase) = compatibility {
+            crate::document_compatibility::supervise(
+                &mut command,
+                &serial,
+                &errors,
+                Duration::from_secs(options.timeout_seconds),
+                &manifest.build_id,
+                &directory,
+                clock
+                    .as_mut()
+                    .ok_or("compatibility requires verified clock")?,
+                phase,
+                storage
+                    .as_ref()
+                    .and_then(|s| s.disk)
+                    .ok_or("compatibility disk absent")?,
+            )
+        } else if let Some((mode, phase)) = owner_ui_probe {
+            let selected = storage.as_ref().ok_or("owner UI probe selection absent")?;
+            crate::owner_ui_io::supervise(
+                &mut command,
+                &serial,
+                &errors,
+                Duration::from_secs(options.timeout_seconds),
+                &manifest.build_id,
+                &directory,
+                clock.as_mut().ok_or("owner UI requires verified clock")?,
+                &root,
+                &manifest,
+                mode,
+                phase,
+                selected.disk.ok_or("owner UI disk absent")?,
+            )
+        } else if let Some(phase) = system_health {
+            let selected = storage.as_ref().ok_or("System selection absent")?;
+            let supervise = if document_update {
+                crate::system_health_io::supervise_document
+            } else {
+                crate::system_health_io::supervise
+            };
+            supervise(
+                &mut command,
+                &serial,
+                &errors,
+                Duration::from_secs(options.timeout_seconds),
+                &manifest.build_id,
+                &directory,
+                clock.as_mut().ok_or("System requires verified clock")?,
+                &root,
+                &manifest,
+                phase,
+                selected.evidence,
+                selected.disk.ok_or("System disk absent")?,
+            )
+        } else if let Some(phase) = acquisition {
+            let selected = storage.as_ref().ok_or("acquisition selection absent")?;
+            let supervise = if document_acquisition {
+                crate::acquisition_io::supervise_document
+            } else {
+                crate::acquisition_io::supervise
+            };
+            supervise(
+                &mut command,
+                &serial,
+                &errors,
+                Duration::from_secs(options.timeout_seconds),
+                &manifest.build_id,
+                &directory,
+                clock
+                    .as_mut()
+                    .ok_or("acquisition requires verified clock")?,
+                &root,
+                &manifest,
+                phase,
+                selected.evidence,
+                selected.disk.ok_or("acquisition disk absent")?,
+            )
+        } else if let Some(goal) = negative {
+            let selected = storage.as_ref().ok_or("negative selection absent")?;
+            crate::network_negative::supervise(
+                &mut command,
+                &serial,
+                &errors,
+                Duration::from_secs(options.timeout_seconds),
+                &manifest.build_id,
+                &directory,
+                clock.as_mut().ok_or("negative verified clock absent")?,
+                &root,
+                &manifest,
+                goal,
+                selected.disk.ok_or("negative disk absent")?,
+            )
+        } else if let Some(goal) = network_probe {
+            crate::network_io::supervise(
+                &mut command,
+                &serial,
+                &errors,
+                Duration::from_secs(options.timeout_seconds),
+                &manifest.build_id,
+                &directory,
+                clock
+                    .as_mut()
+                    .ok_or("network probe requires verified clock")?,
+                &root,
+                &manifest,
+                goal,
+            )
+        } else if let Some(phase) = document_guide {
+            crate::document_guide::supervise(
+                &mut command,
+                &serial,
+                &errors,
+                Duration::from_secs(options.timeout_seconds),
+                &manifest.build_id,
+                &directory,
+                phase,
+                storage
+                    .as_ref()
+                    .and_then(|s| s.disk)
+                    .ok_or("document guide disk absent")?,
+            )
+        } else if let Some(phase) = document_interruption {
+            crate::document_interruption::supervise(
+                &mut command,
+                &serial,
+                &errors,
+                Duration::from_secs(options.timeout_seconds),
+                &manifest.build_id,
+                &directory,
+                phase,
+                storage
+                    .as_ref()
+                    .and_then(|s| s.disk)
+                    .ok_or("document interruption disk absent")?,
+            )
+        } else if let Some(phase) = document_phase {
+            crate::document_io::supervise(
+                &mut command,
+                &serial,
+                &errors,
+                Duration::from_secs(options.timeout_seconds),
+                &manifest.build_id,
+                &directory,
+                phase,
+                storage
+                    .as_ref()
+                    .and_then(|s| s.disk)
+                    .ok_or("document disk absent")?,
+            )
+        } else if session && session_phase.is_none() {
+            supervised_session(
+                &mut command,
+                &[&serial, &errors],
+                clock.as_mut().map(|clock| (clock, directory.as_path())),
+            )
+        } else if storage
             .as_ref()
             .is_some_and(|s| matches!(s.experiment, Experiment::IpcBench(_)))
         {
@@ -924,6 +1754,20 @@ fn boot_selected_presented(
                 Duration::from_secs(options.timeout_seconds),
                 &manifest.build_id,
                 &directory,
+            )
+        } else if let Some(phase) = session_phase {
+            crate::session_io::supervise(
+                &mut command,
+                &serial,
+                &errors,
+                Duration::from_secs(options.timeout_seconds),
+                &manifest.build_id,
+                &directory,
+                phase,
+                storage
+                    .as_ref()
+                    .and_then(|s| s.disk)
+                    .ok_or("session requires its owned disk")?,
             )
         } else if let Some(port) = debug_port {
             crate::debug::run(
@@ -1024,6 +1868,10 @@ fn boot_selected_presented(
                 Duration::from_secs(options.timeout_seconds),
             )
         };
+        let clock_postflight = clock
+            .as_ref()
+            .map(crate::vm_clock::Prepared::postflight)
+            .transpose();
         let mut serial_bytes = Vec::new();
         File::open(&serial)
             .map_err(|error| error.to_string())?
@@ -1039,6 +1887,7 @@ fn boot_selected_presented(
         #[cfg(not(unix))]
         let signal: Option<i32> = None;
         let check = result.and_then(|actual| {
+            clock_postflight?;
             if owner_eof {
                 #[cfg(unix)]
                 {
@@ -1069,10 +1918,100 @@ fn boot_selected_presented(
                     &manifest.build_id,
                     control.cut,
                 )
+            } else if document_cut {
+                crate::document_interruption::verify(
+                    &serial_bytes,
+                    &manifest.build_id,
+                    crate::document_interruption::Phase::Cut,
+                    actual,
+                )
             } else if manifest.fixture.as_deref() == Some("panic") {
                 boot_protocol::check_panic(&serial_bytes, &manifest.build_id, status)
             } else {
-                boot_protocol::check(&serial_bytes, &manifest.build_id, status)?;
+                if let Some(goal) = negative {
+                    crate::network_negative::postflight(
+                        &serial_bytes,
+                        &manifest.build_id,
+                        status,
+                        goal,
+                    )?;
+                } else if matches!(
+                    manifest.fixture.as_deref(),
+                    Some(
+                        "m6-session"
+                            | "m7-document"
+                            | "m7-document-session"
+                            | "m7-document-network"
+                            | "m7-document-system"
+                            | "m7-document-recovery"
+                            | "m6-network"
+                            | "m6-network-negative"
+                            | "m6-network-system"
+                            | "m6-network-recovery"
+                            | "m6-network-owner"
+                            | "m6-network-system-owner"
+                            | "m6-network-recovery-owner"
+                    )
+                ) {
+                    let document_serial;
+                    let serial_bytes = if matches!(
+                        manifest.fixture.as_deref(),
+                        Some(
+                            "m7-document"
+                                | "m7-document-session"
+                                | "m7-document-network"
+                                | "m7-document-system"
+                                | "m7-document-recovery"
+                        )
+                    ) {
+                        document_serial = crate::document_io::without_observations(
+                            &serial_bytes,
+                            &manifest.build_id,
+                        )?;
+                        &document_serial
+                    } else {
+                        &serial_bytes
+                    };
+                    let protocol_bytes = if network {
+                        crate::session_protocol::without_network_diagnostics(
+                            serial_bytes,
+                            &manifest.build_id,
+                        )?
+                    } else {
+                        crate::session_protocol::without_diagnostics(
+                            serial_bytes,
+                            &manifest.build_id,
+                        )?
+                    };
+                    if network {
+                        check_network_fixture(
+                            manifest.fixture.as_deref(),
+                            &protocol_bytes,
+                            &manifest.build_id,
+                            status,
+                        )?;
+                    } else if storage.as_ref().is_some_and(|s| {
+                        matches!(
+                            s.experiment,
+                            Experiment::Document(Some(crate::document_io::Phase::Crash))
+                        )
+                    }) {
+                        let proof = crate::document_crash::Proof::complete(
+                            &protocol_bytes,
+                            &manifest.build_id,
+                        )?;
+                        boot_protocol::check_document_crash(
+                            &protocol_bytes,
+                            &manifest.build_id,
+                            status,
+                            &proof,
+                        )?;
+                    } else {
+                        boot_protocol::check_session(&protocol_bytes, &manifest.build_id, status)?;
+                    }
+                } else {
+                    boot_protocol::check(&serial_bytes, &manifest.build_id, status)?;
+                }
                 if let Some(selection) = &storage {
                     match selection.experiment {
                         Experiment::Store(control) => {
@@ -1107,6 +2046,93 @@ fn boot_selected_presented(
                         }
                         Experiment::Native(_) => {
                             crate::native_protocol::record(&serial_bytes, &manifest.build_id)?;
+                        }
+                        Experiment::Acquisition(_)
+                        | Experiment::Network(_)
+                        | Experiment::OwnerNetwork(_)
+                        | Experiment::OwnerUiProbe(_, _)
+                        | Experiment::SystemHealth(_) => {
+                            record_network_fixture(
+                                manifest.fixture.as_deref(),
+                                &serial_bytes,
+                                &manifest.build_id,
+                            )?;
+                        }
+                        Experiment::Negative(_) => {}
+                        Experiment::Compatibility(_) => {
+                            let clean = crate::document_io::without_observations(
+                                &serial_bytes,
+                                &manifest.build_id,
+                            )?;
+                            crate::native_protocol::record_network(&clean, &manifest.build_id)?;
+                            crate::session_protocol::retention(&serial_bytes, &manifest.build_id)?;
+                        }
+                        Experiment::DocumentAcquisition(_) | Experiment::DocumentUpdate(_) => {
+                            let clean = crate::document_io::without_observations(
+                                &serial_bytes,
+                                &manifest.build_id,
+                            )?;
+                            record_network_fixture(
+                                manifest.fixture.as_deref(),
+                                &clean,
+                                &manifest.build_id,
+                            )?;
+                            if network_recovery_fixture(manifest.fixture.as_deref()) {
+                                crate::session_protocol::retention_network_recovery(
+                                    &serial_bytes,
+                                    &manifest.build_id,
+                                )?;
+                            } else {
+                                crate::session_protocol::retention(
+                                    &serial_bytes,
+                                    &manifest.build_id,
+                                )?;
+                            }
+                        }
+                        Experiment::Document(Some(crate::document_io::Phase::Crash)) => {
+                            let clean = crate::document_io::without_observations(
+                                &serial_bytes,
+                                &manifest.build_id,
+                            )?;
+                            let proof =
+                                crate::document_crash::Proof::complete(&clean, &manifest.build_id)?;
+                            crate::native_protocol::record_document_crash(
+                                &clean,
+                                &manifest.build_id,
+                                &proof,
+                            )?;
+                        }
+                        Experiment::Document(_) | Experiment::DocumentGuide(_) => {
+                            let clean = crate::document_io::without_observations(
+                                &serial_bytes,
+                                &manifest.build_id,
+                            )?;
+                            crate::native_protocol::record_session(&clean, &manifest.build_id)?;
+                        }
+                        Experiment::DocumentInterruption(phase) => {
+                            // Cut already took its dedicated validated SIGKILL
+                            // branch. Every Cold run reaches all ordinary checks
+                            // above and this exact document/Presents verifier.
+                            if phase != crate::document_interruption::Phase::Cold {
+                                return Err("document Cut reached ordinary completion path".into());
+                            }
+                            crate::document_interruption::verify(
+                                &serial_bytes,
+                                &manifest.build_id,
+                                phase,
+                                actual,
+                            )?;
+                            let clean = crate::document_io::without_observations(
+                                &serial_bytes,
+                                &manifest.build_id,
+                            )?;
+                            crate::native_protocol::record_session(&clean, &manifest.build_id)?;
+                        }
+                        Experiment::Session(_) => {
+                            crate::native_protocol::record_session(
+                                &serial_bytes,
+                                &manifest.build_id,
+                            )?;
                         }
                         Experiment::Native3(phase) => {
                             crate::native3_protocol::record(
@@ -1161,7 +2187,7 @@ fn boot_selected_presented(
         let reason = check.as_ref().err().cloned();
         runs.push(
             json!({"run":index,"passed":check.is_ok(),"error":reason,"exit_status":status,
-            "exit_signal":signal,"interruption_expected":cut.is_some()||owner_eof,"expected_cut":cut.map(|c|c.cut),"owner_eof_no_action":owner_eof,
+            "exit_signal":signal,"interruption_expected":cut.is_some()||owner_eof||document_cut,"expected_cut":cut.map(|c|c.cut),"document_interruption_phase":document_interruption,"owner_eof_no_action":owner_eof,
             "elapsed_ms":start.elapsed().as_millis(),"serial_sha256":build::hash_file(&serial)?,
             "qemu_stderr_sha256":build::hash_file(&errors)?,"directory":format!("run-{index:03}")}),
         );
@@ -1177,6 +2203,7 @@ fn boot_selected_presented(
     if build::hash_file(&code)? != code_hash
         || build::hash_file(&vars_template)? != vars_hash
         || build::hash_file(&image)? != manifest.image.sha256
+        || build::hash_file(&qemu)? != qemu_hash
     {
         failure = Some("a supposedly read-only boot input changed".into());
     }
@@ -1184,7 +2211,7 @@ fn boot_selected_presented(
         &evidence.join("results.json"),
         &json!({"schema":1,"kind":kind,"build_id":manifest.build_id,
         "passed":failure.is_none(),"requested_runs":options.runs,"runs":runs,"error":failure,
-        "qemu":qemu,"qemu_sha256":build::hash_file(&qemu)?,"ovmf_code":code,"ovmf_code_sha256":code_hash,
+        "qemu":qemu,"qemu_sha256":qemu_hash,"ovmf_code":code,"ovmf_code_sha256":code_hash,
         "ovmf_vars_template":vars_template,"ovmf_vars_sha256":vars_hash,"acceleration":"tcg",
         "timeout_seconds":options.timeout_seconds,"cpus":options.cpus}),
     )?;
@@ -1202,6 +2229,10 @@ fn boot_selected_presented(
         );
     } else if cut.is_some() {
         println!("PASS store-cut: actual process fault, validated prefix and abrupt VM kill/reap.");
+    } else if document_cut {
+        println!(
+            "PASS document-interruption-cut: actual paused Saving scanout; owned QEMU SIGKILL and reap."
+        );
     } else {
         println!(
             "PASS {kind}: {}/{} fresh TCG boots; protocol and QEMU status verified.",
@@ -1265,5 +2296,236 @@ mod ipc_host_watcher_tests {
             assert_eq!(record["quantitative_accepted"], false);
             assert!(record["execution_error"].is_string());
         }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod qmp_placement_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn dedicated_document_fixtures_do_not_change_legacy_profile_selection() {
+        for phase in [
+            crate::acquisition_io::Phase::Online,
+            crate::acquisition_io::Phase::Cold,
+        ] {
+            assert_eq!(Experiment::Acquisition(phase).fixture(), "m6-network");
+            assert_eq!(
+                Experiment::DocumentAcquisition(phase).fixture(),
+                "m7-document-network"
+            );
+        }
+        for (phase, old, document) in [
+            (
+                crate::system_health_io::Phase::SelectB,
+                "m6-network",
+                "m7-document-network",
+            ),
+            (
+                crate::system_health_io::Phase::HealthyAndStageC,
+                "m6-network-system",
+                "m7-document-system",
+            ),
+            (
+                crate::system_health_io::Phase::FaultC,
+                "m6-network-system",
+                "m7-document-system",
+            ),
+            (
+                crate::system_health_io::Phase::Recovery,
+                "m6-network-recovery",
+                "m7-document-recovery",
+            ),
+            (
+                crate::system_health_io::Phase::FinalB,
+                "m6-network-system",
+                "m7-document-system",
+            ),
+        ] {
+            assert_eq!(Experiment::SystemHealth(phase).fixture(), old);
+            assert_eq!(Experiment::DocumentUpdate(phase).fixture(), document);
+        }
+        for phase in [
+            crate::document_interruption::Phase::Cut,
+            crate::document_interruption::Phase::Cold,
+        ] {
+            assert_eq!(
+                Experiment::DocumentInterruption(phase).fixture(),
+                "m7-document"
+            );
+        }
+        assert!(network_recovery_fixture(Some("m7-document-recovery")));
+        assert!(network_recovery_fixture(Some("m6-network-recovery")));
+        assert!(network_recovery_fixture(Some("m6-network-recovery-owner")));
+        for fixture in [
+            None,
+            Some("m7-document"),
+            Some("m7-document-network"),
+            Some("m7-document-system"),
+            Some("m6-network-system"),
+        ] {
+            assert!(!network_recovery_fixture(fixture));
+        }
+    }
+
+    #[test]
+    fn only_explicit_retained_owner_document_and_guide_modes_move_the_server_cwd() {
+        let root = Path::new("/private/source");
+        let run = root.join("build/m6/evidence/phase, with space/boot/run-001");
+        for mode in crate::network_mode::Mode::ALL {
+            let (cwd, argument) =
+                qmp_placement(root, &run, Some(Experiment::OwnerNetwork(mode))).unwrap();
+            assert_eq!(cwd, run);
+            assert_eq!(argument, "unix:qmp.sock,server=on,wait=off");
+        }
+        for experiment in [
+            Experiment::Document(None),
+            Experiment::DocumentInterruption(crate::document_interruption::Phase::Cut),
+            Experiment::DocumentInterruption(crate::document_interruption::Phase::Cold),
+            Experiment::DocumentGuide(crate::document_guide::Phase::Exercise),
+            Experiment::DocumentGuide(crate::document_guide::Phase::Cold),
+            Experiment::Compatibility(crate::document_compatibility::Phase::Exercise),
+            Experiment::Compatibility(crate::document_compatibility::Phase::Cold),
+            Experiment::DocumentAcquisition(crate::acquisition_io::Phase::Online),
+            Experiment::DocumentAcquisition(crate::acquisition_io::Phase::Cold),
+            Experiment::DocumentUpdate(crate::system_health_io::Phase::SelectB),
+            Experiment::DocumentUpdate(crate::system_health_io::Phase::HealthyAndStageC),
+            Experiment::DocumentUpdate(crate::system_health_io::Phase::FaultC),
+            Experiment::DocumentUpdate(crate::system_health_io::Phase::Recovery),
+            Experiment::DocumentUpdate(crate::system_health_io::Phase::FinalB),
+        ] {
+            let (cwd, argument) = qmp_placement(root, &run, Some(experiment)).unwrap();
+            assert_eq!(cwd, run);
+            assert_eq!(argument, "unix:qmp.sock,server=on,wait=off");
+        }
+        for experiment in [
+            None,
+            Some(Experiment::Display),
+            Some(Experiment::Desktop),
+            Some(Experiment::Native(crate::native_io::Phase::InstallFull)),
+            Some(Experiment::Native3(crate::native3_io::Phase::SystemFull)),
+            Some(Experiment::Session(None)),
+            Some(Experiment::Document(Some(
+                crate::document_io::Phase::Exercise,
+            ))),
+            Some(Experiment::Network(None)),
+            Some(Experiment::Acquisition(
+                crate::acquisition_io::Phase::Online,
+            )),
+            Some(Experiment::SystemHealth(
+                crate::system_health_io::Phase::FaultC,
+            )),
+            Some(Experiment::OwnerUiProbe(
+                crate::network_mode::Mode::Standalone,
+                crate::owner_ui_io::Phase::Exercise,
+            )),
+        ] {
+            let (cwd, argument) = qmp_placement(root, &run, experiment).unwrap();
+            assert_eq!(cwd, root);
+            assert_eq!(
+                argument,
+                "unix:build/m6/evidence/phase,, with space/boot/run-001/qmp.sock,server=on,wait=off"
+            );
+        }
+        for experiment in [
+            None,
+            Some(Experiment::DocumentInterruption(
+                crate::document_interruption::Phase::Cut,
+            )),
+            Some(Experiment::DocumentAcquisition(
+                crate::acquisition_io::Phase::Online,
+            )),
+            Some(Experiment::DocumentUpdate(
+                crate::system_health_io::Phase::Recovery,
+            )),
+            Some(Experiment::OwnerNetwork(
+                crate::network_mode::Mode::Standalone,
+            )),
+        ] {
+            assert!(qmp_placement(root, Path::new("/foreign/run-001"), experiment).is_err());
+        }
+    }
+
+    #[test]
+    fn child_binds_private_socket_beyond_long_pid_and_absolute_path_limits() {
+        let original_cwd = std::env::current_dir().unwrap();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap();
+        let parent = crate::storage::directory_beneath(&root, Path::new("build/test-tmp")).unwrap();
+        let evidence = build::unique_directory(&parent, "qmp-placement-tests").unwrap();
+        // Max-width u32 PID and a real-width timestamp make the old relative
+        // server path too long even without this component's long root path.
+        let run = evidence.join("network-session-4294967295-1794632158011131269/vm-4294967295-1794632158011131269/boot/run-001");
+        fs::create_dir_all(&run).unwrap();
+        fs::set_permissions(&run, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(
+            fs::symlink_metadata(&run).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert!(
+            run.strip_prefix(&root)
+                .unwrap()
+                .join("qmp.sock")
+                .as_os_str()
+                .len()
+                >= 108
+        );
+        assert!(run.join("qmp.sock").as_os_str().len() >= 108);
+        let (cwd, argument) = qmp_placement(
+            &root,
+            &run,
+            Some(Experiment::OwnerNetwork(
+                crate::network_mode::Mode::Standalone,
+            )),
+        )
+        .unwrap();
+        let recorded = json!({"cwd":cwd,"qmp":argument});
+        let mut command = Command::new("python3");
+        command
+            .current_dir(&cwd)
+            .args([
+                "-I",
+                "-c",
+                r#"
+import json,socket
+s=socket.socket(socket.AF_UNIX)
+s.settimeout(3)
+s.bind('qmp.sock')
+s.listen(1)
+c,_=s.accept()
+c.settimeout(2)
+c.sendall(b'{"QMP":{}}\n')
+r=json.loads(c.makefile('rb').readline(1024))
+assert r == {'execute':'qmp_capabilities','arguments':{},'id':1}
+c.sendall(b'{"return":{},"id":1}\n')
+c.close()
+s.close()
+"#,
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        assert_eq!(
+            command.get_current_dir(),
+            Some(Path::new(recorded["cwd"].as_str().unwrap()))
+        );
+        assert_eq!(recorded["qmp"], "unix:qmp.sock,server=on,wait=off");
+        let mut child = ChildGuard(command.spawn().unwrap());
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !run.join("qmp.sock").exists() {
+            assert!(
+                child.0.try_wait().unwrap().is_none(),
+                "socket child exited before bind"
+            );
+            assert!(Instant::now() < deadline, "private socket bind deadline");
+            thread::sleep(Duration::from_millis(10));
+        }
+        let qmp = crate::qmp::Qmp::connect(&run, deadline).unwrap();
+        drop(qmp);
+        assert!(child.0.wait().unwrap().success());
+        assert_eq!(std::env::current_dir().unwrap(), original_cwd);
     }
 }

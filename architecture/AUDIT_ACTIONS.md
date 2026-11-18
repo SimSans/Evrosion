@@ -1,17 +1,16 @@
 # Audit action register
 
 Extracted from the [Pre-M0 implementation package](plans/roadmap/PRE-M0-implementation-package-v1.md) on 2026-09-20.
-This is a public technical edition of the canonical record. Published source
-hashes and original lineage are recorded in the architecture source map.
+This is the working canonical file; the imported package remains unchanged.
 
 | ID | Required before | Implementation status | Location/next action |
 |---|---|---|---|
 | A-001 Root Authority | M2 | **Verified — bounded M2** | [Custody design](designs/ROOT_AUTHORITY_CUSTODY.md), [accepted AF-007A–H scope](M2_ACCEPTANCE.md) |
 | A-002 Non-godlike AI | E-021 implementation | Deferred intentionally | AI annex before implementation |
-| A-003 Durable grants | M5 | **Verified — bounded Native3 execution** | [Four actual cold VMs](../docs/release/0.1-preview.md#validation-and-provenance): explicit owner consent, durable publication/readback, cold fresh READ remint, live inhibit/stop/reap before tombstone and cold denial/cancel with unchanged disk. Fixed local trusted owner route; general enrollment/Trusted Control remains future scope. |
+| A-003 Durable grants | M5 | **Verified — bounded Native3 execution** | Four actual cold VMs (local engineering archive): explicit owner consent, durable publication/readback, cold fresh READ remint, live inhibit/stop/reap before tombstone and cold denial/cancel with unchanged disk. Fixed local trusted owner route; general enrollment/Trusted Control remains future scope. |
 | A-004 TOCTOU-safe approval | Trusted picker or privileged approval | **Verified — bounded M4 selected READ** | [Approval binding](designs/PICKER_APPROVAL.md), [formal M4 acceptance/limits](M4_ACCEPTANCE.md); broader Trusted Control/destructive/AI approvals remain open |
-| A-005 Time | M6 | Planned; not implemented | [M6-05 time/freshness gate](M6_PLAN.md#execution-order-and-completion-gates); X-001 remains a planned annex |
-| A-006 Entropy | Security/networking | Planned; not implemented | [M6-05 entropy gate](M6_PLAN.md#execution-order-and-completion-gates); X-002 remains a planned annex |
+| A-005 Time | M6 | **Verified — bounded M6 reference contracts** | M6 readiness and its canonical evidence bind actual signed-time/freshness, rollback/refusal, pause/refresh and cold trust-state tests under declared host/QEMU assumptions. Manual-session UTC qualification remains false; general trusted time and physical providers need separate proof. |
+| A-006 Entropy | Security/networking | **Verified — bounded M6 reference source/consumer** | M6 readiness, [ADR-0071](adr/ADR-0071-private-random-generator.md) and [ADR-0074](adr/ADR-0074-reviewed-vm-random-source.md): actual reviewed VM source, private generator, accounting and missing-source refusal are qualified for this profile; arbitrary physical entropy and host independence are not established. |
 | A-007 Users/sessions | Multi-user desktop | Deferred intentionally | X-003 |
 | A-008 Suspend/resume | Laptop support | Deferred intentionally | X-004 |
 | A-009 Virtualization | VM fallback | Deferred intentionally | X-005 |

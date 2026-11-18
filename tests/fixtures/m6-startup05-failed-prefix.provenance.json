@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "kind": "HistoricalFailed05ExplicitAuditOnlyParserFixture",
+  "fixture": {
+    "path": "tests/fixtures/m6-startup05-failed-prefix.serial",
+    "bytes": 79862,
+    "sha256": "ca610ecb021df147662735928dc5668480e4f0026ae134e2dc9be2de948fec59"
+  },
+  "source": {
+    "canonical_sha256": "658b3f44be78daf463d85a9e8af973a9705fb817ca140620fd54db0b48b18bd6",
+    "original_path": "build/test-tmp/m6-startup-pipeline-private-05/run-01/VM3-diagnostic-prefix.serial"
+  },
+  "closed_failure_receipt": {
+    "path": "build/test-tmp/m6-startup-pipeline-private-05/run-01/FAILED_RUN_CLOSED.json",
+    "sha256": "b9ff683e8618e89d73fce5f353ddca2ded3c9e6a1b7863548b3046045bc8cbb8"
+  },
+  "scope": [
+    "Actual historical failed Managed B prefix, original health64 MissingProgress/no Known Good; no final normal retirement",
+    "Legacy05 is selected only by private cfg(test) audit layout; production Compact requires both footers even if CPU count0",
+    "Synthetic Compact/closed-consumer inputs are built explicitly in startup_protocol_tests.rs and establish no actual VM or health evidence"
+  ]
+}

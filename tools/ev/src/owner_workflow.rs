@@ -253,6 +253,7 @@ pub(crate) fn run() -> Result<()> {
         let bytes = fs::read(root.join("build/m0/manifest.json")).map_err(|e| e.to_string())?;
         storage::immutable_new(&manifest_path, &bytes)?;
         let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        manifest.validate_policy_rows()?;
         if manifest.fixture.as_deref() != Some("m3-owner") {
             return Err("owner workflow selected wrong fixture".into());
         }

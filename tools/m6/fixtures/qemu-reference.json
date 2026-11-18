@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "purpose": "Fixed build input for the initial V4 VM profile; not proof of device, source-package equivalence, entropy or network execution.",
+  "version": "10.2.1 (Debian 1:10.2.1+ds-1ubuntu3.2)",
+  "binary_sha256": "0cd4112a8f0cb891eb7c10e8df38c9dfeec8c7389bb22db6aa425f0d6fe733dc",
+  "model_source_url": "https://raw.githubusercontent.com/qemu/qemu/v10.2.1/hw/net/ne2000.c",
+  "model_source_sha256": "626c235d91f1ca37344bc065e5739ae92acf81627eac8cf694fee77b27fa5cd4",
+  "downstream_equivalence_qualified": false,
+  "mac": [2, 69, 86, 82, 0, 1],
+  "policy": {
+    "allowed_ipv4": [10, 0, 2, 2],
+    "remote_port": 8080,
+    "local_port": 49152,
+    "dns_name": "example.org"
+  }
+}

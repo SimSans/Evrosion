@@ -9,6 +9,12 @@ use ev_userspace_contract::{
     },
 };
 use sha2::{Digest as _, Sha256};
+#[path = "native/network_plan.rs"]
+mod network_plan;
+pub use network_plan::{
+    CheckedCatalogue, network_base_graph_measurement, network_layout_measurement,
+    network_roles_measurement, verify_network,
+};
 #[path = "native/owner.rs"]
 pub mod owner;
 #[cfg(feature = "native-root")]
@@ -27,12 +33,19 @@ pub enum Slot {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
     Catalogue,
+    Mode,
     Limits,
     Layout,
     Roles,
     Manifest,
 }
 pub fn layout_measurement(catalogue: &Catalogue<'_>) -> [u8; 32] {
+    layout_measurement_profile(catalogue, false)
+}
+pub fn session_layout_measurement(catalogue: &Catalogue<'_>) -> [u8; 32] {
+    layout_measurement_profile(catalogue, true)
+}
+fn layout_measurement_profile(catalogue: &Catalogue<'_>, session: bool) -> [u8; 32] {
     let (a, b) = catalogue.measurement_parts();
     let mut hash = Sha256::new();
     hash.update(native::catalogue::MEASUREMENT_DOMAIN);
@@ -41,14 +54,23 @@ pub fn layout_measurement(catalogue: &Catalogue<'_>) -> [u8; 32] {
     hash.update(b);
     hash.update(native::layout_description());
     hash.update(root_v2::graph::description());
+    if session {
+        hash.update(native::SESSION_LAYOUT);
+    }
     hash.finalize().into()
 }
 pub fn verify(bytes: &[u8], context: Context) -> Result<Catalogue<'_>, Error> {
+    verify_profile(bytes, context, false)
+}
+pub fn verify_session(bytes: &[u8], context: Context) -> Result<Catalogue<'_>, Error> {
+    verify_profile(bytes, context, true)
+}
+fn verify_profile(bytes: &[u8], context: Context, session: bool) -> Result<Catalogue<'_>, Error> {
     let catalogue = Catalogue::decode(bytes).map_err(|_| Error::Catalogue)?;
     if context.limits != crate::desktop_plan::ROOT_LIMITS {
         return Err(Error::Limits);
     }
-    if layout_measurement(&catalogue) != catalogue.layout_measurement() {
+    if layout_measurement_profile(&catalogue, session) != catalogue.layout_measurement() {
         return Err(Error::Layout);
     }
     for (child, image) in root_v2::graph::CHILDREN
@@ -165,6 +187,30 @@ mod tests {
         assert!(matches!(verify(&b, c), Err(Error::Manifest)));
     }
     #[test]
+    fn session_mapping_measurement_cannot_substitute_for_the_finite_layout() {
+        let (mut bytes, mut context) = fixture();
+        assert!(matches!(
+            verify_session(&bytes, context),
+            Err(Error::Layout)
+        ));
+        let measured = session_layout_measurement(&n::Catalogue::decode(&bytes).unwrap());
+        bytes[n::MEASUREMENT_OFFSET..n::MEASUREMENT_OFFSET + 32].copy_from_slice(&measured);
+        context.manifest = Sha256::digest(
+            native::manifest_profile(root_v2::ManifestInputs {
+                root_image: [1; 32],
+                catalogue: Sha256::digest(bytes).into(),
+                authority: context.authority,
+                limits: context.limits,
+                restart_attempts: 3,
+                restart_window: 60000,
+            })
+            .unwrap(),
+        )
+        .into();
+        assert!(verify_session(&bytes, context).is_ok());
+        assert!(matches!(verify(&bytes, context), Err(Error::Layout)));
+    }
+    #[test]
     fn native_store_and_measured_layout_use_same_closed_regions() {
         let b = native::layout_description();
         let word = |at| u64::from_le_bytes(b[at..at + 8].try_into().unwrap());
@@ -191,6 +237,18 @@ pub fn graph_measurement(catalogue: &Catalogue<'_>) -> [u8; 32] {
 pub struct Contracts;
 impl ev_zion::Contracts for Contracts {
     fn supported(&self, name: &str, major: u16) -> Option<ev_zion::ContractSupport> {
+        if cfg!(feature = "document-workflow")
+            && major == 1
+            && matches!(
+                name,
+                "ev.app.document" | "ev.ui.document" | "ev.test.document"
+            )
+        {
+            return Some(ev_zion::ContractSupport {
+                minor: 0,
+                features: 0,
+            });
+        }
         (major == 1
             && matches!(
                 name,
@@ -198,9 +256,10 @@ impl ev_zion::Contracts for Contracts {
                     | "ev.internal.focused-input"
                     | "ev.internal.surface-present"
                     | "ev.app.private-data"
+                    | "ev.app.session-note"
             ))
         .then_some(ev_zion::ContractSupport {
-            minor: 0,
+            minor: u16::from(name == "ev.internal.focused-input"),
             features: 0,
         })
     }
@@ -221,7 +280,8 @@ pub enum PackageError {
 /// Checked views keep those immutable proofs and recheck current requirements;
 /// the Registry independently matches their exact backing before cache reuse.
 pub struct Packages<'a> {
-    catalogue: Catalogue<'a>,
+    catalogue: CheckedCatalogue<'a>,
+    session: bool,
     a: &'a [u8],
     b: &'a [u8],
     // These views borrow the actual immutable banks. Construction fully checks
@@ -235,7 +295,45 @@ impl<'a> Packages<'a> {
         a: &'a [u8],
         b: &'a [u8],
     ) -> Result<Self, PackageError> {
-        let catalogue = verify(bytes, context).map_err(PackageError::Metadata)?;
+        Self::verify_profile(bytes, context, a, b, false)
+    }
+    pub fn verify_session(
+        bytes: &'a [u8],
+        context: Context,
+        a: &'a [u8],
+        b: &'a [u8],
+    ) -> Result<Self, PackageError> {
+        Self::verify_profile(bytes, context, a, b, true)
+    }
+    fn verify_profile(
+        bytes: &'a [u8],
+        context: Context,
+        a: &'a [u8],
+        b: &'a [u8],
+        session: bool,
+    ) -> Result<Self, PackageError> {
+        let catalogue = CheckedCatalogue::Native3(
+            verify_profile(bytes, context, session).map_err(PackageError::Metadata)?,
+        );
+        Self::from_catalogue(catalogue, a, b, session)
+    }
+    pub fn verify_network(
+        bytes: &'a [u8],
+        context: Context,
+        a: &'a [u8],
+        b: &'a [u8],
+    ) -> Result<Self, PackageError> {
+        let catalogue = CheckedCatalogue::Network(
+            verify_network(bytes, context).map_err(PackageError::Metadata)?,
+        );
+        Self::from_catalogue(catalogue, a, b, true)
+    }
+    fn from_catalogue(
+        catalogue: CheckedCatalogue<'a>,
+        a: &'a [u8],
+        b: &'a [u8],
+        session: bool,
+    ) -> Result<Self, PackageError> {
         if a.len() as u64 != catalogue.package_a_bytes()
             || b.len() as u64 != catalogue.package_b_bytes()
         {
@@ -247,6 +345,7 @@ impl<'a> Packages<'a> {
         ];
         let value = Self {
             catalogue,
+            session,
             a,
             b,
             parsed,
@@ -255,8 +354,37 @@ impl<'a> Packages<'a> {
         value.checked(Slot::B)?;
         Ok(value)
     }
-    pub fn catalogue(&self) -> &Catalogue<'a> {
+    pub fn catalogue(&self) -> &CheckedCatalogue<'a> {
         &self.catalogue
+    }
+    pub const fn is_network(&self) -> bool {
+        self.catalogue.is_network()
+    }
+    pub const fn is_session(&self) -> bool {
+        self.session
+    }
+    /// Stable App namespace creation context, independent of code/package IDs.
+    /// Only blank-only session Note allocation may use it; this is not health.
+    pub fn note_format_manifest(&self) -> ev_store::GenerationManifest {
+        let mut h = Sha256::new();
+        h.update(b"evrosion.session.app-note.namespace.v2\0");
+        h.update(self.app().bytes());
+        h.update(2u32.to_le_bytes());
+        h.update(
+            ev_store::native::Region::SessionNote
+                .physical_start()
+                .to_le_bytes(),
+        );
+        ev_store::GenerationManifest {
+            generation: ev_store::GenerationId::new(1).unwrap(),
+            cohort: h.finalize().into(),
+            supervisor_image: self.catalogue.base().root_image(),
+            abi: ev_app_registry::note_data::FORMAT_ABI,
+            health_contract: Sha256::digest(b"note-namespace-creation-only; no health claim")
+                .into(),
+            health_version: 1,
+            required_checks: ev_store::HEALTH_STORAGE | ev_store::HEALTH_SUPERVISOR,
+        }
     }
     pub fn bytes(&self, slot: Slot) -> &'a [u8] {
         match slot {
@@ -338,7 +466,7 @@ impl<'a> Packages<'a> {
             generation: ev_store::GenerationId::new(1).unwrap(),
             cohort: h.finalize().into(),
             supervisor_image: self.catalogue.base().root_image(),
-            abi: native::ABI,
+            abi: self.catalogue.root_abi(),
             health_contract: Sha256::digest(b"format-context-only; no admitted health").into(),
             health_version: 1,
             required_checks: ev_store::HEALTH_STORAGE | ev_store::HEALTH_SUPERVISOR,
@@ -361,7 +489,7 @@ impl<'a> Packages<'a> {
             generation: ev_store::GenerationId::new(1).unwrap(),
             cohort: h.finalize().into(),
             supervisor_image: self.catalogue.base().root_image(),
-            abi: native::ABI,
+            abi: self.catalogue.root_abi(),
             health_contract: Sha256::digest(b"format-context-only; no System admission or health")
                 .into(),
             health_version: 1,

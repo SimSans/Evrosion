@@ -13,10 +13,27 @@ impl Runtime<'_, '_> {
         if let Some(native) = &mut self.native {
             native.profile.started = crate::timer::now();
         }
-        for transitions in 0..TRANSITIONS {
+        let mut transitions = 0u64;
+        loop {
+            if !cfg!(feature = "test-m6-session") && transitions >= TRANSITIONS {
+                #[cfg(feature = "test-m5-native")]
+                self.diagnose_bound(TRANSITIONS, crate::timer::now());
+                panic!("desktop finite transition budget exhausted");
+            }
+            transitions = transitions
+                .checked_add(1)
+                .expect("runtime transition counter overflow");
             let now = crate::timer::now();
+            #[cfg(feature = "test-m6-session")]
+            {
+                // Queued-frame retention policy, not a delivery guarantee.
+                // Expiry never ACKs or releases a delivered buffer lease.
+                self.stop = Deadline::after(now, 9728).expect("bounded session message deadline");
+            }
             #[cfg(feature = "test-m5-native")]
             if self.stop.reached(now) {
+                #[cfg(feature = "test-m6-session")]
+                self.emit_session_ui_counts("bound");
                 self.diagnose_bound(transitions, now);
             }
             assert!(
@@ -29,15 +46,40 @@ impl Runtime<'_, '_> {
                 self.facts.reaps,
                 self.facts.faults
             );
+            #[cfg(feature = "test-m6-session")]
+            if let Err(error) = self.expire_calls(now) {
+                self.emit_session_ui_counts("bound");
+                // Prototype fail-closed terminal path: every actual user CPU
+                // has returned to this sole controller; retain all live owners
+                // and mappings until the VM terminates. This is not a normal
+                // retirement/recovery PASS or the final service-containment path.
+                use core::fmt::Write as _;
+                let mut emergency = crate::serial::Serial::initialize(8192);
+                let _ = writeln!(
+                    emergency,
+                    "EVROSION_M6_SESSION_ABORT reason=quiescence detail={error}"
+                );
+                crate::finish(false);
+            }
+            #[cfg(not(feature = "test-m6-session"))]
             assert!(self.rpc.expire(now).unwrap().is_empty());
             self.s.advance(now).unwrap();
             #[cfg(feature = "test-m5-native")]
-            let dispatch = retained_dispatch.take().unwrap_or_else(|| {
-                self.s
-                    .dispatch(0)
-                    .unwrap()
-                    .expect("desktop runnable actual actor")
-            });
+            let selected = retained_dispatch
+                .take()
+                .or_else(|| self.s.dispatch(0).unwrap());
+            #[cfg(feature = "test-m5-native")]
+            let Some(dispatch) = selected else {
+                #[cfg(feature = "test-m6-session")]
+                {
+                    // Same finite stalled-clock guard as ordinary user waits;
+                    // a quota pause is not loss of the timer or a reset of usage.
+                    crate::user_runtime::idle_tick();
+                    continue;
+                }
+                #[cfg(not(feature = "test-m6-session"))]
+                panic!("desktop runnable actual actor");
+            };
             #[cfg(not(feature = "test-m5-native"))]
             let dispatch = self
                 .s
@@ -100,6 +142,10 @@ impl Runtime<'_, '_> {
             }
             let blocked = match frame.vector {
                 32 => {
+                    #[cfg(feature = "test-m6-session")]
+                    self.s
+                        .advance(crate::timer::now())
+                        .expect("captured monotonic CPU window");
                     #[cfg(feature = "test-m5-native")]
                     let charged_before = self.s.usage(dispatch.job, Resource::CpuTicks).unwrap();
                     self.s.charge_cpu(0, 1).unwrap();
@@ -145,7 +191,11 @@ impl Runtime<'_, '_> {
             {
                 assert_eq!(self.rpc.outstanding(), 0);
                 assert!(self.pending.iter().all(Option::is_none));
+                #[cfg(feature = "test-m6-network-negative")]
+                self.negative_finish();
                 self.emit_profile("finished");
+                #[cfg(feature = "test-m6-session")]
+                self.emit_session_ui_counts("finished");
                 return;
             }
             #[cfg(not(feature = "test-m5-native"))]
@@ -159,13 +209,14 @@ impl Runtime<'_, '_> {
                 return;
             }
         }
-        #[cfg(feature = "test-m5-native")]
-        self.diagnose_bound(TRANSITIONS, crate::timer::now());
-        panic!("desktop finite transition budget exhausted");
     }
     fn fault(&mut self, index: usize, frame: &UserContext, address: u64) {
+        #[cfg(feature = "test-m6-network")]
+        let network = matches!(index, 7 | 8);
+        #[cfg(not(feature = "test-m6-network"))]
+        let network = false;
         assert!(
-            index == Child::App.index() + 1 || index == Child::Shell.index() + 1,
+            index == Child::App.index() + 1 || index == Child::Shell.index() + 1 || network,
             "unexpected desktop actor fault index={index} vector={} error={} ip={:#x} address={address:#x}",
             frame.vector,
             frame.error,
@@ -173,25 +224,30 @@ impl Runtime<'_, '_> {
         );
         assert!(frame.ordinary_user_fault());
         let m = self.current(index);
-        let base = self.actors[index - 1]
-            .as_ref()
-            .unwrap()
-            .image()
-            .unwrap()
-            .root()
-            .base();
-        assert_eq!(
-            (frame.vector, frame.error, address),
-            (14, 4, base + 4 * 1024 * 1024)
-        );
-        assert!(
-            !self
-                .pending
-                .iter()
-                .flatten()
-                .any(|p| p.caller == index || p.callee == index),
-            "crash cannot return outstanding shared credit"
-        );
+        #[cfg(not(feature = "test-m6-session"))]
+        {
+            let base = self.actors[index - 1]
+                .as_ref()
+                .unwrap()
+                .image()
+                .unwrap()
+                .root()
+                .base();
+            assert_eq!(
+                (frame.vector, frame.error, address),
+                (14, 4, base + 4 * 1024 * 1024)
+            );
+        }
+        if !network {
+            assert!(
+                !self
+                    .pending
+                    .iter()
+                    .flatten()
+                    .any(|p| p.caller == index || p.callee == index),
+                "crash cannot return outstanding shared credit"
+            );
+        }
         let record = Record {
             process: m.process.diagnostic_id(),
             thread: m.thread.diagnostic_id(),
@@ -215,6 +271,19 @@ impl Runtime<'_, '_> {
         }));
         self.actors[index - 1].as_mut().unwrap().fault = Some(record);
         assert_eq!(self.s.exit(0), Ok(m.thread));
+        #[cfg(feature = "test-m6-network")]
+        if network {
+            // Only this actual CPU actor exited. Canonical session peer-death
+            // and leaf-drain handles accepted work next turn. Retain all image,
+            // MemoryObject and port owners; this is NOT device quiescence.
+            self.network_fault.record(index);
+            // The CPU has exited and every hardware owner remains retained.
+            // Root's ordinary OBSERVE reports process termination, not merely
+            // Thread::Exited; mark this exact process without reaping it.
+            self.s.terminate_process(m.process).unwrap();
+            self.facts.faults += 1;
+            return;
+        }
         self.stop_actor(index).unwrap();
         self.old[index - 1] = Some(m);
         self.facts.faults += 1;

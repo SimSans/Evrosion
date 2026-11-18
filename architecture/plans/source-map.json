@@ -305,8 +305,8 @@
     {
       "original_path": "Evrosion_R-007_to_R-011_Superfile_v1.md",
       "path": "architecture/plans/release-project/Evrosion_R-007_to_R-011_Superfile_v1.md",
-      "sha256": "64a888924af3532e9f4ae339d6710645f21b78b44f609091f519ad8f8b631cc5",
-      "bytes": 107335,
+      "sha256": "8da3df80a4a410f6da58936c860c6d6062a55454a5b0283cca2f37550a74c793",
+      "bytes": 107320,
       "source_sha256": "7115a1b76c73e9b0db81c8246dc0fc4fe6f2e634e854f8d77e7c516016d73265",
       "edition": "public-technical",
       "editorial_scope": "Neutral technical edition; private development instructions and context references removed, technical requirements retained. License-application status is recorded where applicable."
@@ -344,6 +344,14 @@
       "source_sha256": "82dcde3bbb7e2621d3a0d8cfa705455be19b511a59724249db4b0e520c6e954a",
       "edition": "public-technical",
       "editorial_scope": "Neutral technical edition; private development instructions and context references removed, technical requirements retained. License-application status is recorded where applicable."
+    },
+    {
+      "original_path": "2026-11-12-m6-virtual-acceptance.md",
+      "path": "architecture/plans/amendments/2026-11-12-m6-virtual-acceptance.md",
+      "edition": "public-technical",
+      "editorial_scope": "Technical publication edition; current bytes are identified here.",
+      "sha256": "9d846e616689ac11740617a7ec34323010bec27a96588f7fe6614a6222cd399f",
+      "bytes": 1653
     }
   ]
 }

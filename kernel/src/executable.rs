@@ -1,6 +1,8 @@
 //! Bounded Internal ELF64 load plan for a measured, static x86-64 image.
 //! Hardware frame allocation, copying and activation belong to the runtime.
 use crate::{bootstrap_manifest::Manifest, memory::FRAME_SIZE, user::UserPermission};
+#[cfg(feature = "workspace-authority")]
+pub mod m8;
 
 pub const MAX_SEGMENTS: usize = 8;
 pub const MAX_IMAGE_PAGES: usize = 64;
@@ -11,6 +13,11 @@ pub const NATIVE_ROOT_MAX_IMAGE_PAGES: usize = 96;
 pub const NATIVE_ROOT_MAX_PRIVATE_PAGES: usize = NATIVE_ROOT_MAX_IMAGE_PAGES + 4;
 /// Four page tables plus image, bootstrap and separate final stack frame.
 pub const NATIVE_ROOT_MAX_PRIVATE_FRAMES: u64 = NATIVE_ROOT_MAX_IMAGE_PAGES as u64 + 6;
+/// Selected V4 Root only; legacy/service and Native3 constructors retain their
+/// original separate bounds. Canonical SDK metadata binds these exact values.
+pub const ROOT_V4_MAX_IMAGE_PAGES: usize = ev_userspace_contract::root_v4::ROOT_MAX_IMAGE_PAGES;
+pub const ROOT_V4_MAX_PRIVATE_PAGES: usize = ev_userspace_contract::root_v4::ROOT_MAX_PRIVATE_PAGES;
+pub const ROOT_V4_MAX_PRIVATE_FRAMES: u64 = ev_userspace_contract::root_v4::ROOT_MAX_PRIVATE_FRAMES;
 pub const WINDOW_BYTES: u64 = 512 * FRAME_SIZE;
 pub const BOOTSTRAP_PAGE: u64 = 509 * FRAME_SIZE;
 pub const STACK_PAGE: u64 = 511 * FRAME_SIZE;
@@ -79,14 +86,24 @@ struct Segment {
 pub enum StartupLayout {
     None,
     ServiceV1,
+    #[cfg(feature = "workspace-authority")]
+    ServiceV5,
     RootV2,
+    RootV4,
+    #[cfg(feature = "workspace-authority")]
+    RootV5,
 }
 impl StartupLayout {
     pub const fn bytes(self) -> Option<usize> {
         match self {
             Self::None => None,
             Self::ServiceV1 => Some(ev_userspace_contract::SIZE),
+            #[cfg(feature = "workspace-authority")]
+            Self::ServiceV5 => Some(ev_userspace_contract::root_v5::child::SIZE),
             Self::RootV2 => Some(ev_userspace_contract::root_v2::SIZE),
+            Self::RootV4 => Some(ev_userspace_contract::root_v4::SIZE),
+            #[cfg(feature = "workspace-authority")]
+            Self::RootV5 => Some(ev_userspace_contract::root_v5::SIZE),
         }
     }
 }
@@ -116,6 +133,54 @@ impl<'a> Image<'a> {
     pub fn from_native_root(root: &crate::root_manifest_v2::NativeRoot<'a>) -> Result<Self, Error> {
         Self::from_checked_root_with_limit(root.manifest(), NATIVE_ROOT_MAX_IMAGE_PAGES)
     }
+    pub fn from_root_v4(root: &crate::root_manifest_v4::CurrentRoot<'a>) -> Result<Self, Error> {
+        Self::from_checked_root_layout(
+            root.manifest(),
+            ROOT_V4_MAX_IMAGE_PAGES,
+            StartupLayout::RootV4,
+        )
+    }
+    /// Independent V5 Root plan, retaining the selected240-image-page ceiling.
+    #[cfg(feature = "workspace-authority")]
+    pub fn from_root_v5(root: &crate::root_manifest_v5::CurrentRoot<'a>) -> Result<Self, Error> {
+        use ev_userspace_contract::root_v5::resources as r;
+        let image = Self::from_checked_root_layout(
+            root.manifest(),
+            r::ROOT_MAX_IMAGE_PAGES as usize,
+            StartupLayout::RootV5,
+        )?;
+        let mut stack = 0;
+        for page in image.pages() {
+            let n = (page.address - image.base()) / FRAME_SIZE;
+            // Root's externally backed package windows, protected producer,
+            // catalogue, Workspace frame, network windows and their guards.
+            if (r::PACKAGE_B_FIRST_PAGE - 1..=r::PACKAGE_B_FIRST_PAGE + r::PACKAGE_MAX_PAGES)
+                .contains(&n)
+                || (r::PACKAGE_A_FIRST_PAGE - 1
+                    ..=r::PACKAGE_A_FIRST_PAGE + r::PACKAGE_CURRENT_PAGES)
+                    .contains(&n)
+                || (r::ROOT_PROTECTED_FIRST_PAGE - 1..=r::ROOT_NIC_PAGE).contains(&n)
+                || n == r::ROOT_STACK_FIRST_PAGE - 1
+                || n == r::ROOT_STACK_FIRST_PAGE + r::ROOT_STACK_PAGES
+            {
+                return Err(Error::Address);
+            }
+            if (r::ROOT_STACK_FIRST_PAGE..r::ROOT_STACK_FIRST_PAGE + r::ROOT_STACK_PAGES)
+                .contains(&n)
+            {
+                if page.permission != UserPermission::ReadWrite
+                    || page.initialized.iter().any(|b| *b != 0)
+                {
+                    return Err(Error::Permission);
+                }
+                stack += 1;
+            }
+        }
+        if stack != r::ROOT_STACK_PAGES {
+            return Err(Error::Address);
+        }
+        Ok(image)
+    }
     fn from_checked_root(manifest: &crate::root_manifest_v2::Manifest<'a>) -> Result<Self, Error> {
         Self::from_checked_root_with_limit(manifest, MAX_IMAGE_PAGES)
     }
@@ -123,8 +188,15 @@ impl<'a> Image<'a> {
         manifest: &crate::root_manifest_v2::Manifest<'a>,
         image_pages: usize,
     ) -> Result<Self, Error> {
+        Self::from_checked_root_layout(manifest, image_pages, StartupLayout::RootV2)
+    }
+    fn from_checked_root_layout(
+        manifest: &crate::root_manifest_v2::Manifest<'a>,
+        image_pages: usize,
+        startup: StartupLayout,
+    ) -> Result<Self, Error> {
         let mut image = parse_with_limit(manifest.root_image(), manifest.digest(), image_pages)?;
-        image.bootstrap = StartupLayout::RootV2;
+        image.bootstrap = startup;
         if image
             .segments
             .iter()
@@ -188,6 +260,17 @@ impl<'a> Image<'a> {
             return Err(Error::FrameBudget);
         }
         Ok(image)
+    }
+    /// Selected closed M8 class. This does not widen from_descriptor or any
+    /// Root constructor. The service descriptor already binds exact slot/ABI.
+    #[cfg(feature = "workspace-authority")]
+    pub(crate) fn from_m8_descriptor(
+        bytes: &'a [u8],
+        descriptor: [u8; 32],
+        slot: ev_userspace_contract::root_v5::graph::ImageSlot,
+        limits: crate::scheduler::Limits,
+    ) -> Result<Self, Error> {
+        m8::plan(bytes, descriptor, slot, limits)
     }
     pub fn manifest_digest(&self) -> [u8; 32] {
         self.manifest_digest

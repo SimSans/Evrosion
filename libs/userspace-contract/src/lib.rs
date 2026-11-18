@@ -5,13 +5,20 @@
 pub mod app_data;
 pub mod block;
 pub mod cap_echo;
+pub mod document;
+pub mod document_control;
+pub mod document_test;
 pub mod echo;
 pub mod file;
 pub mod file_test;
+pub mod file_v2;
+pub mod focused_input;
 pub mod generation;
 pub mod provider;
+pub mod session_note;
 pub mod store_test;
 pub mod syscall;
+pub mod workspace;
 
 pub const SIZE: usize = 336;
 pub const MAX_GRANTS: usize = 8;
@@ -422,3 +429,7 @@ mod io_ports_wire_tests {
 
 /// Additive Root-only contract; ordinary v1 constants stay unchanged.
 pub mod root_v2;
+/// Explicit Internal session-network profile; never a substitute for Native3.
+pub mod root_v4;
+/// Independent Internal M8 workspace graph; never V4 metadata relabeled.
+pub mod root_v5;

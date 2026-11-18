@@ -25,7 +25,10 @@ impl Window {
         Self::at(record, 1)
     }
     pub(super) fn at(record: u64, pages: u64) -> Self {
-        require(matches!(pages, 1 | 2), 300);
+        require(
+            matches!(pages, 1 | 2) || (cfg!(feature = "workspace-driver") && pages == 3),
+            300,
+        );
         Self {
             address: usize::try_from(
                 record

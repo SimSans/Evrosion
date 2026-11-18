@@ -1,8 +1,10 @@
 //! Actual scoped userspace PS/2 backend. Raw frames are freshness metadata;
 //! protected sender identity, focus, trusted UI and approval stay separate.
-use crate::{grant, require};
+#[cfg(not(feature = "workspace-input"))]
+use crate::grant;
+use crate::require;
 use ev_input::{
-    BarrierRequest,
+    BarrierRequest, SessionBarrierRequest,
     ps2::{Driver, Ports},
     stream::Stream,
 };
@@ -92,7 +94,10 @@ fn send_result(reply: rt::Reply) -> Result<Sent, BoundaryError> {
     }
 }
 fn before(stop: u64) {
-    require(clock().unwrap_or_else(|_| rt::exit(761)) < stop, 762);
+    require(
+        rt::execution::live(stop, clock().unwrap_or_else(|_| rt::exit(761))),
+        762,
+    );
 }
 fn pause(stop: u64) {
     before(stop);
@@ -100,8 +105,14 @@ fn pause(stop: u64) {
     before(stop);
 }
 fn ready(endpoint: u64, stop: u64) {
+    let retry_stop = if stop == 0 {
+        rt::execution::deadline(stop, clock().unwrap_or_else(|_| rt::exit(761)), 512)
+            .unwrap_or_else(|_| rt::exit(764))
+    } else {
+        stop
+    };
     loop {
-        before(stop);
+        before(retry_stop);
         match send_result(rt::send(endpoint, *b"EVINRDY1")).unwrap_or_else(|_| rt::exit(764)) {
             Sent::Accepted => return,
             Sent::Full => pause(stop),
@@ -111,18 +122,52 @@ fn ready(endpoint: u64, stop: u64) {
 
 pub fn run(b: &ev_userspace_contract::Bootstrap<'_>, record: u64, stop: u64) -> ! {
     let _ = record;
-    require(b.grants().count() == 4, 760);
-    let ports = grant(b, 1, 7, 3);
-    let shell_keys = grant(b, 2, 2, 8);
-    let root_events = grant(b, 3, 2, 8);
-    let control = grant(b, 4, 2, 272);
+    #[cfg(not(feature = "workspace-input"))]
+    let (ports, shell_keys, root_events, control) = {
+        require(b.grants().count() == 4, 760);
+        let ports = grant(b, 1, 7, 3);
+        let shell_keys = grant(b, 2, 2, 8);
+        let root_events = grant(b, 3, 2, 8);
+        let control = grant(b, 4, 2, 272);
+        (ports, shell_keys, root_events, control)
+    };
+    #[cfg(feature = "workspace-input")]
+    let (ports, shell_keys, root_events, control) = {
+        let p = ev_desktop::workspace_input::Profile::roles(b).unwrap_or_else(|_| rt::exit(760));
+        (p.ports, p.events, p.events, p.control)
+    };
     let mut driver = Driver::new(Io { cap: ports });
-    driver.initialize(stop).unwrap_or_else(|_| rt::exit(765));
-    let mut stream = Stream::new();
+    driver
+        .initialize(if stop == 0 {
+            rt::execution::deadline(stop, clock().unwrap_or_else(|_| rt::exit(761)), 512)
+                .unwrap_or_else(|_| rt::exit(765))
+        } else {
+            stop
+        })
+        .unwrap_or_else(|_| rt::exit(765));
+    let mut stream = if cfg!(feature = "native-session") {
+        driver
+            .enable_mouse(
+                rt::execution::deadline(stop, clock().unwrap_or_else(|_| rt::exit(761)), 512)
+                    .unwrap_or_else(|_| rt::exit(765)),
+            )
+            .unwrap_or_else(|_| rt::exit(765));
+        Stream::with_pointer()
+    } else {
+        Stream::new()
+    };
     // Known raw set1 now: drain stale actual bytes without forwarding. Initial
     // unknown-held Enter may launch UI, but cannot approve without a real break.
     driver
-        .drain(&mut stream, stop)
+        .drain(
+            &mut stream,
+            if stop == 0 {
+                rt::execution::deadline(stop, clock().unwrap_or_else(|_| rt::exit(761)), 512)
+                    .unwrap_or_else(|_| rt::exit(765))
+            } else {
+                stop
+            },
+        )
         .unwrap_or_else(|_| rt::exit(766));
     let bound = rt::call(rt::syscall::BIND_RECEIVER, control, 0, 0);
     require(
@@ -135,21 +180,51 @@ pub fn run(b: &ev_userspace_contract::Bootstrap<'_>, record: u64, stop: u64) -> 
         // Always service protected control before retrying a pending key. Full
         // leaves exactly one unsent frame; barriers drop it and drain held state.
         if let Some(request) = rt::discipline::receive(control).unwrap_or_else(|_| rt::exit(768)) {
-            let reply = if BarrierRequest::decode(request.bytes).is_ok() {
+            let session = cfg!(feature = "native-session")
+                && SessionBarrierRequest::decode(request.bytes).is_ok();
+            let reply = if session || BarrierRequest::decode(request.bytes).is_ok() {
                 let deadline = rt::rpc_deadline();
+                if stop == 0
+                    && !rt::execution::accepts_deadline(
+                        0,
+                        clock().unwrap_or_else(|_| rt::exit(761)),
+                        deadline.value,
+                        1024,
+                    )
+                {
+                    rt::discipline::reply(control, *b"EVDE\x04\0\0\0", request.nonce)
+                        .unwrap_or_else(|_| rt::exit(773));
+                    continue;
+                }
                 require(
                     deadline.status == 0 && deadline.capability == 0 && deadline.value != u64::MAX,
                     769,
                 );
-                let deadline = deadline.value.min(stop);
+                require(
+                    stop != 0
+                        || rt::execution::accepts_deadline(
+                            0,
+                            clock().unwrap_or_else(|_| rt::exit(761)),
+                            deadline.value,
+                            1024,
+                        ),
+                    769,
+                );
+                let deadline = if stop == 0 {
+                    deadline.value
+                } else {
+                    deadline.value.min(stop)
+                };
                 stream.begin_barrier();
                 driver
                     .drain(&mut stream, deadline)
                     .unwrap_or_else(|_| rt::exit(770));
-                stream
-                    .barrier_reply()
-                    .encode()
-                    .unwrap_or_else(|_| rt::exit(771))
+                if session {
+                    stream.session_barrier_reply().encode()
+                } else {
+                    stream.barrier_reply().encode()
+                }
+                .unwrap_or_else(|_| rt::exit(771))
             } else {
                 *b"KBE1\x01\0\0\0"
             };
@@ -165,7 +240,33 @@ pub fn run(b: &ev_userspace_contract::Bootstrap<'_>, record: u64, stop: u64) -> 
             pause(stop);
             continue;
         }
-        if let Some((status, data)) = driver.poll(stop).unwrap_or_else(|_| rt::exit(775)) {
+        if let Some(text) = stream.pending_text() {
+            let bytes = text.encode().unwrap_or_else(|_| rt::exit(773));
+            match send_result(rt::send(shell_keys, bytes)).unwrap_or_else(|_| rt::exit(774)) {
+                Sent::Accepted => stream.sent(),
+                Sent::Full => {}
+            }
+            pause(stop);
+            continue;
+        }
+        if let Some(pointer) = stream.pending_pointer() {
+            let bytes = pointer.encode().unwrap_or_else(|_| rt::exit(773));
+            match send_result(rt::send(shell_keys, bytes)).unwrap_or_else(|_| rt::exit(774)) {
+                Sent::Accepted => stream.sent(),
+                Sent::Full => {}
+            }
+            pause(stop);
+            continue;
+        }
+        if let Some((status, data)) = driver
+            .poll(if stop == 0 {
+                rt::execution::deadline(stop, clock().unwrap_or_else(|_| rt::exit(761)), 512)
+                    .unwrap_or_else(|_| rt::exit(765))
+            } else {
+                stop
+            })
+            .unwrap_or_else(|_| rt::exit(775))
+        {
             stream.push(status, data).unwrap_or_else(|_| rt::exit(776));
         }
         pause(stop);

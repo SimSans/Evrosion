@@ -6,6 +6,9 @@
 //! reuse without reviving old identities. Hardware retirement stays external.
 use crate::time::Deadline;
 
+mod budget;
+pub use budget::CpuBudget;
+
 pub const MAX_JOBS: usize = 16;
 pub const MAX_PROCESSES: usize = 16;
 pub const MAX_THREADS: usize = 32;
@@ -72,6 +75,7 @@ pub enum Error {
     Admission,
     GenerationExhausted,
     NotQuiescent,
+    InvalidBudget,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dispatch {
@@ -104,12 +108,16 @@ struct Job {
     limits: Limits,
     used: [u64; 4],
     dispatches: u64,
+    subtree_dispatched: bool,
+    cpu_window: Option<budget::Window>,
+    cpu_reserved: u8,
 }
 #[derive(Clone, Copy)]
 struct Thread {
     process: ProcessId,
     state: State,
     wake: Option<WakeReason>,
+    guarded_wait: bool,
 }
 
 pub struct Scheduler {
@@ -126,6 +134,7 @@ pub struct Scheduler {
     cursor: usize,
     now: u64,
     generation: u64,
+    cpu_windows_enabled: bool,
 }
 impl Default for Scheduler {
     fn default() -> Self {
@@ -157,6 +166,7 @@ impl Scheduler {
             cursor: 0,
             now: 0,
             generation: 0,
+            cpu_windows_enabled: false,
         }
     }
     /// Fixed metadata staging for one serialized multi-table admission commit.
@@ -178,6 +188,7 @@ impl Scheduler {
             cursor: self.cursor,
             now: self.now,
             generation: self.generation,
+            cpu_windows_enabled: self.cpu_windows_enabled,
         }
     }
     fn next_generation(generation: u64) -> Result<u64, Error> {
@@ -257,6 +268,9 @@ impl Scheduler {
             limits,
             used: [0; 4],
             dispatches: 0,
+            subtree_dispatched: false,
+            cpu_window: None,
+            cpu_reserved: 0,
         });
         self.job_generations[slot] = generation;
         Ok(JobId(slot, generation))
@@ -275,6 +289,9 @@ impl Scheduler {
     /// Preflight all resources at every ancestor before changing any count.
     /// Validate each retained parent generation before charging any ancestor.
     fn adjust(&mut self, job: JobId, amounts: [u64; 4], release: bool) -> Result<(), Error> {
+        if self.cpu_windows_enabled && amounts[0] != 0 {
+            return Err(Error::Admission);
+        }
         let mut chain = [0usize; MAX_JOBS];
         let mut count = 0;
         let mut current = Some(job);
@@ -290,7 +307,7 @@ impl Scheduler {
                 } else {
                     entry.used[i].checked_add(*amount).ok_or(Error::Overflow)?
                 };
-                if next > entry.limits.0[i] {
+                if next > entry.limits.0[i] && !(i == 0 && entry.cpu_window.is_some()) {
                     return Err(Error::Budget);
                 }
             }
@@ -319,6 +336,9 @@ impl Scheduler {
     /// Sampled user/kernel-worker timer ticks, not elapsed wall time. The owner
     /// decides how to handle budget exhaustion before resuming the current CPU.
     pub fn charge_cpu(&mut self, cpu: usize, ticks: u64) -> Result<(), Error> {
+        if self.cpu_windows_enabled {
+            return self.charge_windowed_cpu(cpu, ticks);
+        }
         let thread = self.current(cpu)?;
         let process = self.thread_process(thread)?;
         let job = self.process_job(process)?;
@@ -393,6 +413,25 @@ impl Scheduler {
     ) -> Result<(), Error> {
         self.admit_bootstrap(process, job, thread, frames)
     }
+    /// V5-only Root begins with independently retained shared source owners in
+    /// the same subtree Job. Both counts come from validated move-only owners;
+    /// all old admission callers still require exactly private frames alone.
+    #[cfg(feature = "workspace-authority")]
+    pub(crate) fn admit_workspace_root(
+        &mut self,
+        process: ProcessId,
+        job: JobId,
+        thread: ThreadId,
+        private: u64,
+        shared: u64,
+    ) -> Result<(), Error> {
+        let values = ev_userspace_contract::root_v5::ROOT_LIMITS;
+        if self.job_limits(job)? != Limits::new(values[0], values[1], values[2], values[3]) {
+            return Err(Error::Admission);
+        }
+        let total = private.checked_add(shared).ok_or(Error::Admission)?;
+        self.admit_bootstrap(process, job, thread, total)
+    }
     /// Blocks future dispatch first, including new/woken siblings. A currently
     /// running CPU must still return to the controller before teardown.
     pub(crate) fn inhibit_process(&mut self, process: ProcessId) -> Result<(), Error> {
@@ -443,6 +482,7 @@ impl Scheduler {
             process,
             state: State::Ready,
             wake: None,
+            guarded_wait: false,
         });
         self.thread_generations[slot] = generation;
         Ok(ThreadId(slot, generation))
@@ -492,6 +532,7 @@ impl Scheduler {
             .filter(|t| t.process == process)
         {
             t.state = State::Exited;
+            t.guarded_wait = false;
             t.wake = None;
         }
         self.terminated[process.0] = true;
@@ -559,6 +600,9 @@ impl Scheduler {
     /// owners must already have retired all hardware/IPC/registry references.
     pub fn reclaim_job(&mut self, job: JobId) -> Result<(), Error> {
         let index = self.job_index(job)?;
+        if self.jobs[index].unwrap().cpu_reserved != 0 {
+            return Err(Error::NotQuiescent);
+        }
         for resource in [Resource::Frames, Resource::Processes, Resource::Threads] {
             if self.usage(job, resource)? != 0 {
                 return Err(Error::NotQuiescent);
@@ -597,6 +641,11 @@ impl Scheduler {
     pub fn dispatches(&self, job: JobId) -> Result<u64, Error> {
         Ok(self.jobs[self.job_index(job)?].unwrap().dispatches)
     }
+    /// Last successfully accepted monotonic sample. A diagnostic caller can
+    /// distinguish this accounting snapshot from a newer captured timer tick.
+    pub fn observed_tick(&self) -> u64 {
+        self.now
+    }
     /// At most MAX_THREADS inspections. Fair across continuously ready threads
     /// when the caller returns control; no wall-clock fairness is claimed.
     pub fn dispatch(&mut self, cpu: usize) -> Result<Option<Dispatch>, Error> {
@@ -615,15 +664,24 @@ impl Scheduler {
                 continue;
             }
             let job = self.process_job(thread.process)?;
+            if self.cpu_windows_enabled && !self.check_cpu_dispatch(job, cpu)? {
+                continue;
+            }
             let count = self
                 .dispatches(job)?
                 .checked_add(1)
                 .ok_or(Error::Overflow)?;
+            let (chain, ancestors) = self.cpu_chain(job)?;
             // Validate all fallible work before committing the transition.
-            self.jobs[job.0]
-                .as_mut()
-                .ok_or(Error::InvalidId)?
-                .dispatches = count;
+            if self.cpu_windows_enabled {
+                self.claim_cpu_dispatch(job, cpu);
+            }
+            self.jobs[job.0].as_mut().unwrap().dispatches = count;
+            // Keep execution history at every surviving ancestor, including
+            // zero-tick legacy executions whose child Job is later reclaimed.
+            for index in chain.into_iter().take(ancestors) {
+                self.jobs[index].as_mut().unwrap().subtree_dispatched = true;
+            }
             self.threads[slot] = Some(Thread {
                 state: State::Running(cpu),
                 wake: None,
@@ -657,12 +715,20 @@ impl Scheduler {
     }
     fn stop(&mut self, cpu: usize, state: State) -> Result<ThreadId, Error> {
         let id = self.current(cpu)?;
+        if self.cpu_windows_enabled {
+            self.check_cpu_stop(cpu)?;
+        }
         if state == State::Exited {
             let process = self.thread_process(id)?;
             let job = self.process_job(process)?;
             self.adjust(job, [0, 0, 0, 1], true)?;
         }
-        self.threads[id.0].as_mut().unwrap().state = state;
+        if self.cpu_windows_enabled {
+            self.release_cpu_reservation(cpu);
+        }
+        let thread = self.threads[id.0].as_mut().unwrap();
+        thread.state = state;
+        thread.guarded_wait = false;
         self.running[cpu] = None;
         Ok(id)
     }
@@ -686,11 +752,28 @@ impl Scheduler {
         Ok(())
     }
     pub fn block(&mut self, cpu: usize, deadline: Deadline) -> Result<WaitTicket, Error> {
+        self.block_inner(cpu, deadline, false)
+    }
+    /// Trusted transport ownership barrier. The finite deadline still belongs
+    /// to the operation, but reaching it cannot return a shared buffer while
+    /// a callee may retain access. Only the serialized owner may wake this
+    /// exact ticket after withdrawal, acknowledgement or verified retirement.
+    /// The owner must independently bound quiescence and handle a failed peer.
+    pub fn block_guarded(&mut self, cpu: usize, deadline: Deadline) -> Result<WaitTicket, Error> {
+        self.block_inner(cpu, deadline, true)
+    }
+    fn block_inner(
+        &mut self,
+        cpu: usize,
+        deadline: Deadline,
+        guarded: bool,
+    ) -> Result<WaitTicket, Error> {
         self.check_block(cpu, deadline)?;
         let thread = self.current(cpu)?;
         let generation = self.generation + 1;
         let ticket = WaitTicket { thread, generation };
         self.stop(cpu, State::Blocked { deadline, ticket })?;
+        self.threads[thread.0].as_mut().unwrap().guarded_wait = guarded;
         self.generation = generation;
         Ok(ticket)
     }
@@ -706,6 +789,7 @@ impl Scheduler {
         }
         thread.state = State::Ready;
         thread.wake = Some(WakeReason::Signal);
+        thread.guarded_wait = false;
         true
     }
     /// One bounded scan. Time cannot move backward; timeout wins when advance
@@ -713,6 +797,9 @@ impl Scheduler {
     pub fn advance(&mut self, now: u64) -> Result<usize, Error> {
         if now < self.now {
             return Err(Error::ClockReversed);
+        }
+        if self.cpu_windows_enabled {
+            self.check_cpu_advance(now)?;
         }
         // Preflight all identities before waking even the first thread; an
         // invalid retained association cannot produce a partial clock advance.
@@ -732,8 +819,13 @@ impl Scheduler {
             }
         }
         let mut woken = 0;
+        if self.cpu_windows_enabled {
+            self.advance_cpu_windows(now);
+        }
         for thread in self.threads.iter_mut().flatten() {
-            if matches!(thread.state, State::Blocked { deadline, .. } if deadline.reached(now)) {
+            if !thread.guarded_wait
+                && matches!(thread.state, State::Blocked { deadline, .. } if deadline.reached(now))
+            {
                 thread.state = State::Ready;
                 thread.wake = Some(WakeReason::Deadline);
                 woken += 1;
@@ -747,20 +839,34 @@ impl Scheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn unchanged(s: &Scheduler, before: &Scheduler) {
+    pub(super) fn unchanged(s: &Scheduler, before: &Scheduler) {
         assert_eq!(
-            s.jobs
-                .map(|j| j.map(|j| (j.parent, j.limits, j.used, j.dispatches))),
-            before
-                .jobs
-                .map(|j| j.map(|j| (j.parent, j.limits, j.used, j.dispatches)))
+            s.jobs.map(|j| j.map(|j| (
+                j.parent,
+                j.limits,
+                j.used,
+                j.dispatches,
+                j.subtree_dispatched,
+                j.cpu_window,
+                j.cpu_reserved
+            ))),
+            before.jobs.map(|j| j.map(|j| (
+                j.parent,
+                j.limits,
+                j.used,
+                j.dispatches,
+                j.subtree_dispatched,
+                j.cpu_window,
+                j.cpu_reserved
+            )))
         );
         assert_eq!(s.processes, before.processes);
         assert_eq!(
-            s.threads.map(|t| t.map(|t| (t.process, t.state, t.wake))),
+            s.threads
+                .map(|t| t.map(|t| (t.process, t.state, t.wake, t.guarded_wait))),
             before
                 .threads
-                .map(|t| t.map(|t| (t.process, t.state, t.wake)))
+                .map(|t| t.map(|t| (t.process, t.state, t.wake, t.guarded_wait)))
         );
         assert_eq!(s.job_generations, before.job_generations);
         assert_eq!(s.process_generations, before.process_generations);
@@ -769,6 +875,7 @@ mod tests {
         assert_eq!(s.admission_held, before.admission_held);
         assert_eq!(s.admission_released, before.admission_released);
         assert_eq!(s.running, before.running);
+        assert_eq!(s.cpu_windows_enabled, before.cpu_windows_enabled);
         assert_eq!(
             (s.cursor, s.now, s.generation),
             (before.cursor, before.now, before.generation)

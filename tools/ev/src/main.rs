@@ -21,7 +21,21 @@ fn main() -> ExitCode {
             return outcome(ev::graphics_workflow::run());
         }
         Ok(Cli::Workflow(workflow)) => return outcome(ev::workflow::run(&workflow)),
+        Ok(Cli::Workspace(args)) => return outcome(ev::workspace::execute(&args)),
+        Ok(Cli::App(args)) => return outcome(ev::workspace::execute_app(&args)),
         Ok(Cli::Recover(source)) => return outcome(ev::workflow::recover(&source)),
+        Ok(Cli::OwnerUiExercise(options)) => {
+            return outcome(ev::workflow::owner_ui_exercise(&options));
+        }
+        Ok(Cli::OwnerUiFirstUse(options)) => {
+            return outcome(ev::workflow::owner_ui_first_use(&options));
+        }
+        Ok(Cli::OwnerUi(options)) => return outcome(ev::workflow::owner_ui(&options)),
+        Ok(Cli::Acquisition(options)) => return outcome(ev::workflow::acquisition(&options)),
+        Ok(Cli::SystemHealth(options)) => return outcome(ev::workflow::system_health(&options)),
+        Ok(Cli::DocumentUpdate(options)) => {
+            return outcome(ev::workflow::document_update(&options));
+        }
         Ok(Cli::Doctor(options)) => {
             let current = match std::env::current_dir() {
                 Ok(current) => current,

@@ -9,8 +9,13 @@ pub enum Error {
 #[derive(Clone, Copy)]
 enum Bytes<'a> {
     V1(&'a [u8; ev_userspace_contract::SIZE]),
+    #[cfg(feature = "workspace-authority")]
+    ServiceV5(&'a [u8; ev_userspace_contract::root_v5::child::SIZE]),
     RootV2(&'a [u8; root_v2::SIZE]),
     NativeRoot(&'a [u8; root_v2::native::SIZE]),
+    RootV4(&'a [u8; ev_userspace_contract::root_v4::SIZE]),
+    #[cfg(feature = "workspace-authority")]
+    RootV5(&'a [u8; ev_userspace_contract::root_v5::SIZE]),
 }
 /// Private discriminant prevents a raw slice from claiming a format or size.
 #[derive(Clone, Copy)]
@@ -18,10 +23,28 @@ pub struct Record<'a> {
     bytes: Bytes<'a>,
 }
 impl<'a> Record<'a> {
+    #[cfg(feature = "workspace-authority")]
+    pub fn root_v5(bytes: &'a [u8; ev_userspace_contract::root_v5::SIZE]) -> Result<Self, Error> {
+        ev_userspace_contract::root_v5::FullGraph::parse(bytes).map_err(|_| Error::Record)?;
+        Ok(Self {
+            bytes: Bytes::RootV5(bytes),
+        })
+    }
     pub fn service_v1(bytes: &'a [u8; ev_userspace_contract::SIZE]) -> Result<Self, Error> {
         ev_userspace_contract::Bootstrap::parse(bytes).map_err(|_| Error::Record)?;
         Ok(Self {
             bytes: Bytes::V1(bytes),
+        })
+    }
+    #[cfg(feature = "workspace-authority")]
+    pub fn service_v5(
+        child: ev_userspace_contract::root_v5::graph::Child,
+        bytes: &'a [u8; ev_userspace_contract::root_v5::child::SIZE],
+    ) -> Result<Self, Error> {
+        ev_userspace_contract::root_v5::child::Profile::parse(child, bytes)
+            .map_err(|_| Error::Record)?;
+        Ok(Self {
+            bytes: Bytes::ServiceV5(bytes),
         })
     }
     pub fn root_v2(bytes: &'a [u8; root_v2::SIZE]) -> Result<Self, Error> {
@@ -38,17 +61,33 @@ impl<'a> Record<'a> {
             bytes: Bytes::NativeRoot(bytes),
         })
     }
+    pub fn root_v4(bytes: &'a [u8; ev_userspace_contract::root_v4::SIZE]) -> Result<Self, Error> {
+        ev_userspace_contract::root_v4::FullGraph::parse(bytes).map_err(|_| Error::Record)?;
+        Ok(Self {
+            bytes: Bytes::RootV4(bytes),
+        })
+    }
     pub fn bytes(self) -> &'a [u8] {
         match self.bytes {
             Bytes::V1(b) => b,
+            #[cfg(feature = "workspace-authority")]
+            Bytes::ServiceV5(b) => b,
             Bytes::RootV2(b) => b,
             Bytes::NativeRoot(b) => b,
+            Bytes::RootV4(b) => b,
+            #[cfg(feature = "workspace-authority")]
+            Bytes::RootV5(b) => b,
         }
     }
     pub fn layout(self) -> StartupLayout {
         match self.bytes {
             Bytes::V1(_) => StartupLayout::ServiceV1,
+            #[cfg(feature = "workspace-authority")]
+            Bytes::ServiceV5(_) => StartupLayout::ServiceV5,
             Bytes::RootV2(_) | Bytes::NativeRoot(_) => StartupLayout::RootV2,
+            Bytes::RootV4(_) => StartupLayout::RootV4,
+            #[cfg(feature = "workspace-authority")]
+            Bytes::RootV5(_) => StartupLayout::RootV5,
         }
     }
     pub fn check_layout(self, expected: StartupLayout) -> Result<(), Error> {

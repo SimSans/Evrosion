@@ -1,9 +1,9 @@
 [package]
+license = "Apache-2.0"
 name = "ev-userspace-graphics"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license = "Apache-2.0"
 [dependencies]
 ev-graphics = { path = "../graphics" }
 [lints.rust]

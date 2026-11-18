@@ -167,7 +167,7 @@ pub(crate) fn preview(options: &BootOptions) -> Result<()> {
     run_selected(Some(options))
 }
 
-fn preview_host(options: &BootOptions) -> Result<()> {
+pub(crate) fn preview_host(options: &BootOptions) -> Result<()> {
     if ["DISPLAY", "WAYLAND_DISPLAY"]
         .iter()
         .all(|key| std::env::var_os(key).is_none_or(|v| v.is_empty()))
@@ -239,6 +239,7 @@ fn run_selected(preview: Option<&BootOptions>) -> Result<()> {
         let manifest_path = evidence.join("manifest.json");
         storage::immutable_new(&manifest_path, &bytes)?;
         let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        manifest.validate_policy_rows()?;
         if manifest.fixture.as_deref() != Some("m5-native") {
             return Err("wrong retained Native fixture".into());
         }

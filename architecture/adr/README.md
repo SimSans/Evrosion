@@ -1,8 +1,7 @@
 # Architecture Decision Records
 
 Extracted from the [Pre-M0 implementation package](../plans/roadmap/PRE-M0-implementation-package-v1.md) on 2026-09-20.
-This public index links the accepted technical decisions. Published plan editions
-and original source lineage are identified by the source map.
+This is the working canonical file; the imported package remains unchanged.
 
 Directory: `architecture/adr/`
 
@@ -35,6 +34,14 @@ filename. ADR-0000 is a template, not an accepted decision. Keep related invaria
 IDs valid and link accepted records from the architecture index.
 
 ## Accepted records
+
+- [ADR-0102: Native document editing and semantic contract](ADR-0102-native-document-editing-and-semantic-contract.md)
+  records the selected0.3 document flow, compatible File storage and distinct
+  edit-consent contract; runtime qualification is pending.
+
+- [ADR-0101: Phase-local bootstrap and update record storage](ADR-0101-phase-local-bootstrap-and-update-record-storage.md)
+  records the 0.2 stabilization refinement, unchanged ownership/checks and its
+  source-bound qualification requirements.
 
 - [ADR-0001: M0 kernel entry and compatible toolchain](ADR-0001-m0-kernel-and-toolchain.md)
   records the authorized boot implementation and the tested compiler pin adjustment.
@@ -156,3 +163,139 @@ IDs valid and link accepted records from the architecture index.
 - [ADR-0054 — Measured composed System execution budget](ADR-0054-measured-composed-system-execution-budget.md)
 
 - [ADR-0055 — Source Root self-notification progress](ADR-0055-source-root-self-notification-progress.md)
+
+- [ADR-0058: Bounded ISA network device choice](ADR-0058-bounded-isa-network-device.md)
+  records the reviewed QEMU NE2000 source boundary, safe bounded packet helpers
+  and required actual device retirement/integration proofs still pending.
+- [ADR-0059: Time and entropy consumer contracts](ADR-0059-time-and-entropy-contracts.md)
+  records same-boot monotonic/freshness/readiness types, with actual trusted
+  provider, source and CSPRNG qualification still pending.
+
+- [ADR-0056 — Renewable bounded CPU windows](ADR-0056-renewable-bounded-cpu-windows.md)
+
+- [ADR-0064 — Guarded scalar RPC and declared endpoint delivery](ADR-0064-guarded-scalar-rpc-and-endpoint-delivery.md)
+
+- [ADR-0061-sequenced-text-and-relative-pointer](ADR-0061-sequenced-text-and-relative-pointer.md).
+
+- [ADR-0062-userspace-network-pio-adapter](ADR-0062-userspace-network-pio-adapter.md).
+
+- [ADR-0063-bounded-userspace-network-stack](ADR-0063-bounded-userspace-network-stack.md).
+
+- [ADR-0065-linear-borrowed-boot-handoff](ADR-0065-linear-borrowed-boot-handoff.md).
+
+- [ADR-0060: Sustained developer-session execution profile](ADR-0060-sustained-developer-session-profile.md)
+
+- [ADR-0067 — Retained exclusive blank observation for Native install](ADR-0067-retained-exclusive-blank-observation.md)
+
+- [ADR-0066 — Session notes and a dedicated note window](ADR-0066-session-note-and-dedicated-window.md)
+
+- [ADR-0068 — Sustained-session diagnostic retention](ADR-0068-sustained-session-diagnostic-retention.md)
+
+- [ADR-0069 — V4 network graph admission](ADR-0069-v4-network-graph-admission.md)
+
+- [ADR-0071 — Bounded private random generator](ADR-0071-private-random-generator.md)
+
+- [ADR-0072 — Bounded common release metadata verifier](ADR-0072-bounded-release-metadata-verifier.md)
+
+- [ADR-0073 — Async maintenance at each captured timer tick](ADR-0073-async-maintenance-per-captured-tick.md)
+
+- [ADR-0074 — Reviewed developer-VM random source](ADR-0074-reviewed-vm-random-source.md)
+
+- [ADR-0075 — Bounded four-word port operations](ADR-0075-bounded-four-word-port-operations.md)
+
+- [ADR-0077 — Measured V4 Root image capacity](ADR-0077-measured-v4-root-image-capacity.md)
+
+- [ADR-0078 — Private resident V4 Controller](ADR-0078-private-resident-v4-controller.md)
+
+- [ADR-0079 — Scoped VM elapsed clock and read-only RTC](ADR-0079-scoped-vm-elapsed-clock.md)
+
+- [ADR-0080 — Owned content continuations](ADR-0080-owned-content-continuations.md)
+
+- [ADR-0082 — Private affine signed-time client staging](ADR-0082-private-affine-time-client.md)
+
+- [ADR-0081 — Owned dynamic executable admission](ADR-0081-owned-dynamic-executable-admission.md)
+
+- [ADR-0083 — Resident Root content provisioning and inspection](ADR-0083-resident-root-content-mount.md)
+
+- [ADR-0084 — Measured V4 content-controller image capacity](ADR-0084-measured-v4-content-controller-capacity.md)
+
+- [ADR-0085 — Monotonic local TCP ports](ADR-0085-monotonic-local-tcp-ports.md)
+
+- [ADR-0086 — Coalescing bootstrap frame recycler](ADR-0086-coalescing-bootstrap-recycler.md)
+
+- [ADR-0087 — Persistent private time challenge ownership](ADR-0087-persistent-private-time-challenges.md)
+
+- [ADR-0088 — Authenticated local cold Source startup](ADR-0088-authenticated-cold-source-startup.md)
+
+- [ADR-0089 — Qualified reviewed-VM clock bound to the actual Store](ADR-0089-qualified-vm-update-clock.md)
+
+- [ADR-0090 — Durable local update selection](ADR-0090-durable-local-update-selection.md)
+
+- [ADR-0091 — Bounded remote candidate acquisition](ADR-0091-bounded-remote-candidate-acquisition.md)
+
+- [ADR-0092 — Downloaded cohort health and retained authorization](ADR-0092-downloaded-cohort-health-and-retained-authorization.md)
+
+- [ADR-0093 — Measured V4 acquisition image capacity](ADR-0093-measured-v4-acquisition-capacity.md)
+
+- [ADR-0094 — Measured V4 cohort-controller capacity](ADR-0094-measured-v4-cohort-controller-capacity.md)
+
+- [ADR-0095 — Failed V4 NIC retirement through the captured Root](ADR-0095-failed-v4-nic-retirement.md)
+
+- [ADR-0096 — Negotiated fixed byte-port groups](ADR-0096-negotiated-byte-port-groups.md)
+
+- [ADR-0097 — Required-subject presentation ordering](ADR-0097-required-subject-presentation-ordering.md)
+
+- [ADR-0098 — Measured V4 owner-controller image capacity](ADR-0098-measured-v4-owner-capacity.md)
+
+- [ADR-0099 — Protected owner first-use preparation](ADR-0099-protected-owner-first-use-preparation.md)
+
+- [ADR-0100 — Versioned downloaded-cohort startup policy](ADR-0100-versioned-downloaded-cohort-startup-policy.md)
+
+- [ADR-0101 — Phase-local bootstrap and update-record storage](ADR-0101-phase-local-bootstrap-and-update-record-storage.md)
+
+- [ADR-0102 — Native document editing and semantic contract](ADR-0102-native-document-editing-and-semantic-contract.md)
+
+- [ADR-0103 — V4 bootstrap source retirement and grant headroom](ADR-0103-v4-bootstrap-source-retirement-and-grant-headroom.md)
+
+- [ADR-0104 — Bounded workspace dataset and durable namespace](ADR-0104-bounded-workspace-dataset-and-durable-namespace.md)
+
+- [ADR-0105 — Versioned workspace and larger-file contracts](ADR-0105-versioned-workspace-and-large-file-contracts.md)
+
+- [ADR-0106 — Bounded workspace interaction and protected consent](ADR-0106-workspace-interaction-and-protected-consent.md)
+
+- [ADR-0107 — Read-only Job inspection through retained Process CONTROL](ADR-0107-process-control-job-inspection.md)
+
+- [ADR-0108 — Read-only serving RPC origin](ADR-0108-readonly-serving-rpc-origin.md)
+
+- [ADR-0109 — Selected V5 workspace resource envelope](ADR-0109-selected-workspace-resource-envelope.md)
+
+- [ADR-0110 — Native workspace clients and actual self identity](ADR-0110-native-workspace-clients-and-self-identity.md)
+
+- [ADR-0112 — Exact workspace route and stage reconciliation](ADR-0112-workspace-route-and-stage-reconciliation.md)
+
+- [ADR-0111: Managed SEND retirement and selected V5 physical ownership](ADR-0111-managed-send-retirement-and-selected-v5-runtime.md)
+
+- [ADR-0113: Measured workspace bundle and owned development preview](ADR-0113-workspace-development-bundle-and-owned-preview.md)
+
+- [ADR-0114 — Native paged semantics and scoped actions](ADR-0114-native-paged-semantics-and-scoped-actions.md)
+
+- [ADR-0115: Selected V5 dynamic File App admission and retired buffer scrub](ADR-0115-selected-v5-dynamic-file-app-admission.md)
+
+- [ADR-0116: Selected fixed-sector PIO over captured private RAM](ADR-0116-selected-fixed-sector-pio.md)
+
+- [ADR-0117 — Measured Current package bank](ADR-0117-measured-current-package-bank.md)
+
+- [ADR-0118 — Finite whole-file transfer horizons](ADR-0118-finite-whole-file-transfer-horizons.md)
+
+- [ADR-0119 — Bounded staged File verification](ADR-0119-bounded-staged-file-verification.md)
+
+- [ADR-0120](ADR-0120-isolated-external-app-private-allocation.md) — isolated external App private allocation and pre-replay payload checks (Internal Level B; native enrollment qualification pending).
+
+- [ADR-0121 — Captured session power and terminal diagnostics](ADR-0121-captured-session-power-and-terminal-diagnostics.md)
+
+- [ADR-0122 — Compact executable and retained analysis ELF](ADR-0122-compact-executable-and-retained-analysis-elf.md)
+
+- [ADR-0123 — Authenticated File2.1 admission and versioned selection](ADR-0123-authenticated-file21-admission-and-versioned-selection.md)
+- [ADR-0124 — Checked reference restart](ADR-0124-checked-reference-restart.md)
+- [ADR-0125 — Measured nonexecuting external package ingress](ADR-0125-measured-nonexecuting-external-package-ingress.md)
+- [ADR-0126 — Protected local development install and run](ADR-0126-protected-local-development-install-and-run.md)

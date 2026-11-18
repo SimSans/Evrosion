@@ -83,4 +83,4 @@ parallel CPU racing.
 Failure injection at every reconstruction stage, corrupted boot selection,
 production epoch/generation authentication and the complete AF-007/AF-IPC matrix
 retain separate gates. Executed results belong in
-[M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance); this decision alone is not PASS.
+M2 progress; this decision alone is not PASS.

@@ -99,6 +99,7 @@ pub struct Contract<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Capability {
     SelectedFileRead,
+    SelectedFileEdit,
     AppPrivateData,
     OwnSurfacePresent,
     FocusedInput,
@@ -545,6 +546,7 @@ fn capability(code: u16) -> Capability {
         3 => Capability::OwnSurfacePresent,
         4 => Capability::FocusedInput,
         5 => Capability::Diagnostics,
+        6 => Capability::SelectedFileEdit,
         n => Capability::UnknownOptional(n),
     }
 }
@@ -560,7 +562,7 @@ fn validate_capabilities(bytes: &[u8]) -> Result<()> {
         if flags > 1 || row[4..].iter().any(|b| *b != 0) {
             return Err(Error::Reserved);
         }
-        if code > 5 && flags == 1 {
+        if code > 6 && flags == 1 {
             return Err(Error::UnsupportedCapability(code));
         }
     }

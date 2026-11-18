@@ -1,9 +1,9 @@
 [package]
+license.workspace = true
 name = "ev-ipc-bench"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
 [features]
 executable = []
 client = ["executable"]

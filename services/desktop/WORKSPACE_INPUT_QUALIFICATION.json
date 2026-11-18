@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "date": "2026-11-16",
+  "status": "PASS narrow3-role Input feature host/profile/legacy/bare/ELF/stack preflight; actual VM pending",
+  "features": "workspace-input",
+  "scope": "No physical input, actual Source39 dispatch, grants, barrier freshness or VM acceptance claim",
+  "source_files": [
+    {
+      "path": "services/desktop/Cargo.toml",
+      "sha256": "ce7ed794596882ab39713b7eccc2362fd9766a163b7ed55122e0464b15c8e4f8"
+    },
+    {
+      "path": "services/desktop/src/main.rs",
+      "sha256": "50f2a930d6cce942d4befd9cb86461af826d9cd3a53d0a06a25ce1c77dfc6137"
+    },
+    {
+      "path": "services/desktop/src/lib.rs",
+      "sha256": "5201c49642aa8a7f59adc8546dc581136c9d8a206b2634a7e5905d644f338392"
+    },
+    {
+      "path": "services/desktop/src/input.rs",
+      "sha256": "44f23426085cfe05aa7d33b1103b0a2a2a5950e4143becc2fd151b99fb600007"
+    },
+    {
+      "path": "services/desktop/src/workspace_input.rs",
+      "sha256": "9757548fa7af13c751d5480cf11842553a0597dab9697ca3b193884c4b2444db"
+    }
+  ],
+  "command_receipts": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-input-profile-tests-01.json",
+      "sha256": "c5038fcd3751329c762a4981baab33a35949f9d2377ba25d2a85037e08c44dcb",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-input-legacy-library-tests-01.json",
+      "sha256": "739df957a0f676aa36289436b33b0077ff4d47d0a5b52e6cf99be4833ba1cf24",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-input-native-lint-01.json",
+      "sha256": "3a25b480b74b8de64cfde4d946de83a8183759865502a67cc4d99c9414990df3",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-input-legacy-native-lint-01.json",
+      "sha256": "87fc4c00833498f5adb794034acbd0f0f7c6e565d0dc1025f7529057f4b2ad44",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-input-native-build-01.json",
+      "sha256": "b4b25b0ce2ff1fce8a7298760af85b24a2f3217d2aa0dc96ef647cad03e8a849",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-input-canonical-01.json",
+      "sha256": "b6a613aad81e41c42be51e695602dfd323af385ed2a53b41e0c6bc6e00d23c55",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-input-stack-01.json",
+      "sha256": "9de08a2b90c7c593bd0aedbd9809e1bd5058983c86d6e56758f976ffb919127b",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-input-legacy-bytes-01.json",
+      "sha256": "bcbb2edd7b9796d8a1dafc9b019ab258a9a6ebfb5fca4523634391bd02735952",
+      "passed": true
+    }
+  ],
+  "artifact": {
+    "scope": "Actual selected3-role Input bare image/byte preservation preflight, not VM or physical input qualification",
+    "passed": true,
+    "features": "workspace-input",
+    "original_sha256": "7ca4a7b5ee749860ad785cf12e856d57c466ce1ffd880159835d49d9f050d99b",
+    "canonical": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-input-native-01/ev-input-workspace.elf",
+    "canonical_bytes": 41592,
+    "canonical_sha256": "e39c9992087a8779fc336623d3c19949f77708152a03ff22921a491efefae601",
+    "loaded_bytes_compared_bytewise": true,
+    "loaded_pages_including_stack": 12,
+    "private_pages_preflight": 16,
+    "loader_frames_preflight": 18,
+    "template_frame_limit": 32,
+    "llvm_objcopy": "host-toolchains/nightly-2026-07-10-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-objcopy",
+    "llvm_objcopy_sha256": "f0a16c03da2abd203e9c70ac6565ccc16c6bb70525435c86c0510a328d87c9a0"
+  },
+  "stack_report": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-input-native-01/stack.json",
+  "stack_census_bytes": 704,
+  "stack_margin_bytes": 15680,
+  "legacy_input_library_byte_identical": true,
+  "legacy_role_map": 4,
+  "selected_role_map": 3,
+  "selected_profile_tests": 2,
+  "legacy_library_tests": 32,
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

@@ -14,10 +14,11 @@ use ev_kernel::{
     memory::{BootstrapFrames, FRAME_SIZE, PhysicalFrame},
     memory_extent::{MemoryExtent, RamAccess, UninitializedRam},
     memory_object::MemoryObject,
-    root_manifest_v2,
     scheduler::{JobId, Resource, Scheduler},
 };
-use ev_userspace_contract::root_v2::{Role, catalogue::Catalogue};
+use ev_userspace_contract::root_v2::Role;
+#[cfg(not(feature = "test-m6-network"))]
+use ev_userspace_contract::root_v2::catalogue::Catalogue;
 use sha2::{Digest, Sha256};
 
 const SURFACE_PAGES: usize = 63;
@@ -71,6 +72,24 @@ const UART: [Range; 2] = [
     },
 ];
 
+/// Source29 is Root-only and cannot write RTC data/clock state. No physical
+/// machine/UTC qualification follows from this explicit developer-VM range.
+#[cfg(feature = "test-m6-network")]
+const RTC: [Range; 2] = [
+    Range {
+        first: ev_userspace_contract::root_v4::RTC_INDEX_PORT,
+        last: ev_userspace_contract::root_v4::RTC_INDEX_PORT,
+        widths: Widths::BYTE,
+        direction: Direction::Output,
+    },
+    Range {
+        first: ev_userspace_contract::root_v4::RTC_DATA_PORT,
+        last: ev_userspace_contract::root_v4::RTC_DATA_PORT,
+        widths: Widths::BYTE,
+        direction: Direction::Input,
+    },
+];
+
 struct Ram {
     offset: u64,
     bits: u8,
@@ -119,8 +138,12 @@ unsafe impl RamAccess for Ram {
 pub(crate) enum Profile {
     #[cfg(not(feature = "test-m5-native"))]
     Desktop,
-    #[cfg(feature = "test-m5-native")]
+    #[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
     Native,
+    #[cfg(feature = "test-m6-network")]
+    Network {
+        images: [(&'static [u8], [u8; 32]); 2],
+    },
 }
 pub(crate) struct Assets<'a> {
     pub profile: Profile,
@@ -159,10 +182,19 @@ impl Assets<'static> {
 }
 struct VerifiedCatalogue<'a> {
     bytes: &'a [u8],
-    _base: Catalogue<'a>,
 }
 
+#[cfg(feature = "test-m6-network")]
+pub(super) struct NetworkBacking {
+    pub sources: [Handle; 7],
+    nic: MemoryObject,
+    client: MemoryObject,
+    note: MemoryObject,
+    aliases: [u64; 3],
+}
 pub(super) struct Backing {
+    #[cfg(feature = "test-m6-network")]
+    pub network: Option<NetworkBacking>,
     pub custody: SpaceId,
     pub sources: [Handle; 18],
     pub app: MemoryExtent,
@@ -312,6 +344,8 @@ impl Backing {
             "shared RAM cannot consume Root private quota"
         );
         Self {
+            #[cfg(feature = "test-m6-network")]
+            network: None,
             custody,
             sources,
             app,
@@ -328,12 +362,66 @@ impl Backing {
             bits,
         }
     }
+    /// # Safety
+    /// Sole boot owner after exactly22 original Native sources, before any actor
+    /// starts. The three transfer objects are distinct actual allocated frames.
+    #[cfg(feature = "test-m6-network")]
+    pub unsafe fn append_network(
+        &mut self,
+        a: &mut Authority,
+        s: &mut Scheduler,
+        frames: &mut BootstrapFrames,
+    ) {
+        assert!(self.network.is_none());
+        assert_eq!(a.metadata_usage().3, 22);
+        let c = self.custody;
+        let image_rights = Rights::from_bits(481).unwrap();
+        let driver = a.create_root(c, Kind::Memory, image_rights).unwrap();
+        let service = a.create_root(c, Kind::Memory, image_rights).unwrap();
+        let ports = port_object(
+            a,
+            c,
+            &mut self.ports,
+            &[Range {
+                first: 0x300,
+                last: 0x31f,
+                widths: Widths::BYTE,
+                direction: Direction::Both,
+            }],
+        );
+        let mut ram = Ram {
+            offset: self.offset,
+            bits: self.bits,
+        };
+        let (nic, nic_cap, nic_alias) = scalar(a, s, self.ram_parent, c, frames, &mut ram, &[]);
+        let (client, client_cap, client_alias) =
+            scalar(a, s, self.ram_parent, c, frames, &mut ram, &[]);
+        let (note, note_cap, note_alias) = scalar(a, s, self.ram_parent, c, frames, &mut ram, &[]);
+        for (i, x) in [nic_alias, client_alias, note_alias].iter().enumerate() {
+            assert!(!self.aliases.contains(x));
+            assert!(![nic_alias, client_alias, note_alias][..i].contains(x));
+        }
+        let rtc = port_object(a, c, &mut self.ports, &RTC);
+        self.network = Some(NetworkBacking {
+            sources: [driver, service, ports, nic_cap, client_cap, note_cap, rtc],
+            nic,
+            client,
+            note,
+            aliases: [nic_alias, client_alias, note_alias],
+        });
+    }
     pub fn scalar(&self, which: Scalar) -> &MemoryObject {
         match which {
             Scalar::System => &self.system,
             Scalar::File => &self.file,
             Scalar::Application => &self.app_file,
             Scalar::Catalogue => &self.catalogue,
+            #[cfg(feature = "test-m6-network")]
+            Scalar::Nic => &self.network.as_ref().unwrap().nic,
+            #[cfg(feature = "test-m6-network")]
+            Scalar::NetClient => &self.network.as_ref().unwrap().client,
+            #[cfg(feature = "test-m6-network")]
+            Scalar::Note => &self.network.as_ref().unwrap().note,
         }
     }
     pub fn scalar_mut(&mut self, which: Scalar) -> &mut MemoryObject {
@@ -342,6 +430,12 @@ impl Backing {
             Scalar::File => &mut self.file,
             Scalar::Application => &mut self.app_file,
             Scalar::Catalogue => &mut self.catalogue,
+            #[cfg(feature = "test-m6-network")]
+            Scalar::Nic => &mut self.network.as_mut().unwrap().nic,
+            #[cfg(feature = "test-m6-network")]
+            Scalar::NetClient => &mut self.network.as_mut().unwrap().client,
+            #[cfg(feature = "test-m6-network")]
+            Scalar::Note => &mut self.network.as_mut().unwrap().note,
         }
     }
     /// Actual direct-map alias of this retained scalar owner, not a user
@@ -352,6 +446,12 @@ impl Backing {
             Scalar::File => 1,
             Scalar::Application => 2,
             Scalar::Catalogue => 3,
+            #[cfg(feature = "test-m6-network")]
+            Scalar::Nic => return self.network.as_ref().unwrap().aliases[0],
+            #[cfg(feature = "test-m6-network")]
+            Scalar::NetClient => return self.network.as_ref().unwrap().aliases[1],
+            #[cfg(feature = "test-m6-network")]
+            Scalar::Note => return self.network.as_ref().unwrap().aliases[2],
         }]
     }
     pub fn source(&self, role: Role) -> Handle {
@@ -378,6 +478,15 @@ impl Backing {
         // must not inherit the previous selected File response through it.
         // SAFETY: exact retained transfer page, with all previous users quiescent.
         unsafe { clear_alias(self.aliases[2], FRAME_SIZE as usize) };
+        #[cfg(feature = "test-m6-network")]
+        // SAFETY: same actual stopped App and quiesced Root Note transaction;
+        // the dedicated transfer page is distinct from every File/NIC page.
+        unsafe {
+            clear_alias(
+                self.network.as_ref().unwrap().aliases[2],
+                FRAME_SIZE as usize,
+            )
+        };
     }
     /// # Safety
     /// Old Shell stopped/detached and no Shell Present pending; new Shell not
@@ -434,6 +543,35 @@ impl Backing {
                 .unwrap_or_else(|(error, _frame)| panic!("desktop scalar retirement: {error:?}"));
             s.release_frames(self.ram_parent, 1).unwrap();
         }
+        #[cfg(feature = "test-m6-network")]
+        let extra_frames = if let Some(mut network) = self.network.take() {
+            for (object, cap) in [
+                (&mut network.nic, network.sources[3]),
+                (&mut network.client, network.sources[4]),
+                (&mut network.note, network.sources[5]),
+            ] {
+                let frame = object.destroy(a, self.custody, cap).unwrap();
+                ram.zero(&frame);
+                frames
+                    .reclaim(frame)
+                    .unwrap_or_else(|(e, _)| panic!("network RAM retirement: {e:?}"));
+                s.release_frames(self.ram_parent, 1).unwrap();
+            }
+            self.ports
+                .retire(a, self.custody, network.sources[2])
+                .unwrap();
+            self.ports
+                .retire(a, self.custody, network.sources[6])
+                .unwrap();
+            for cap in &network.sources[..2] {
+                a.destroy(self.custody, *cap).unwrap();
+            }
+            3
+        } else {
+            0
+        };
+        #[cfg(not(feature = "test-m6-network"))]
+        let extra_frames = 0;
         for index in [14, 15, 17] {
             self.ports
                 .retire(a, self.custody, self.sources[index])
@@ -450,7 +588,7 @@ impl Backing {
         a.collect_dead_objects().unwrap();
         assert_eq!(
             before - s.usage(self.ram_parent, Resource::Frames).unwrap(),
-            SHARED_FRAMES
+            SHARED_FRAMES + extra_frames
         );
     }
 }
@@ -544,6 +682,7 @@ unsafe fn clear_alias(address: u64, bytes: usize) {
         assert_eq!(unsafe { (address as *const u8).add(i).read_volatile() }, 0);
     }
 }
+#[cfg(not(feature = "test-m6-network"))]
 fn verify_catalogue<'a>(assets: &Assets<'a>) -> VerifiedCatalogue<'a> {
     use ev_userspace_contract::root_v2;
     #[cfg(feature = "test-m5-native")]
@@ -552,7 +691,7 @@ fn verify_catalogue<'a>(assets: &Assets<'a>) -> VerifiedCatalogue<'a> {
         <[u8; 32]>::from(Sha256::digest(assets.catalogue)),
         assets.catalogue_sha
     );
-    let manifest = root_manifest_v2::verify(
+    let manifest = ev_kernel::root_manifest_v2::verify(
         assets.root_manifest,
         assets.root_measurement,
         assets.root_image,
@@ -582,6 +721,8 @@ fn verify_catalogue<'a>(assets: &Assets<'a>) -> VerifiedCatalogue<'a> {
             hash.update(last);
             hash.update(native::layout_description());
             hash.update(root_v2::graph::description());
+            #[cfg(feature = "test-m6-session")]
+            hash.update(native::SESSION_LAYOUT);
             assert_eq!(<[u8; 32]>::from(hash.finalize()), c.layout_measurement());
             assert_eq!(assets.app_package.len() as u64, c.package_a_bytes());
             Catalogue::decode(&assets.catalogue[..native::catalogue::BASE_SIZE]).unwrap()
@@ -607,7 +748,6 @@ fn verify_catalogue<'a>(assets: &Assets<'a>) -> VerifiedCatalogue<'a> {
     }
     VerifiedCatalogue {
         bytes: assets.catalogue,
-        _base: base,
     }
 }
 fn build_id(text: &str) -> [u8; 32] {
@@ -622,4 +762,57 @@ fn build_id(text: &str) -> [u8; 32] {
         *out = (digit(pair[0]) << 4) | digit(pair[1]);
     }
     result
+}
+
+#[cfg(feature = "test-m6-network")]
+fn verify_catalogue<'a>(assets: &Assets<'a>) -> VerifiedCatalogue<'a> {
+    use ev_userspace_contract::root_v4;
+    let Profile::Network { images } = assets.profile;
+    assert_eq!(
+        <[u8; 32]>::from(Sha256::digest(assets.catalogue)),
+        assets.catalogue_sha
+    );
+    let root = ev_kernel::root_manifest_v4::verify(
+        assets.root_manifest,
+        assets.root_measurement,
+        assets.root_image,
+    )
+    .expect("actual V4 Root manifest");
+    assert_eq!(
+        root.manifest().expected_catalogue_digest(),
+        assets.catalogue_sha
+    );
+    let c = root_v4::catalogue::Catalogue::decode(assets.catalogue)
+        .expect("actual complete V4 catalogue");
+    let (first, last) = c.measurement_parts();
+    let mut h = Sha256::new();
+    h.update(root_v4::catalogue::MEASUREMENT_DOMAIN);
+    h.update(first);
+    h.update([0; 32]);
+    h.update(last);
+    h.update(root_v4::layout_description());
+    h.update(root_v4::graph::description());
+    assert_eq!(<[u8; 32]>::from(h.finalize()), c.layout_measurement());
+    let base = c.base();
+    assert_eq!(
+        base.root_image(),
+        <[u8; 32]>::from(Sha256::digest(assets.root_image))
+    );
+    assert_eq!(base.kernel_input(), build_id(crate::SOURCE_SHA256));
+    assert_eq!(assets.app_package.len() as u64, c.package_a_bytes());
+    assert_eq!(
+        <[u8; 32]>::from(Sha256::digest(assets.app_package)),
+        c.package_a()
+    );
+    for (declared, (bytes, sha)) in base.images().zip(assets.images) {
+        assert_eq!(declared.image, sha);
+        assert_eq!(<[u8; 32]>::from(Sha256::digest(bytes)), sha);
+    }
+    for (declared, (bytes, sha)) in [c.net_driver(), c.net_service()].into_iter().zip(images) {
+        assert_eq!(declared.image, sha);
+        assert_eq!(<[u8; 32]>::from(Sha256::digest(bytes)), sha);
+    }
+    VerifiedCatalogue {
+        bytes: assets.catalogue,
+    }
 }

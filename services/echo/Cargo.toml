@@ -1,9 +1,9 @@
 [package]
+license.workspace = true
 name = "ev-echo-service"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
 
 [[bin]]
 name = "ev-echo-service"

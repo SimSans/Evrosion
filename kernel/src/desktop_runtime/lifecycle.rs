@@ -79,14 +79,20 @@ impl<'image> Runtime<'image, '_> {
             .authorize(caller, image, Kind::Memory, Rights::READ)
             .map_err(|_| 1u64)?
             .identity();
-        let child = CHILDREN
-            .into_iter()
-            .find(|c| self.source_identity(c.index(), Kind::Memory) == object);
+        let child = CHILDREN.into_iter().find(|c| {
+            self.source_identity(c.image().selector() as usize - 1, Kind::Memory) == object
+        });
         #[cfg(feature = "test-m5-native")]
         let child = child.or_else(|| {
             self.native
                 .as_ref()
                 .filter(|state| state.image_objects[1] == object)
+                .map(|_| Child::App)
+        });
+        #[cfg(feature = "test-m6-network")]
+        let child = child.or_else(|| {
+            self.dynamic
+                .object_slot(self.a, caller, image)
                 .map(|_| Child::App)
         });
         #[cfg(feature = "test-m5-native")]
@@ -97,6 +103,10 @@ impl<'image> Runtime<'image, '_> {
                 .map(|_| Child::Shell)
         });
         let child = child.ok_or(1u64)?;
+        #[cfg(feature = "test-m6-network")]
+        if self.network_fault.blocks_creation(child.index() + 1) {
+            return Err(2);
+        }
         let index = child.index();
         if self.actors[index].is_some() {
             return Err(2);
@@ -113,6 +123,14 @@ impl<'image> Runtime<'image, '_> {
             }
         };
         let meta = self.registry.metadata(self.a, caller, cap).unwrap();
+        #[cfg(feature = "test-m6-session")]
+        if self.s.cpu_budget(meta.job).unwrap().is_none() {
+            // The fixed developer graph uses the same finite child ceiling for
+            // every role. No process can request or reconfigure this policy.
+            self.s
+                .configure_cpu_budget(meta.job, 64, SESSION_CPU_PERIOD)
+                .expect("measured session child CPU policy");
+        }
         let object = self
             .a
             .authorize(caller, cap, Kind::Process, Rights::CONTROL)
@@ -137,6 +155,10 @@ impl<'image> Runtime<'image, '_> {
                 .unwrap()
                 .identity();
             actor.image_sha256 = self.image_shas[index];
+            #[cfg(feature = "test-m6-network")]
+            if let Some(slot) = self.dynamic.object_index(actor.image_object) {
+                actor.image_sha256 = self.dynamic.image_sha(slot).unwrap();
+            }
             if let Some(native) = &self.native
                 && native.image_objects[1] == actor.image_object
             {
@@ -190,7 +212,6 @@ impl<'image> Runtime<'image, '_> {
                 }
             };
         }
-        let plan = self.registry.plan(self.a, caller, cap).map_err(|_| 1u64)?;
         let record = self
             .registry
             .startup(self.a, caller, cap, EPOCH)
@@ -204,17 +225,58 @@ impl<'image> Runtime<'image, '_> {
             .ok_or(2u64)?;
         // SAFETY: measured plan and immutable startup belong to this exact held
         // metadata; the caller retains all partial image/mapping owners.
-        if let Err(error) = unsafe {
-            slot.load_private(
-                &plan,
-                meta,
-                &record,
-                self.hw.offset,
-                self.hw.bits,
-                self.hw.original & ADDRESS_MASK,
-                frames,
-            )
-        } {
+        let loaded = {
+            #[cfg(feature = "test-m6-network")]
+            let dynamic_index = self
+                .dynamic
+                .object_index(self.actors[index].as_ref().unwrap().image_object);
+            #[cfg(not(feature = "test-m6-network"))]
+            let dynamic_index: Option<usize> = None;
+            if let Some(dynamic_index) = dynamic_index {
+                #[cfg(feature = "test-m6-network")]
+                // SAFETY: same actual held App/slot, private allocator and capture.
+                {
+                    // SAFETY: exact held App/slot and captured allocator owner.
+                    unsafe {
+                        self.dynamic.load_app(
+                            dynamic_index,
+                            self.registry,
+                            self.a,
+                            self.s,
+                            caller,
+                            cap,
+                            slot,
+                            meta,
+                            &record,
+                            self.hw,
+                            frames,
+                        )
+                    }
+                    .map_err(|_| "dynamic load refused")
+                }
+                #[cfg(not(feature = "test-m6-network"))]
+                {
+                    let _ = dynamic_index;
+                    unreachable!()
+                }
+            } else {
+                let plan = self.registry.plan(self.a, caller, cap).map_err(|_| 1u64)?;
+                // SAFETY: existing exact held private slot/plan and allocator.
+                unsafe {
+                    slot.load_private(
+                        &plan,
+                        meta,
+                        &record,
+                        self.hw.offset,
+                        self.hw.bits,
+                        self.hw.original & ADDRESS_MASK,
+                        frames,
+                    )
+                }
+                .map_err(|_| "compiled load refused")
+            }
+        };
+        if let Err(error) = loaded {
             self.actors[index].as_mut().unwrap().vacant = Some(slot);
             panic!("desktop private load {index}: {error:?}");
         }
@@ -236,6 +298,7 @@ impl<'image> Runtime<'image, '_> {
                 unsafe { slot.install_surface(self.a, extent) }.unwrap();
                 self.facts.mapped += 1;
                 if child == Child::Display {
+                    let plan = self.registry.plan(self.a, caller, cap).map_err(|_| 1u64)?;
                     let lease = self
                         .backing
                         .shell
@@ -281,7 +344,14 @@ impl<'image> Runtime<'image, '_> {
         let scalars: &[(u64, Scalar, bool)] = match child {
             Child::Block => &[(2, Scalar::System, false), (4, Scalar::File, true)],
             Child::File => &[(1, Scalar::File, false), (3, Scalar::Application, true)],
+            #[cfg(not(feature = "test-m6-network"))]
             Child::App => &[(5, Scalar::Application, false)],
+            #[cfg(feature = "test-m6-network")]
+            Child::App => &[(5, Scalar::Application, false), (7, Scalar::Note, true)],
+            #[cfg(feature = "test-m6-network")]
+            Child::NetDriver => &[(2, Scalar::Nic, false)],
+            #[cfg(feature = "test-m6-network")]
+            Child::NetService => &[(1, Scalar::Nic, false), (3, Scalar::NetClient, true)],
             _ => &[],
         };
         for &(selector, which, auxiliary) in scalars {
@@ -304,8 +374,15 @@ impl<'image> Runtime<'image, '_> {
         }
         let requirements = match child {
             Child::Input => DesktopMappings::PrivateOnly,
+            #[cfg(feature = "test-m6-network")]
+            Child::NetDriver => DesktopMappings::ScalarOnly,
+            #[cfg(feature = "test-m6-network")]
+            Child::NetService => DesktopMappings::DualBuffers,
             Child::Block | Child::File => DesktopMappings::DualBuffers,
+            #[cfg(not(feature = "test-m6-network"))]
             Child::App => DesktopMappings::SurfaceBuffer,
+            #[cfg(feature = "test-m6-network")]
+            Child::App => DesktopMappings::SurfaceDualBuffers,
             Child::Shell => DesktopMappings::SurfaceOnly,
             Child::Display => DesktopMappings::Compositor,
         };
@@ -318,6 +395,10 @@ impl<'image> Runtime<'image, '_> {
                 let actor = self.actors[index].as_mut().unwrap();
                 actor.context = running.initial_context().unwrap();
                 actor.context.registers[11] = self.stop.tick();
+                #[cfg(feature = "test-m6-session")]
+                {
+                    actor.context.registers[11] = 0;
+                }
                 actor.fx = FxState::CLEAN;
                 actor.running = Some(running);
                 actor.admitted = true;
@@ -362,6 +443,10 @@ impl<'image> Runtime<'image, '_> {
             self.selection = None;
             self.open = None;
             self.awaiting_open = None;
+            #[cfg(feature = "test-m7-document")]
+            {
+                self.document_request = None;
+            }
         }
         let actor = self.actors[index - 1].as_mut().unwrap();
         if let Some(running) = &mut actor.running {
@@ -403,6 +488,10 @@ impl<'image> Runtime<'image, '_> {
         index: usize,
         frames: &mut BootstrapFrames,
     ) -> Result<(), u64> {
+        #[cfg(feature = "test-m6-network")]
+        if self.network_fault.blocks_retirement(index) {
+            return Err(2);
+        }
         let meta = self.metadata(index).ok_or(1u64)?;
         if self.s.state(meta.thread) != Ok(State::Exited)
             || self
@@ -454,7 +543,14 @@ impl<'image> Runtime<'image, '_> {
             let scalars: &[(Scalar, bool)] = match actor.child {
                 Child::Block => &[(Scalar::System, false), (Scalar::File, true)],
                 Child::File => &[(Scalar::File, false), (Scalar::Application, true)],
+                #[cfg(not(feature = "test-m6-network"))]
                 Child::App => &[(Scalar::Application, false)],
+                #[cfg(feature = "test-m6-network")]
+                Child::App => &[(Scalar::Application, false), (Scalar::Note, true)],
+                #[cfg(feature = "test-m6-network")]
+                Child::NetDriver => &[(Scalar::Nic, false)],
+                #[cfg(feature = "test-m6-network")]
+                Child::NetService => &[(Scalar::Nic, false), (Scalar::NetClient, true)],
                 _ => &[],
             };
             for &(which, aux) in scalars {
@@ -482,7 +578,7 @@ impl<'image> Runtime<'image, '_> {
         Ok(())
     }
     pub(super) fn collect_closed(&mut self) {
-        for index in 0..6 {
+        for index in 0..ACTORS {
             let Some(actor) = self.actors[index].as_ref() else {
                 continue;
             };
@@ -510,17 +606,56 @@ impl Runtime<'_, '_> {
         let actor = self.actors[index - 1].as_ref().unwrap();
         if matches!(kind, NativeActionKind::Start) {
             native.started_mappings += match actor.child {
-                Child::App => 2,
+                Child::App => {
+                    if cfg!(feature = "test-m6-network") {
+                        3
+                    } else {
+                        2
+                    }
+                }
                 Child::Shell => 1,
                 Child::Display => 3,
                 Child::Block | Child::File => 2,
                 Child::Input => 0,
+                #[cfg(feature = "test-m6-network")]
+                Child::NetDriver => 1,
+                #[cfg(feature = "test-m6-network")]
+                Child::NetService => 2,
             };
         }
         if actor.child == Child::Shell && matches!(kind, NativeActionKind::Start) {
             native.shell_starts += 1;
         }
         if actor.child != Child::App {
+            return;
+        }
+        #[cfg(feature = "test-m6-network")]
+        if let Some(slot) = self.dynamic.object_index(actor.image_object) {
+            let action = match kind {
+                NativeActionKind::Start => 0,
+                NativeActionKind::Stop => 1,
+                NativeActionKind::Reap => 2,
+            };
+            let image_sha256 = self
+                .dynamic
+                .action(slot, action)
+                .expect("actual retained downloaded App");
+            let (content_sha256, declared_package_id) = self
+                .dynamic
+                .content_identity(slot)
+                .expect("same actual retained downloaded owner");
+            (self.observations)(Observation::SessionDownloadedAction(
+                super::SessionDownloadedAction {
+                    kind,
+                    slot: slot as u8 + 1,
+                    process: actor.meta.process.diagnostic_id(),
+                    thread: actor.meta.thread.diagnostic_id(),
+                    job: actor.meta.job.diagnostic_id(),
+                    elf_sha256: image_sha256,
+                    content_sha256,
+                    declared_package_id,
+                },
+            ));
             return;
         }
         let slot = native

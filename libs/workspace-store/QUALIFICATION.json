@@ -1,0 +1,182 @@
+{
+  "schema": 1,
+  "date": "2026-11-15",
+  "status": "PASS portable host backend and bare library check; target integration pending",
+  "scope": "No VM, physical power-loss, actual grant/quiescence, linked target resource, or whole M8 PASS claim",
+  "source_files": [
+    {
+      "path": "libs/workspace-store/Cargo.toml",
+      "bytes": 377,
+      "sha256": "dba2a4097f90a8229423337ebcfaefd7824b27c08362431a2ba579a55042f7d5"
+    },
+    {
+      "path": "libs/workspace-store/Cargo.lock",
+      "bytes": 2491,
+      "sha256": "02804c62f6457cf70d7f9c89e813f736f7338a7956b593e33c8e52a82e60630e"
+    },
+    {
+      "path": "libs/workspace-store/README.md",
+      "bytes": 1333,
+      "sha256": "b89a98c32f6e05820f86d9db76e36f3983260e92b640245642b5d515915258a9"
+    },
+    {
+      "path": "libs/workspace-store/src/lib.rs",
+      "bytes": 10014,
+      "sha256": "30018fc1c815a87d225e07a8e79183696b98d6961fbccb0dd4c8a988da3428c6"
+    },
+    {
+      "path": "libs/workspace-store/src/codec.rs",
+      "bytes": 11333,
+      "sha256": "77c3989b1951a86422de084ab52ce7e79c6fb1099401bed3beb4b68965d4aeb7"
+    },
+    {
+      "path": "libs/workspace-store/src/engine.rs",
+      "bytes": 50983,
+      "sha256": "29bb0c0cd620da17173340adc7e7942c4cb4375ff6c33a0e71b697a0d685753c"
+    },
+    {
+      "path": "libs/workspace-store/src/tests.rs",
+      "bytes": 43091,
+      "sha256": "a9169d6adced17d3c1677686e05cfef8797d7fd2d30df857536e423261545d59"
+    },
+    {
+      "path": "architecture/adr/ADR-0104-bounded-workspace-dataset-and-durable-namespace.md",
+      "bytes": 8832,
+      "sha256": "666065c9b245134b675eb7ac5e10b01070fdbf663fd5e9edd5ead9c5ea93341f"
+    },
+    {
+      "path": "architecture/designs/WORKSPACE_STORAGE.md",
+      "bytes": 16583,
+      "sha256": "53ccf09a5bdad5a7bf22b9f3ccd5989e0ad129beb6a7a6ce73e673402c2c4daf"
+    }
+  ],
+  "command_receipts": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-check-01.json",
+      "sha256": "600e81637a5775c8601e13f87e78af59b2959508c7fa46b5d511ecd989a313c1",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-tests-01.json",
+      "sha256": "566fe06683ddac64cd32ce3c373f5c8dc73740ac8dc2f1f0b7c0cd6c8d13d8eb",
+      "passed": false
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-tests-02.json",
+      "sha256": "59cef3d2c5b05765efcc8f5de2d3a098f070866a0def25cebd3aaab088a45c32",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-tests-03.json",
+      "sha256": "330b2690137a0b9ba7b7abda3f4df20e664a837798ec88e6099dadf57c3ae53c",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-tests-04.json",
+      "sha256": "aedfb9086f9524ada9ac00e34d2e0453ceb3ae965476a6c29d519f3ebcd5bff6",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-tests-05.json",
+      "sha256": "ecb800422c93b2ba4bd4f02461816d609d281cb4312349820b687ed9f93c9cf6",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-tests-06.json",
+      "sha256": "3a1633534e1d3d184b909f40915006970d5d689e352c00bc31090c3a33d269ba",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-clippy-01.json",
+      "sha256": "cd3a492e4a05a3028f125a09dbc77763ee6a6b4d5c316a36d1cd11927fcaef1b",
+      "passed": false
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-clippy-02.json",
+      "sha256": "643de2c7e60bb1a3152f4cefd0702e5983f3a7439a07a486f54631a6059c4208",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-clippy-03.json",
+      "sha256": "5950308289edb568251dd6a5d6490ed611926af236af83af71d1ec4c38ab6d97",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-bare-01.json",
+      "sha256": "6a6d44e8edaa4021eb02b3ca2d6e0b13ed4688ca15bd4b784ff69db102564e2d",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-store-format-02.json",
+      "sha256": "e1f3553b185ffeafb929a3123e9b7940dc4870dd74418da1b399aadd036dee43",
+      "passed": true
+    }
+  ],
+  "final_tests": {
+    "passed": 14,
+    "failed": 0,
+    "mutation_io_cuts": 5016,
+    "metadata_mirror_recovery_cuts": 72,
+    "new_provisioning_cuts": 108,
+    "explicit_provisioning_resumes": 72,
+    "unknown_torn_first_marker_preserved_cases": 1
+  },
+  "observed_host_layout_bytes": {
+    "scratch": 53760,
+    "dataset_with_test_memory_backend": 344,
+    "commit_verifier": 224
+  },
+  "profile": {
+    "required_sectors": 152322,
+    "sector_bytes": 512,
+    "physical_bytes": 77988864,
+    "committed_quota_bytes": 67108864,
+    "staging_reserve_bytes": 2097152,
+    "dynamic_entries": 256,
+    "dynamic_directories": 32,
+    "depth": 8,
+    "max_file_bytes": 1048576
+  },
+  "io_counts_read_write_flush": {
+    "new_format": [
+      152454,
+      132,
+      5
+    ],
+    "metadata_open": [
+      130,
+      0,
+      0
+    ],
+    "create": [
+      130,
+      130,
+      3
+    ],
+    "full_1mib_save": [
+      5252,
+      2948,
+      1029
+    ],
+    "explicit_1mib_scrub": [
+      2304,
+      0,
+      0
+    ],
+    "mirror_recovery": [
+      2,
+      2,
+      2
+    ]
+  },
+  "disk_free_bytes_at_record": 4088688640,
+  "known_limits": [
+    "LAST scoped receipt only, no unlimited replay history",
+    "contiguous allocation can refuse fragmentation",
+    "one staged writer per dataset",
+    "host memory SectorIo model does not establish actual deadline enforcement",
+    "provisioning before ordinary cohort health; target budgets unqualified",
+    "original File-v1/Store-v2 volumes never interpreted or migrated"
+  ],
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

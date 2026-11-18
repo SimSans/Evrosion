@@ -1,8 +1,8 @@
 # M5 / Evrosion 0.1 engineering acceptance
 
 Status: **PASS — bounded Internal native architecture proof**, 2026-11-11.
-The [readiness dossier](../docs/release/0.1-preview.md#validation-and-provenance) and
-[formal record](../docs/release/0.1-preview.md#validation-and-provenance)
+The readiness dossier and
+formal record (local engineering archive)
 reconcile E-025.55–67 and R-011.18–28 with actual code, artifacts and executions.
 M0 at `m0` and the original M1–M4 acceptances remain historical checkpoints.
 Current lower-layer regressions preserve their accepted bounds.

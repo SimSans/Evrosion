@@ -13,15 +13,19 @@ use ev_picker::{
     ObjectView, Origin, Persistence, Picker, PickerEpoch, ReadDelivery, Requester, Revision,
     SessionId, UserId, VolumeId,
 };
-use ev_userspace_contract::{
-    root_v2::{
-        self, Role,
-        catalogue::Catalogue,
-        graph::{self, Channel, Child, Source},
-    },
-    syscall,
+#[cfg(feature = "native-network")]
+use ev_root_supervisor::desktop_profile::WireIndex;
+use ev_root_supervisor::desktop_profile::{
+    self as profile, Catalogue, Channel, Child, Role, Source, graph,
 };
+use ev_userspace_contract::{root_v2, syscall};
 use ev_userspace_runtime as rt;
+#[cfg(feature = "native-session")]
+#[path = "desktop_delivery.rs"]
+mod delivery;
+#[cfg(feature = "document-workflow")]
+#[path = "desktop_document.rs"]
+mod document;
 #[cfg(feature = "native-root")]
 #[path = "native/mod.rs"]
 mod native;
@@ -30,7 +34,7 @@ enum Bootstrap<'a> {
     #[cfg(not(feature = "native-root"))]
     Desktop(root_v2::FullGraph<'a>),
     #[cfg(feature = "native-root")]
-    Native(root_v2::native::FullGraph<'a>),
+    Native(profile::NativeFullGraph<'a>),
 }
 impl Bootstrap<'_> {
     #[cfg(feature = "native-root")]
@@ -46,8 +50,20 @@ impl Bootstrap<'_> {
             Self::Native(b) => b.handle(role),
         }
     }
+    #[cfg(feature = "native-root")]
+    fn extra(&self, role: root_v2::native::ExtraRole) -> u64 {
+        let Self::Native(b) = self;
+        #[cfg(not(feature = "native-network"))]
+        {
+            b.extra(role)
+        }
+        #[cfg(feature = "native-network")]
+        {
+            b.handle(Role::from_selector(role.selector()).expect("closed original extra role"))
+        }
+    }
 }
-const COUNT: usize = 6;
+const COUNT: usize = profile::CHILD_COUNT;
 const GRANT_SELECTED: u64 = 41;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Identity {
@@ -56,6 +72,8 @@ struct Identity {
 }
 #[derive(Clone, Copy)]
 struct Actor {
+    // Zero only after the selected M8 adapter consumes setup-only Job CONTROL.
+    // It must never be passed to JOB_INFO42, where zero selects Root's own Job.
     job: u64,
     control: u64,
     identity: Identity,
@@ -74,11 +92,22 @@ struct Pending {
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PendingMode {
+    #[cfg(feature = "document-workflow")]
+    Document(ev_userspace_contract::document_control::Request),
     InteractivePicker,
     #[cfg(feature = "native-root")]
     OwnerConsent,
     #[cfg(feature = "native-root")]
     RememberedPolicy,
+}
+#[cfg(not(feature = "document-workflow"))]
+impl PendingMode {
+    fn picker(self) -> bool {
+        self == Self::InteractivePicker
+    }
+    fn control(self, request: u32) -> RootControl {
+        RootControl::PickFile(request)
+    }
 }
 fn require(ok: bool, code: u64) {
     if !ok {
@@ -104,14 +133,20 @@ fn rpc(endpoint: u64, bytes: [u8; 8], deadline: u64) -> [u8; 8] {
 fn pause() {
     checked(syscall::YIELD, 0, 0, 0);
 }
+#[cfg(not(feature = "native-session"))]
 fn send(endpoint: u64, bytes: [u8; 8], bound: u64) {
+    let retry_stop = if bound == 0 {
+        rt::execution::deadline(bound, now(), 512).unwrap_or_else(|_| fail(905))
+    } else {
+        bound
+    };
     loop {
         let r = rt::send(endpoint, bytes);
         require(r.value == 0 && r.capability == 0, 904);
         match r.status {
             0 => return,
             2 => {
-                require(now() < bound, 905);
+                require(now() < retry_stop, 905);
                 pause();
             }
             _ => fail(906),
@@ -127,9 +162,11 @@ fn identity(control: u64) -> Identity {
     }
 }
 struct Root<'a> {
+    #[cfg(feature = "native-session")]
+    delivery: core::cell::RefCell<delivery::State>,
     bootstrap: Bootstrap<'a>,
     catalogue: Catalogue<'a>,
-    channels: [u64; 15],
+    channels: [u64; profile::CHANNEL_SLOTS],
     actors: [Option<Actor>; COUNT],
     bound: u64,
     app_epoch: u32,
@@ -153,7 +190,15 @@ struct Root<'a> {
 }
 impl Root<'_> {
     fn deadline(&self) -> u64 {
-        self.bound.checked_add(512).unwrap_or_else(|| fail(938))
+        rt::execution::deadline(self.bound, now(), 512).unwrap_or_else(|_| fail(938))
+    }
+    fn storage_deadline(&self) -> u64 {
+        let span = if cfg!(feature = "native-session") {
+            8192
+        } else {
+            512
+        };
+        rt::execution::deadline(self.bound, now(), span).unwrap_or_else(|_| fail(938))
     }
     fn source(&self, source: Source) -> u64 {
         match source {
@@ -182,13 +227,13 @@ impl Root<'_> {
         let job = value(
             syscall::CREATE_JOB,
             self.bootstrap.handle(Role::CreatorJob),
-            0,
+            profile::job_template(child),
             0,
         );
         require(job != 0, 910);
         let control = value(syscall::CREATE_PROCESS, job, self.image(child), 0);
         require(control != 0, 911);
-        for (i, g) in graph::grants(child).iter().enumerate() {
+        for (i, g) in profile::grants(child).enumerate() {
             let grant = value(
                 syscall::DELEGATE,
                 control,
@@ -197,7 +242,7 @@ impl Root<'_> {
             );
             require(grant != 0, 912);
         }
-        for g in graph::grants(child) {
+        for g in profile::grants(child) {
             if g.kind == 2
                 && g.rights & 16 != 0
                 && let Source::Endpoint(channel) = g.source
@@ -224,6 +269,27 @@ impl Root<'_> {
         let a = self.child(child);
         checked(syscall::START, a.control, 0, 0);
         self.actors[child.index()].as_mut().unwrap().identity = identity(a.control);
+        #[cfg(feature = "workspace-runtime")]
+        {
+            // All Job-dependent creation/delegation/binding has completed. The
+            // actual Registry owns accounting independently until full reaping.
+            // Negotiate the retained-stopped diagnostic contract before closing.
+            let info = rt::call4(syscall::PROCESS_JOB_INFO_INFO, 0, 0, 0, 0);
+            require(
+                info.status == 0
+                    && info.value == syscall::PROCESS_JOB_INFO_V1
+                    && info.capability == 0
+                    && info.serial == 0,
+                1120,
+            );
+            let via_process = value(syscall::PROCESS_JOB_INFO, a.control, 0, 0);
+            require(
+                via_process != 0 && via_process == value(syscall::JOB_INFO, a.job, 0, 0),
+                1121,
+            );
+            checked(syscall::CLOSE, a.job, 0, 0);
+            self.actors[child.index()].as_mut().unwrap().job = 0;
+        }
     }
     fn reset(&self, producer: Producer, epoch: u32) {
         let reset = SessionReset { producer, epoch };
@@ -235,6 +301,15 @@ impl Root<'_> {
         require(SessionReset::parse_reply(reply) == Ok(reset), 914);
     }
     fn control_shell(&self, message: RootControl) {
+        #[cfg(feature = "native-session")]
+        {
+            self.queue_control(
+                delivery::Peer::Shell,
+                message.encode().unwrap_or_else(|_| fail(915)),
+                delivery::Kind::Control,
+            );
+        }
+        #[cfg(not(feature = "native-session"))]
         send(
             self.channels[Channel::ShellControl.index()],
             message.encode().unwrap_or_else(|_| fail(915)),
@@ -242,6 +317,15 @@ impl Root<'_> {
         );
     }
     fn control_app(&self, message: RootControl) {
+        #[cfg(feature = "native-session")]
+        {
+            self.queue_control(
+                delivery::Peer::App,
+                message.encode().unwrap_or_else(|_| fail(916)),
+                delivery::Kind::Control,
+            );
+        }
+        #[cfg(not(feature = "native-session"))]
         send(
             self.channels[Channel::AppControl.index()],
             message.encode().unwrap_or_else(|_| fail(916)),
@@ -308,43 +392,45 @@ impl Root<'_> {
         self.reset(Producer::App, self.app_epoch);
         self.start(Child::App);
     }
-    fn metadata(&self, file: FileChoice) -> ObjectView {
+    #[cfg(feature = "native-root")]
+    fn metadata(&self, file: FileChoice) -> Option<ObjectView> {
+        self.metadata_until(file, self.storage_deadline())
+    }
+    fn metadata_until(&self, file: FileChoice, deadline: u64) -> Option<ObjectView> {
         let (channel, local) = if file == FileChoice::Notes {
             (Channel::NotesRead, 1)
         } else {
             (Channel::PrivateRead, 2)
         };
         let cap = self.channels[channel.index()];
-        let counter = u64::from_le_bytes(rpc(
-            cap,
-            ev_file::desktop::MetadataQuery::counter().encode(),
-            self.deadline(),
-        ));
+        let read = |query: ev_file::desktop::MetadataQuery| {
+            let reply = rt::rpc::call(cap, query.encode(), deadline).ok()?;
+            // The Internal raw-word profile reserves these refusal frames.
+            // A coincident digest word also fails closed; no failed operation
+            // is allowed to turn into a counter/content observation.
+            if &reply[..4] == b"FME1" {
+                None
+            } else {
+                Some(reply)
+            }
+        };
+        let counter = u64::from_le_bytes(read(ev_file::desktop::MetadataQuery::counter())?);
         let mut digest = [0; 32];
         for index in 0..4u8 {
             let query = ev_file::desktop::MetadataQuery::digest_word(index).unwrap();
-            digest[usize::from(index) * 8..usize::from(index + 1) * 8].copy_from_slice(&rpc(
-                cap,
-                query.encode(),
-                self.deadline(),
-            ));
+            digest[usize::from(index) * 8..usize::from(index + 1) * 8]
+                .copy_from_slice(&read(query)?);
         }
-        let after = u64::from_le_bytes(rpc(
-            cap,
-            ev_file::desktop::MetadataQuery::counter().encode(),
-            self.deadline(),
-        ));
-        require(counter == after && counter != u64::MAX, 919);
-        ObjectView {
+        let after = u64::from_le_bytes(read(ev_file::desktop::MetadataQuery::counter())?);
+        if counter != after || counter == u64::MAX {
+            return None;
+        }
+        Some(ObjectView {
             object: ObjectId::new(VolumeId::new(*b"EVRO-USERS-VOL01").unwrap(), local).unwrap(),
-            revision: Revision::new(
-                counter,
-                ContentDigest::new(digest).unwrap_or_else(|| fail(920)),
-            )
-            .unwrap(),
+            revision: Revision::new(counter, ContentDigest::new(digest)?).unwrap(),
             permission_revision: 1,
             readable: true,
-        }
+        })
     }
     fn app_package(&self) -> [u8; 32] {
         #[cfg(feature = "native-root")]
@@ -368,6 +454,14 @@ impl Root<'_> {
         }
     }
     fn select(&mut self, request: u32, file: FileChoice) {
+        #[cfg(feature = "document-workflow")]
+        if self
+            .pending
+            .is_some_and(|p| matches!(p.mode, PendingMode::Document(_)))
+        {
+            self.document_select(request, file);
+            return;
+        }
         let Some(mut pending) = self.pending else {
             return;
         };
@@ -390,16 +484,16 @@ impl Root<'_> {
             return;
         }
         let current = self.requester(app);
-        let view = self.metadata(file);
+        let deadline = self.storage_deadline();
+        let Some(view) = self.metadata_until(file, deadline) else {
+            self.pending = None;
+            self.control_app(RootControl::FileRefused(request));
+            self.control_shell(RootControl::FileRefused(request));
+            return;
+        };
         let approval = self
             .picker
-            .prepare(
-                current,
-                view,
-                Persistence::ThisIncarnation,
-                now(),
-                self.deadline(),
-            )
+            .prepare(current, view, Persistence::ThisIncarnation, now(), deadline)
             .unwrap_or_else(|_| fail(922));
         let consent = Consent {
             displayed_action: approval.selection().action_digest(),
@@ -418,11 +512,17 @@ impl Root<'_> {
             request,
             bound: self.bound,
         };
+        let Some(current_view) = self.metadata_until(file, deadline) else {
+            self.pending = None;
+            self.control_app(RootControl::FileRefused(request));
+            self.control_shell(RootControl::FileRefused(request));
+            return;
+        };
         match self.picker.commit(
             approval,
             consent,
             self.requester(app),
-            self.metadata(file),
+            current_view,
             now(),
             &mut handoff,
         ) {
@@ -441,18 +541,28 @@ impl Root<'_> {
     fn shell(&mut self, bytes: [u8; 8]) {
         let command = ShellCommand::decode(bytes).unwrap_or_else(|_| fail(923));
         match command {
+            #[cfg(feature = "native-owner-ui")]
+            ShellCommand::Owner(request) => self.native_connection_request(request),
             ShellCommand::Launch => self.launch(),
             ShellCommand::Forward(key) => {
-                if self.actors[Child::App.index()].is_some() {
-                    send(
-                        self.channels[Channel::AppControl.index()],
-                        key.encode().unwrap_or_else(|_| fail(924)),
-                        self.bound,
-                    );
+                self.forward_current_app(key.encode().unwrap_or_else(|_| fail(924)), true);
+            }
+            ShellCommand::Text(text) => {
+                if cfg!(feature = "native-session") {
+                    self.forward_current_app(text.encode().unwrap_or_else(|_| fail(923)), true);
+                }
+            }
+            ShellCommand::Pointer(pointer) => {
+                if cfg!(feature = "native-session") {
+                    self.forward_current_app(pointer.encode().unwrap_or_else(|_| fail(923)), true);
                 }
             }
             ShellCommand::Select { request, file } => self.select(request, file),
             ShellCommand::Cancel(request) => {
+                #[cfg(feature = "document-workflow")]
+                if self.document_cancel(request) {
+                    return;
+                }
                 if self.pending.is_some_and(|p| {
                     p.request == request && !p.queued && p.mode == PendingMode::InteractivePicker
                 }) {
@@ -463,6 +573,13 @@ impl Root<'_> {
             }
             ShellCommand::Repaint => {
                 if self.actors[Child::App.index()].is_some() {
+                    #[cfg(feature = "native-session")]
+                    self.queue_control(
+                        delivery::Peer::App,
+                        ShellCommand::Repaint.encode().unwrap(),
+                        delivery::Kind::Input,
+                    );
+                    #[cfg(not(feature = "native-session"))]
                     send(
                         self.channels[Channel::AppControl.index()],
                         ShellCommand::Repaint.encode().unwrap(),
@@ -471,6 +588,10 @@ impl Root<'_> {
                 }
             }
             ShellCommand::ControlSettled(message) => {
+                #[cfg(feature = "native-owner-ui")]
+                if let RootControl::Connection(word) = message {
+                    self.native_connection_settled(word);
+                }
                 #[cfg(feature = "native-root")]
                 if self.native.is_some() {
                     self.native_owner_settled(message);
@@ -482,7 +603,11 @@ impl Root<'_> {
                 match message {
                     RootControl::AppStopped(epoch) if epoch == self.app_epoch => {
                         self.hide_pending = false;
-                        if self.launch_pending {
+                        #[cfg(feature = "native-session")]
+                        let launch_ready = !self.delivery_waiting_ui();
+                        #[cfg(not(feature = "native-session"))]
+                        let launch_ready = true;
+                        if self.launch_pending && launch_ready {
                             self.launch_pending = false;
                             self.launch();
                         }
@@ -505,7 +630,7 @@ impl Root<'_> {
             ShellCommand::PickerReady(_frame) => {
                 if let Some(p) = self.pending.as_mut()
                     && !p.queued
-                    && p.mode == PendingMode::InteractivePicker
+                    && p.mode.picker()
                 {
                     p.ready = true;
                     p.ready_tick = now();
@@ -514,7 +639,62 @@ impl Root<'_> {
             }
         }
     }
+    fn forward_current_app(&self, bytes: [u8; 8], input: bool) {
+        #[cfg(feature = "document-workflow")]
+        if input
+            && ev_userspace_contract::focused_input::KeyEvent::decode(&bytes, 0).is_ok_and(
+                |event| {
+                    matches!(
+                        event.key,
+                        ev_userspace_contract::focused_input::Key::Left
+                            | ev_userspace_contract::focused_input::Key::Right
+                    )
+                },
+            )
+            && self
+                .native
+                .as_ref()
+                .is_none_or(|n| n.focused_input_minor() < 1)
+        {
+            return;
+        }
+
+        let Some(app) = self.actors[Child::App.index()].filter(|a| a.identity.process != 0) else {
+            return;
+        };
+        #[cfg(feature = "native-session")]
+        if input
+            && (self.native.as_ref().is_none_or(|n| !n.input_ready())
+                || !self.delivery_healthy(delivery::Peer::App)
+                || !self.delivery_healthy(delivery::Peer::Shell))
+        {
+            return;
+        }
+        #[cfg(not(feature = "native-session"))]
+        let _ = input;
+        let alive = rt::call(syscall::OBSERVE, app.control, 0, 0);
+        if alive.status != 0 || alive.value != 0 || alive.capability != 0 {
+            return;
+        }
+        #[cfg(feature = "native-session")]
+        self.queue_control(delivery::Peer::App, bytes, delivery::Kind::Input);
+        #[cfg(not(feature = "native-session"))]
+        send(
+            self.channels[Channel::AppControl.index()],
+            bytes,
+            self.bound,
+        );
+    }
     fn event(&mut self, child: Child, bytes: [u8; 8]) {
+        #[cfg(feature = "document-workflow")]
+        if child == Child::App && bytes[..2] == *b"DC" {
+            self.document_event(bytes);
+            return;
+        }
+        #[cfg(feature = "native-network")]
+        if self.native.is_some() && self.native_network_event(child, bytes) {
+            return;
+        }
         #[cfg(feature = "native-root")]
         if self.native.is_some() && self.native_system_event(child, bytes) {
             return;
@@ -524,6 +704,11 @@ impl Root<'_> {
             self.native_data(bytes);
             return;
         }
+        #[cfg(feature = "native-session")]
+        if child == Child::App && self.native.is_some() && bytes[..2] == *b"NT" {
+            self.native_note(bytes);
+            return;
+        }
         let ready = match child {
             Child::Display => *b"EVGDRDY1",
             Child::Block => *b"EVBLRDY1",
@@ -531,6 +716,8 @@ impl Root<'_> {
             Child::Input => *b"EVINRDY1",
             Child::Shell => *b"EVSHRDY1",
             Child::App => *b"EVGARDY1",
+            #[cfg(feature = "native-network")]
+            Child::NetDriver | Child::NetService => return,
         };
         if bytes == ready {
             self.actors[child.index()].as_mut().unwrap().ready = true;
@@ -540,9 +727,21 @@ impl Root<'_> {
             return;
         }
         match child {
-            Child::Shell if bytes[0] == b'S' || bytes[0] == b'K' => self.shell(bytes),
+            #[cfg(feature = "native-owner-ui")]
+            Child::Shell if bytes[0] == b'O' => self.shell(bytes),
+            Child::Shell
+                if bytes[0] == b'S'
+                    || bytes[0] == b'K'
+                    || (cfg!(feature = "native-session") && matches!(bytes[0], b'T' | b'M')) =>
+            {
+                self.shell(bytes)
+            }
             Child::App if bytes == *b"EVGADON1" => {
                 if self.child(Child::App).ready && !self.app_notified {
+                    #[cfg(feature = "native-network")]
+                    if self.native.is_some() && self.native_downloaded_frame_done() {
+                        return;
+                    }
                     self.app_notified = true;
                     #[cfg(feature = "native-root")]
                     let message = if self.owned_launch {
@@ -594,6 +793,8 @@ impl Root<'_> {
                     } {
                         self.control_shell(match p.mode {
                             PendingMode::InteractivePicker => RootControl::FileDelivered(p.request),
+                            #[cfg(feature = "document-workflow")]
+                            PendingMode::Document(_) => RootControl::FileDelivered(p.request),
                             #[cfg(feature = "native-root")]
                             PendingMode::OwnerConsent => RootControl::OwnerFileDelivered(p.request),
                             #[cfg(feature = "native-root")]
@@ -631,10 +832,21 @@ impl Root<'_> {
             .into_iter()
             .find(|c| self.actors[c.index()].is_some_and(|a| a.identity == who))
         {
+            #[cfg(feature = "native-session")]
+            self.delivery_capture(child, self.child(child), r.value.to_le_bytes());
+            #[cfg(not(feature = "native-session"))]
             self.event(child, r.value.to_le_bytes());
         }
     }
     fn stopped(&mut self, child: Child) {
+        #[cfg(feature = "native-network")]
+        if self.native.is_some() {
+            self.native_downloaded_stopped(child);
+        }
+        #[cfg(feature = "native-network")]
+        if self.native_network_stopped(child) {
+            return;
+        }
         #[cfg(feature = "native-root")]
         if self.native.is_some() && !self.native_diagnostic_stopped(child) {
             return;
@@ -652,19 +864,27 @@ impl Root<'_> {
             if r.status == 0 {
                 break;
             }
-            require(r.status == 2 && now() < self.bound, 928);
+            require(r.status == 2 && rt::execution::live(self.bound, now()), 928);
             pause();
         }
         checked(syscall::CLOSE, old.control, 0, 0);
-        checked(syscall::CLOSE, old.job, 0, 0);
+        if old.job != 0 {
+            checked(syscall::CLOSE, old.job, 0, 0);
+        }
         #[cfg(feature = "native-root")]
         if self.native.is_some() {
-            let denied = rt::call(syscall::JOB_INFO, old.job, 0, 0);
+            let denied = if old.job == 0 {
+                rt::call(syscall::PROCESS_JOB_INFO, old.control, 0, 0)
+            } else {
+                rt::call(syscall::JOB_INFO, old.job, 0, 0)
+            };
             require(
                 denied.status == 1 && denied.value == 0 && denied.capability == 0,
                 984,
             );
         }
+        #[cfg(feature = "native-session")]
+        self.delivery_cancel_actor(child, old);
         self.actors[child.index()] = None;
         #[cfg(feature = "native-root")]
         if self.native.is_some() {
@@ -721,13 +941,36 @@ impl Root<'_> {
                 // here would retain another controller stack on every fault.
             }
             _ => {
+                #[cfg(feature = "native-network")]
+                if self.native.is_some() && self.native_downloaded_failure_contained() {
+                    return;
+                }
                 let _ = record;
                 fail(930);
             }
         }
     }
     fn tick(&mut self) {
-        require(now() < self.bound, 931);
+        require(rt::execution::live(self.bound, now()), 931);
+        #[cfg(feature = "native-session")]
+        {
+            self.delivery_quarantine_tick();
+            for _ in 0..4 {
+                self.receive();
+            }
+            let mut budget = ev_root_supervisor::desktop_outbox::dispatch::Budget::new();
+            while budget.next(self.delivery_waiting_ui(), self.delivery_outbox_pending()) {
+                let Some(work) = self.delivery_process_event() else {
+                    break;
+                };
+                budget.completed(work);
+            }
+            // Preserve exactly one ordinary outbound attempt, after newly
+            // retained work and outside every source handler/backend loan.
+            self.delivery_tick();
+            self.delivery_expire_settled();
+        }
+        #[cfg(not(feature = "native-session"))]
         self.receive();
         for child in graph::CHILDREN {
             if let Some(actor) = self.actors[child.index()]
@@ -736,14 +979,31 @@ impl Root<'_> {
                 let r = rt::call(syscall::OBSERVE, actor.control, 0, 0);
                 require(r.status == 0 && r.value <= 1, 932);
                 if r.value == 1 {
+                    #[cfg(feature = "native-session")]
+                    {
+                        let needed = if child == Child::App {
+                            ev_root_supervisor::desktop_outbox::retirement_slots(
+                                delivery::Peer::App,
+                            )
+                        } else if profile::network_child(child) {
+                            [0, 0]
+                        } else {
+                            [1, 1]
+                        };
+                        if !self.delivery_begin(needed) {
+                            continue;
+                        }
+                    }
                     self.stopped(child);
+                    #[cfg(feature = "native-session")]
+                    self.delivery_end();
                 }
             }
         }
         let tick = now();
         if let Some(p) = self.pending.as_mut()
             && p.ready
-            && p.mode == PendingMode::InteractivePicker
+            && p.mode.picker()
             && !p.queued
             && !p.held_reported
             && tick.saturating_sub(p.ready_tick) >= 64
@@ -761,6 +1021,14 @@ impl Root<'_> {
         }
         #[cfg(feature = "native-root")]
         if self.native.is_some() {
+            #[cfg(feature = "native-session")]
+            if self.delivery_begin([1, 1]) {
+                self.native_tick();
+                self.delivery_end();
+            } else {
+                self.native_progress_only();
+            }
+            #[cfg(not(feature = "native-session"))]
             self.native_tick();
         }
         #[cfg(not(feature = "native-root"))]
@@ -802,8 +1070,21 @@ impl Handoff for Grant {
     type Delivered = u64;
     type Error = u64;
     fn revalidate_and_deliver_read(&mut self, _: ReadDelivery<'_>) -> Delivery<u64, u64> {
+        self.deliver()
+    }
+}
+impl Grant {
+    fn deliver(&mut self) -> Delivery<u64, u64> {
+        let retry_stop = if self.bound == 0 {
+            match rt::execution::deadline(self.bound, now(), 512) {
+                Ok(stop) => stop,
+                Err(_) => return Delivery::Refused(4),
+            }
+        } else {
+            self.bound
+        };
         loop {
-            if now() >= self.bound {
+            if now() >= retry_stop {
                 return Delivery::Refused(4);
             }
             let r = rt::call4(
@@ -855,9 +1136,11 @@ pub unsafe fn run(record: u64, length: u64, bound: u64) -> ! {
     let _ = NonZeroU64::new(context.process).unwrap();
     let owner = UserId::new(*b"EVROSION-OWNER01").unwrap();
     let mut root = Root {
+        #[cfg(feature = "native-session")]
+        delivery: core::cell::RefCell::new(delivery::State::new()),
         bootstrap: Bootstrap::Desktop(bootstrap),
         catalogue,
-        channels: [0; 15],
+        channels: [0; profile::CHANNEL_SLOTS],
         actors: [None; COUNT],
         bound,
         app_epoch: 0,
@@ -886,8 +1169,8 @@ pub unsafe fn run(record: u64, length: u64, bound: u64) -> ! {
 }
 
 /// # Safety
-/// The named Native Root loader owns exact720/2048 startup/catalogue, both
-/// readonly package banks and the sole System window through process lifetime.
+/// The selected named loader owns Native3(720/2560) or V4(912/4096) readonly
+/// startup/catalogue, both immutable banks and retained named window mappings.
 #[cfg(feature = "native-root")]
 pub unsafe fn run_native(record: u64, length: u64, bound: u64) -> ! {
     // SAFETY: caller supplies the named Native mapping contract; callee checks it.

@@ -1,0 +1,685 @@
+{
+  "schema": 1,
+  "scope": "Source-only preservation of six optional experiments. None of these patches is applied to the default development build.",
+  "accepted_runtime_version": "0.3",
+  "development_version": "0.4 unfinished",
+  "full_0_4_engineering_gates_complete": 0,
+  "applicability": "Checks use the current public 0.4 tree and the listed prerequisites. Patch application and exact resulting file hashes were checked in temporary copies. Compilation and runtime checks were not performed for this publication.",
+  "combination_constraints": "These are separate experiments. Root-loss, reclamation and attention changes overlap in Root or host-observer paths and are not declared mutually composable.",
+  "patches": [
+    {
+      "name": "reclaim-frozen-04",
+      "patch": "reclaim-frozen-04.patch",
+      "patch_sha256": "fec3e7effc6b2bfb54072aaa5015eb02f8359c2c93f5b6b5092478cce5ad9826",
+      "patch_bytes": 104870,
+      "path_count": 27,
+      "requires": [],
+      "application": "Separate optional experiment on the current 0.4 tree",
+      "status": "Partial implementation; runtime unverified",
+      "qualification_limits": "Compilation and isolated checks were completed on the archived source. Native permanent removal, higher-generation reuse and separate cold reopening remain unqualified.",
+      "archived_patch_sha256": "9568aabd5ef038a29c59176ba71e9916b0f101462515d7e19c70d21691647044",
+      "archived_base_source_sha256": "e83cac11de13b613811170027699fc2e9bb45d60629744902c2f300ec239c62c",
+      "files": [
+        {
+          "path": "architecture/adr/ADR-0127-root-owned-single-object-reclamation.md",
+          "change": "added",
+          "before_sha256": null,
+          "after_sha256": "63de8577043176ea7fe5866d1ffccb4f623cbd7b9ae546eac00c08db0d4349bf",
+          "before_bytes": null,
+          "after_bytes": 3580
+        },
+        {
+          "path": "architecture/adr/README.md",
+          "change": "modified",
+          "before_sha256": "16b1fdf996fec272943ba7da25ac02c01f93d2f971432ce2614f877960ec876f",
+          "after_sha256": "cf68788ca7a1c9e6f8b9fe9bbc2bf2e9d93661bf40163985a9f83cad2614ef28",
+          "before_bytes": 19318,
+          "after_bytes": 19526,
+          "archived_before_sha256": "08268fca789f767cff398cef8ee03d005fdf283ac8f0c255fa05eef722c0e1b8",
+          "archived_after_sha256": "f5ca28ed27a46a7c6e166013301b65cd1aa8b286005eb21968b640b59446ed4b"
+        },
+        {
+          "path": "libs/workspace-shell/src/protected.rs",
+          "change": "modified",
+          "before_sha256": "dff573923549824ca120784fde38c6daa20917a5e79d804a7aa794a5b7584dd1",
+          "after_sha256": "66fee5ec5e9c3fef1b968e38215c115fa46949da91174620bda4b950d3b7bd38",
+          "before_bytes": 15435,
+          "after_bytes": 15533
+        },
+        {
+          "path": "services/workspace-root/src/lib.rs",
+          "change": "modified",
+          "before_sha256": "307b0d29b2b7fd48d0c0131e578eb4f5dc9588990ebd55b9d77ce4015ac8f774",
+          "after_sha256": "35eb543e287ad1c900063ac8f52786f1b989d7bcaa0071eddb32c9392df7a4e7",
+          "before_bytes": 3070,
+          "after_bytes": 3087
+        },
+        {
+          "path": "services/workspace-root/src/native/development.rs",
+          "change": "modified",
+          "before_sha256": "66be87017a288a122c70dfa1d97bdc20e28ee3e60d1bef067878ec5b7f2fd9bb",
+          "after_sha256": "1eafcb6e47b550091b68cdf41e6265db84fc3233eb95c98fbe02b2e4bf79e7e6",
+          "before_bytes": 18285,
+          "after_bytes": 18322
+        },
+        {
+          "path": "services/workspace-root/src/native/display.rs",
+          "change": "modified",
+          "before_sha256": "c3f7dae6f553a52888a54db51caabece9403963ec68db43f9d00d0f48c86d43e",
+          "after_sha256": "6d22ca55274c84404f244acb8bd2dc9567336fa9c26e3278aa3a4febf4dbf111",
+          "before_bytes": 19568,
+          "after_bytes": 20688
+        },
+        {
+          "path": "services/workspace-root/src/native/filegrant.rs",
+          "change": "modified",
+          "before_sha256": "3637e10f0ee282dceb82f55962bb0117e5f13392fd05666cff56cbda0025afe2",
+          "after_sha256": "9e954927a1f61c231d99453ba3d36b5051e5e9deeeb1500d07e786ca923cd0c5",
+          "before_bytes": 29232,
+          "after_bytes": 31890
+        },
+        {
+          "path": "services/workspace-root/src/native/input.rs",
+          "change": "modified",
+          "before_sha256": "ab19f83222a0618740eecce93bd76ba7f33ec4b35af74a7b9fa7aecc2432523a",
+          "after_sha256": "7d27d71f70e2aac8a2cbb280d8eb278d1ea942f324b1788264b5c6e619e84c4d",
+          "before_bytes": 23020,
+          "after_bytes": 26476
+        },
+        {
+          "path": "services/workspace-root/src/native/inspector.rs",
+          "change": "modified",
+          "before_sha256": "0e17358a6dd52e5e7c1ac5083fcaa23e7d4cd68b28efd25e61e16c0223db1ffb",
+          "after_sha256": "e353a421e8fa89293a378c1d141a3742ce57ce751bb9541d861ecdbca9d1b002",
+          "before_bytes": 16832,
+          "after_bytes": 16897
+        },
+        {
+          "path": "services/workspace-root/src/native/mod.rs",
+          "change": "modified",
+          "before_sha256": "6c28599996bd3121a3ad38e8876ed46b937bd34a4887565bab0f902a5b386e9f",
+          "after_sha256": "2cc5162976d8985053c351d2c2e07a2bbd6ab89ebedc90962b567effbedb8edd",
+          "before_bytes": 19300,
+          "after_bytes": 19410
+        },
+        {
+          "path": "services/workspace-root/src/native/owner.rs",
+          "change": "modified",
+          "before_sha256": "1f4f77f2ca6969589cc83773070850efa1e5b1e8a1b958d2c10ee94fd92baf90",
+          "after_sha256": "a82e4f5defb4e684db8ebc93282caa25b6d47b090678e9ebd007efffa3d9ed4b",
+          "before_bytes": 24336,
+          "after_bytes": 24401
+        },
+        {
+          "path": "services/workspace-root/src/native/reclaim.rs",
+          "change": "added",
+          "before_sha256": null,
+          "after_sha256": "871338fd3e93c98a46a4e767e19484d06ecdf978d8efc8e1548773251ed9f44f",
+          "before_bytes": null,
+          "after_bytes": 20367
+        },
+        {
+          "path": "services/workspace-root/src/native/resident.rs",
+          "change": "modified",
+          "before_sha256": "d960e72d67b126781276bb5f06202c57d42c148dda5fb9a612fbf58e65494012",
+          "after_sha256": "876bee80b125a780153da9bf2c6ce98a0328a5aab8fdb35550fb53420982c684",
+          "before_bytes": 3323,
+          "after_bytes": 3401
+        },
+        {
+          "path": "services/workspace-root/src/native/semantic.rs",
+          "change": "modified",
+          "before_sha256": "c8c24e4fe52b583fa055206042da0c11596dee7c97a84bc18e253bbb16fc6e72",
+          "after_sha256": "d511ef3c5281d2198609eb9a98f69003e4547bd056020ca84d43fc19d4a6ff6b",
+          "before_bytes": 89797,
+          "after_bytes": 90257
+        },
+        {
+          "path": "services/workspace-root/src/native/shutdown.rs",
+          "change": "modified",
+          "before_sha256": "27247a24c3efe330432304aa0bb4fb8bd6c485f38b62a0ec4a9e6645143ca098",
+          "after_sha256": "3984254dbf988ca2d8303fcf3e217c90e2b252debdb07a59022dcc74c2e855a6",
+          "before_bytes": 25742,
+          "after_bytes": 25779
+        },
+        {
+          "path": "services/workspace-root/src/native/workspace.rs",
+          "change": "modified",
+          "before_sha256": "bcb51fb936dda9ba116b492b4097f70ecc3e926e757f92b33a87ca11147b18f7",
+          "after_sha256": "b3c9c8f2b69dcadecab12e9f6ea4861e9ef55fa4e67658242cd05a53ab47113a",
+          "before_bytes": 10976,
+          "after_bytes": 12411
+        },
+        {
+          "path": "services/workspace-root/src/reclaim.rs",
+          "change": "added",
+          "before_sha256": null,
+          "after_sha256": "bf5aff5bedef0b8ea4f0ddd9f041febc1e2e852b694fb157e717669d623b80df",
+          "before_bytes": null,
+          "after_bytes": 5807
+        },
+        {
+          "path": "services/workspace-root/src/render.rs",
+          "change": "modified",
+          "before_sha256": "f307c0450722865ec4f2394f7334fdf4255f21dadfb0652a1cf6beb118e62136",
+          "after_sha256": "8af9aef343fea783565d5a621cef26966b49911322cdf87430cae7e639db3bf3",
+          "before_bytes": 13233,
+          "after_bytes": 17119
+        },
+        {
+          "path": "services/workspace-root/src/tests.rs",
+          "change": "modified",
+          "before_sha256": "00a24735c85f5dbef70b8fa5af64e94db45996a77c14505ab9a7bb8fd6561342",
+          "after_sha256": "5a5836ab17a85c975f6e2e7469b78ba646ae4d7024e6035d5e0db2fed9509dfe",
+          "before_bytes": 8262,
+          "after_bytes": 9780
+        },
+        {
+          "path": "services/workspace/src/admin.rs",
+          "change": "added",
+          "before_sha256": null,
+          "after_sha256": "e05bfd1c459b64bee68583627f6ffb387dcb2aba58f3707afe79806f106356b8",
+          "before_bytes": null,
+          "after_bytes": 8417
+        },
+        {
+          "path": "services/workspace/src/control.rs",
+          "change": "modified",
+          "before_sha256": "02c0c0bbba47be2e3a96914eebb41878a10106b5bee7f440ace960b1f003fe30",
+          "after_sha256": "da9b7ea21ddb6e768d8405ce441ae82ff1cb168183134492a7a45a0d9d00dd16",
+          "before_bytes": 25308,
+          "after_bytes": 25986
+        },
+        {
+          "path": "services/workspace/src/lib.rs",
+          "change": "modified",
+          "before_sha256": "f2348069568a296a0a2114cdbc21547ef400a31c4d9821c6e473ee339c1e56a3",
+          "after_sha256": "ecaab422b1531a16b61b97743048c417464be0b9137ad9c7fbcb82686a96dbc0",
+          "before_bytes": 53351,
+          "after_bytes": 53470
+        },
+        {
+          "path": "services/workspace/src/namespace.rs",
+          "change": "modified",
+          "before_sha256": "61b295e04d1cbca49fd1c41a643f0550c84ff542ce3b73ae0df55b6d7c411208",
+          "after_sha256": "f41beff804734fdf115eebe9b4ccd88da45855b348f5579a16c112dc6498f185",
+          "before_bytes": 21071,
+          "after_bytes": 21333
+        },
+        {
+          "path": "services/workspace/src/native/mod.rs",
+          "change": "modified",
+          "before_sha256": "d3f75a942c52eec8d455e48d10baf6bf891cda7b7438bec30df372728441e0c9",
+          "after_sha256": "f5bd1116ededd5135092f4a6c0f7f9b67e5d3e138b37cc352a73e906801238c1",
+          "before_bytes": 35256,
+          "after_bytes": 37575
+        },
+        {
+          "path": "services/workspace/src/purge_control.rs",
+          "change": "added",
+          "before_sha256": null,
+          "after_sha256": "0cb3ab885c85070b426216143b0772273d2c72daadbd77a42a537199a43025de",
+          "before_bytes": null,
+          "after_bytes": 6056
+        },
+        {
+          "path": "services/workspace/src/purge_tests.rs",
+          "change": "added",
+          "before_sha256": null,
+          "after_sha256": "c3221e6256ff30a826153e25c2a25b7158ae8e22356bcae15525700ee10794bc",
+          "before_bytes": null,
+          "after_bytes": 15324
+        },
+        {
+          "path": "services/workspace/src/tests.rs",
+          "change": "modified",
+          "before_sha256": "ebefb567dfb080805aaed0531615862abb390209e5d6ec488b640eea647cd8a4",
+          "after_sha256": "d429c4a2754b67ba0fc3b40285bcc370744b32fe0a130b209bf49a189da29905",
+          "before_bytes": 27774,
+          "after_bytes": 27818
+        }
+      ],
+      "publication_check": {
+        "git_apply_check_passed": true,
+        "exact_public_postimages_verified": 27,
+        "runtime_validation_performed": false
+      },
+      "already_present_editorial_changes_omitted": [
+        "architecture/adr/ADR-0111-managed-send-retirement-and-selected-v5-runtime.md",
+        "architecture/adr/ADR-0113-workspace-development-bundle-and-owned-preview.md",
+        "architecture/adr/ADR-0115-selected-v5-dynamic-file-app-admission.md",
+        "architecture/adr/ADR-0116-selected-fixed-sector-pio.md",
+        "architecture/adr/ADR-0126-protected-local-development-install-and-run.md"
+      ],
+      "public_editorial_metadata_preserved": [
+        "architecture/adr/README.md"
+      ],
+      "publication_rebase": "Rebased patch context onto current public files; the isolated source code delta is preserved."
+    },
+    {
+      "name": "reclaim-observer-08",
+      "patch": "reclaim-observer-08.patch",
+      "patch_sha256": "bf8e65aeb63eb2463fe0071b1775f126b5274504923e86646c3f011dd6ff180b",
+      "patch_bytes": 66401,
+      "path_count": 4,
+      "requires": [
+        "reclaim-frozen-04"
+      ],
+      "application": "After the listed prerequisite patch; separate optional experiment",
+      "status": "Partial host observer; runtime unverified",
+      "qualification_limits": "Four host observer files only. Five native attempts remain failures. Permanent removal, reuse and separate cold qualification did not pass. The observer requires the reclamation interfaces.",
+      "archived_patch_sha256": "bf8e65aeb63eb2463fe0071b1775f126b5274504923e86646c3f011dd6ff180b",
+      "archived_base_source_sha256": "d3b91bfabc741cff12bce8cba3b2afcc615d0632ccc53a2c5ea4bb058e6241d6",
+      "files": [
+        {
+          "path": "tools/ev/src/workspace.rs",
+          "change": "modified",
+          "before_sha256": "781da186497b07c89aade1fa5a2d6ae12a9eda373157cd90be86e9031bcf6233",
+          "after_sha256": "07d5fab534f3bb7e33f25de5432d21f300176ffc9db60988714a3a6715e71b63",
+          "before_bytes": 24063,
+          "after_bytes": 25624
+        },
+        {
+          "path": "tools/ev/src/workspace/run.rs",
+          "change": "modified",
+          "before_sha256": "f6dff8effee74c1a506421f55f230956ca9aec8d8beecf3f1c3ea986bf9d9cd8",
+          "after_sha256": "c57b57bbf277b170f1a727cd3e30f2b666f9f34adf9b39812d44c65e1661fcc2",
+          "before_bytes": 70540,
+          "after_bytes": 91045
+        },
+        {
+          "path": "tools/ev/src/workspace/scenario.rs",
+          "change": "modified",
+          "before_sha256": "2354c846c782ff2f4f314b1529a700e18658523e3f14edeb6e39488541e5299b",
+          "after_sha256": "ee837ba727d485b77eb288baf223915a2ff5b1e03bbde3ebbb3b7ab4a64eedbe",
+          "before_bytes": 67985,
+          "after_bytes": 89998
+        },
+        {
+          "path": "tools/ev/tools/scanout_roi.py",
+          "change": "modified",
+          "before_sha256": "ef14008a0ccd354024ce13550d2c9382c1dd9a2182f6704b8efaded37087fff3",
+          "after_sha256": "c16d4ad74d1bd94e86db0bbafc070d4566b37b9c759cdbaab6d09fef9678e6f8",
+          "before_bytes": 2618,
+          "after_bytes": 2619
+        }
+      ],
+      "publication_check": {
+        "git_apply_check_passed": true,
+        "exact_public_postimages_verified": 4,
+        "runtime_validation_performed": false
+      }
+    },
+    {
+      "name": "root-loss-independent-recovery",
+      "patch": "root-loss-independent-recovery.patch",
+      "patch_sha256": "75aba6bde29bfec98628735044c764ad34d88961da223581d1ec3daf1219491a",
+      "patch_bytes": 22971,
+      "path_count": 8,
+      "requires": [],
+      "application": "Separate optional experiment on the current 0.4 tree",
+      "status": "Bounded native component passed on its archived base",
+      "qualification_limits": "A saved 15-byte file and its folder survived the selected actual Root exit and a separately launched healthy recovery. Unsaved buffers, in-place reconstruction, existing 0.3-data scenarios, physical hardware and full recovery-gate completion remain unqualified. No Kernel ABI changes.",
+      "archived_patch_sha256": "14689612d5cee6de0f1f3af50c74810fed12ab446c73fc4c49d7217bfab93be3",
+      "archived_base_source_sha256": "92e132a56c9a567a6e770a66b5cbce1ab4bd5189b5530728d0eee8d377b5ace6",
+      "files": [
+        {
+          "path": "services/workspace-root/Cargo.toml",
+          "change": "modified",
+          "before_sha256": "b8aa4b4f311abfcc72fa168be7acb465bd4805c7121abd7bfff3391b6f414d3c",
+          "after_sha256": "66dc1e64fbd08d6ce9da258ddfb421a1a02e0fa7f067c5bd23e28af8ff8e9907",
+          "before_bytes": 1392,
+          "after_bytes": 1440,
+          "archived_before_sha256": "4f5214ca3d49f4ca5166fa0ecef78e7ff7eaa541919c37ccd4921700cac29829",
+          "archived_after_sha256": "ea1aa4b9d4b152c80437de325c03648e7643b68acafdc8c5ff43787c022a9eb2"
+        },
+        {
+          "path": "services/workspace-root/src/lib.rs",
+          "change": "modified",
+          "before_sha256": "307b0d29b2b7fd48d0c0131e578eb4f5dc9588990ebd55b9d77ce4015ac8f774",
+          "after_sha256": "1984234eca1bf24477249f4f141a7a88c4a586bd3263cc1fc4280450464614fe",
+          "before_bytes": 3070,
+          "after_bytes": 3144
+        },
+        {
+          "path": "services/workspace-root/src/native/mod.rs",
+          "change": "modified",
+          "before_sha256": "6c28599996bd3121a3ad38e8876ed46b937bd34a4887565bab0f902a5b386e9f",
+          "after_sha256": "601464036de4c2f73097e7b3e131309bde5876e5909f49ab0382daf1ba6d76aa",
+          "before_bytes": 19300,
+          "after_bytes": 19963
+        },
+        {
+          "path": "services/workspace-root/src/native/resident.rs",
+          "change": "modified",
+          "before_sha256": "d960e72d67b126781276bb5f06202c57d42c148dda5fb9a612fbf58e65494012",
+          "after_sha256": "dd3204c93d66e4982d5fef412b1e79469405f6b110508b5a51fdd28bce4be6a8",
+          "before_bytes": 3323,
+          "after_bytes": 3501
+        },
+        {
+          "path": "services/workspace-root/src/root_loss_probe.rs",
+          "change": "added",
+          "before_sha256": null,
+          "after_sha256": "1946e094b0af2258cd434f20e5632a3bf22e085a691248e2b047c920edc3aa7b",
+          "before_bytes": null,
+          "after_bytes": 2347
+        },
+        {
+          "path": "tools/ev/src/workspace.rs",
+          "change": "modified",
+          "before_sha256": "781da186497b07c89aade1fa5a2d6ae12a9eda373157cd90be86e9031bcf6233",
+          "after_sha256": "29d9b98b9c0fe2f4e7163f0eba189ef7a3a28b4f0b344d6422e13dd0f1033760",
+          "before_bytes": 24063,
+          "after_bytes": 25023
+        },
+        {
+          "path": "tools/ev/src/workspace/run.rs",
+          "change": "modified",
+          "before_sha256": "f6dff8effee74c1a506421f55f230956ca9aec8d8beecf3f1c3ea986bf9d9cd8",
+          "after_sha256": "ad6e88f0ee9f1e576a2c187b8be255a9428d942c2595403940a37b05c49c7690",
+          "before_bytes": 70540,
+          "after_bytes": 71087
+        },
+        {
+          "path": "tools/ev/src/workspace/scenario.rs",
+          "change": "modified",
+          "before_sha256": "2354c846c782ff2f4f314b1529a700e18658523e3f14edeb6e39488541e5299b",
+          "after_sha256": "e3726b422e4eb7a9f52b2f619dca4e2886c318ef2310f93dd359a340f3713900",
+          "before_bytes": 67985,
+          "after_bytes": 70343
+        }
+      ],
+      "publication_check": {
+        "git_apply_check_passed": true,
+        "exact_public_postimages_verified": 8,
+        "runtime_validation_performed": false
+      },
+      "public_editorial_metadata_preserved": [
+        "services/workspace-root/Cargo.toml"
+      ],
+      "publication_rebase": "Rebased patch context onto current public files; the isolated source code delta is preserved.",
+      "reader_preservation": "The four current reader-overlay paths are outside this eight-path delta."
+    },
+    {
+      "name": "kernel-present-trace-final",
+      "patch": "kernel-present-trace-final.patch",
+      "patch_sha256": "f0a0a700fcbf9f0d1fb13c5f8cec3f044151025b80e71b6283433f2f2658442a",
+      "patch_bytes": 21993,
+      "path_count": 6,
+      "requires": [],
+      "application": "Separate optional experiment on the current 0.4 tree",
+      "status": "Isolated diagnostic instrumentation",
+      "qualification_limits": "Preserves diagnostic Kernel instrumentation. The four-file Display fix already present in the development tree is excluded. This patch carries no full startup-reliability or full 0.4 acceptance claim.",
+      "archived_patch_sha256": "8bbfc201f61ebfbf209125eabef46035d3781f4029ac4a5f9b485caec73e4e8e",
+      "archived_base_source_sha256": "e83cac11de13b613811170027699fc2e9bb45d60629744902c2f300ec239c62c",
+      "files": [
+        {
+          "path": "kernel/src/lib.rs",
+          "change": "modified",
+          "before_sha256": "fea8fc85a0780bbcf8e41ea7db9ce16f12f0e3fddfdbd2711cf92a2d712cd64b",
+          "after_sha256": "e074fc9852ea1b92a1142914de88e5e71de4c185f8fa57ed004b61e945bd68c0",
+          "before_bytes": 1708,
+          "after_bytes": 1807,
+          "archived_before_sha256": "7e327f23ba3d0b8cc18ec1c166ebdbb10cb7c0683bd45d1365d1fb83da7cdc75",
+          "archived_after_sha256": "74b0ae12ac5e2b806a692d9f32670db34c794a0b7f27794544cc7c95eb4a7660"
+        },
+        {
+          "path": "kernel/src/present_trace.rs",
+          "change": "added",
+          "before_sha256": null,
+          "after_sha256": "b127ae4feb7b33b3349f7ff3e2c53da4f9e0837376580f6914a1b5e13751922f",
+          "before_bytes": null,
+          "after_bytes": 9804
+        },
+        {
+          "path": "kernel/src/workspace_runtime.rs",
+          "change": "modified",
+          "before_sha256": "afb42937d7e5c86646f71b29b10fc14734728d7b3266de619127b182399a6fcb",
+          "after_sha256": "aed69870db4877ffae4b8e5c643bbd8da8402913ae5ed7f309b5151259493e31",
+          "before_bytes": 7323,
+          "after_bytes": 7375
+        },
+        {
+          "path": "kernel/src/workspace_runtime/executor.rs",
+          "change": "modified",
+          "before_sha256": "0b0e9239a7d31713377b4a850f84e26715a020de37981b9fb30bfc722fe39c86",
+          "after_sha256": "07797291996a8756084711e8d8d8ad4ced180c9ab9a8e8301d485a97d5e95f36",
+          "before_bytes": 13714,
+          "after_bytes": 15803
+        },
+        {
+          "path": "kernel/src/workspace_runtime/transport.rs",
+          "change": "modified",
+          "before_sha256": "dda2ceec4ca0ecafb7a6b39cbe664cf1d5aa56cb0cf66426e9497c596597c17e",
+          "after_sha256": "a548bc0417324d95693be89c392ed0567962e747ebe6446544dfd03fd9ecd502",
+          "before_bytes": 17154,
+          "after_bytes": 19063
+        },
+        {
+          "path": "kernel/src/workspace_runtime/world.rs",
+          "change": "modified",
+          "before_sha256": "e70952e44d681b7cf9ae9878ea887eeb8e6c47c29ca87b76669a71bcd48d6f5b",
+          "after_sha256": "900f2359345b3e26e28f5e202627fe0941300fa6f25dd4397d5ac41dd9af6a42",
+          "before_bytes": 8253,
+          "after_bytes": 8350
+        }
+      ],
+      "publication_check": {
+        "git_apply_check_passed": true,
+        "exact_public_postimages_verified": 6,
+        "runtime_validation_performed": false
+      },
+      "public_formatting_preserved": [
+        "kernel/src/lib.rs"
+      ],
+      "publication_rebase": "Rebased diagnostic module addition onto the formatted public Kernel module list; existing module and cfg ordering is preserved."
+    },
+    {
+      "name": "kernel-present-trace-earlier-01",
+      "patch": "kernel-present-trace-earlier-01.patch",
+      "patch_sha256": "c48e6fdf282b0757c1f11ae3cb4c10d7672c2a85ca4bf0efcb565e485f76d061",
+      "patch_bytes": 5019,
+      "path_count": 2,
+      "requires": [
+        "kernel-present-trace-final"
+      ],
+      "application": "After the listed prerequisite patch; separate optional experiment",
+      "status": "Earlier diagnostic variant",
+      "qualification_limits": "Two earlier diagnostic file versions. Applying this after the final diagnostic patch reconstructs the earlier variant. It has no additional runtime or full-gate qualification.",
+      "archived_patch_sha256": "c48e6fdf282b0757c1f11ae3cb4c10d7672c2a85ca4bf0efcb565e485f76d061",
+      "archived_base_source_sha256": null,
+      "files": [
+        {
+          "path": "kernel/src/present_trace.rs",
+          "change": "modified",
+          "before_sha256": "b127ae4feb7b33b3349f7ff3e2c53da4f9e0837376580f6914a1b5e13751922f",
+          "after_sha256": "9e6e69f91c973282f484c985a377e63ed0605d710915309e0b29b18abc3f8b6c",
+          "before_bytes": 9804,
+          "after_bytes": 8112
+        },
+        {
+          "path": "kernel/src/workspace_runtime/transport.rs",
+          "change": "modified",
+          "before_sha256": "a548bc0417324d95693be89c392ed0567962e747ebe6446544dfd03fd9ecd502",
+          "after_sha256": "995e31ab30a5bfda3282c639bca451fc200a8da0de49273b58b9abf885afa4f0",
+          "before_bytes": 19063,
+          "after_bytes": 18916
+        }
+      ],
+      "publication_check": {
+        "git_apply_check_passed": true,
+        "exact_public_postimages_verified": 2,
+        "runtime_validation_performed": false
+      }
+    },
+    {
+      "name": "trusted-attention-partial",
+      "patch": "trusted-attention-partial.patch",
+      "patch_sha256": "cd1a1d84d78a88412c4736fea560ca2899a388d39f9b82b153be4ffbfea011b3",
+      "patch_bytes": 51765,
+      "path_count": 17,
+      "requires": [],
+      "application": "Separate optional experiment on the current 0.4 tree",
+      "status": "Partial implementation; runtime unverified",
+      "qualification_limits": "The existing 17-path patch is preserved byte for byte. Native runtime qualification did not start. This publication performs no implementation work on the component.",
+      "archived_patch_sha256": "cd1a1d84d78a88412c4736fea560ca2899a388d39f9b82b153be4ffbfea011b3",
+      "archived_base_source_sha256": "e83cac11de13b613811170027699fc2e9bb45d60629744902c2f300ec239c62c",
+      "files": [
+        {
+          "path": "apps/editor/Cargo.toml",
+          "change": "modified",
+          "before_sha256": "762be4d2f6429110df1c5b7ba10714796d3729094c27159041cba7aed541012e",
+          "after_sha256": "c017e8f95de82326e32287b6fe3b886334458b81447227c8d60bc4a18e9b4700",
+          "before_bytes": 810,
+          "after_bytes": 839,
+          "archived_before_sha256": "6feaca19d4c68ef9f7e4d718e46404da0a5937cd28d8ce1b90dc3b5ce34d027d",
+          "archived_after_sha256": "a078db194248ece3ad6bd32b1d9215b2ed4e349bcbf927aa5f9aa6612213e26f"
+        },
+        {
+          "path": "apps/editor/src/main.rs",
+          "change": "modified",
+          "before_sha256": "dbaa1d4f4a0198bcb6ed56a4f38dda8763c9154d6fe36f509d5dccf032f95033",
+          "after_sha256": "6590d3db2a79be0f60718e82b796a90e91786160c68e1a3d9047f7d65565070e",
+          "before_bytes": 41633,
+          "after_bytes": 45249
+        },
+        {
+          "path": "services/workspace-root/Cargo.toml",
+          "change": "modified",
+          "before_sha256": "b8aa4b4f311abfcc72fa168be7acb465bd4805c7121abd7bfff3391b6f414d3c",
+          "after_sha256": "dd4705293d78d5b305d5e43f66b9b6fe2998822d8af52b0b24fb827beff24eb8",
+          "before_bytes": 1392,
+          "after_bytes": 1420,
+          "archived_before_sha256": "4f5214ca3d49f4ca5166fa0ecef78e7ff7eaa541919c37ccd4921700cac29829",
+          "archived_after_sha256": "aab25dd63a542278214c8e891e29d6370f6b5f5b75aacfd152a285f6d7245dbe"
+        },
+        {
+          "path": "services/workspace-root/src/lib.rs",
+          "change": "modified",
+          "before_sha256": "307b0d29b2b7fd48d0c0131e578eb4f5dc9588990ebd55b9d77ce4015ac8f774",
+          "after_sha256": "10bc5e955cff93a8e2d528845f745ac6010d0710ddd77505200f13ee840f87d3",
+          "before_bytes": 3070,
+          "after_bytes": 3146
+        },
+        {
+          "path": "services/workspace-root/src/native/attention.rs",
+          "change": "added",
+          "before_sha256": null,
+          "after_sha256": "fa052534db7e02ae0adee8fa76a88a7f7cefef04d82d6cdc1e72ca06fb3ec3bc",
+          "before_bytes": null,
+          "after_bytes": 13360
+        },
+        {
+          "path": "services/workspace-root/src/native/filegrant.rs",
+          "change": "modified",
+          "before_sha256": "3637e10f0ee282dceb82f55962bb0117e5f13392fd05666cff56cbda0025afe2",
+          "after_sha256": "3b8cd7b6a6d8ca1b25422db873a31e1c90a7bc59a995d78d5e524997b0f2769c",
+          "before_bytes": 29232,
+          "after_bytes": 29567
+        },
+        {
+          "path": "services/workspace-root/src/native/input.rs",
+          "change": "modified",
+          "before_sha256": "ab19f83222a0618740eecce93bd76ba7f33ec4b35af74a7b9fa7aecc2432523a",
+          "after_sha256": "dd233a932a92c1a33f22852831c5ac65556af3ca23cb87b629669a3df3c1fdfe",
+          "before_bytes": 23020,
+          "after_bytes": 23322
+        },
+        {
+          "path": "services/workspace-root/src/native/mod.rs",
+          "change": "modified",
+          "before_sha256": "6c28599996bd3121a3ad38e8876ed46b937bd34a4887565bab0f902a5b386e9f",
+          "after_sha256": "4b06cce8f7a232caeca40700148835de6db25ed57084084282a444bac3fc4c53",
+          "before_bytes": 19300,
+          "after_bytes": 19755
+        },
+        {
+          "path": "services/workspace-root/src/native/recovery.rs",
+          "change": "modified",
+          "before_sha256": "830b0d44e8559c75055262be02862deeb0016edf6b44295d7eb53ce5d715dcc9",
+          "after_sha256": "aa5121898b8f06a2d995fdb1250627df756340b87c0fb9589fcad8872588ed5e",
+          "before_bytes": 6609,
+          "after_bytes": 6804
+        },
+        {
+          "path": "services/workspace-root/src/native/resident.rs",
+          "change": "modified",
+          "before_sha256": "d960e72d67b126781276bb5f06202c57d42c148dda5fb9a612fbf58e65494012",
+          "after_sha256": "864fe96b3d61f7ded5c6821dd5fb4a9ccc8f9e15ac1f99ccfa403f6d4fc019a6",
+          "before_bytes": 3323,
+          "after_bytes": 3451
+        },
+        {
+          "path": "services/workspace-root/src/native/shutdown.rs",
+          "change": "modified",
+          "before_sha256": "27247a24c3efe330432304aa0bb4fb8bd6c485f38b62a0ec4a9e6645143ca098",
+          "after_sha256": "20fa6f174f6b9610676ba2972fd3c424a83e4e2481fe9e51a07b4648d083a12b",
+          "before_bytes": 25742,
+          "after_bytes": 25836
+        },
+        {
+          "path": "services/workspace-root/src/trusted_attention_wire.rs",
+          "change": "added",
+          "before_sha256": null,
+          "after_sha256": "cabb3a05f0733110172eff8cf14cf45b1c2a7b389155348c2932384b8b7cf6e4",
+          "before_bytes": null,
+          "after_bytes": 5375
+        },
+        {
+          "path": "services/workspace-shell-panel/Cargo.toml",
+          "change": "modified",
+          "before_sha256": "5192b17c8db54733607c5acbdf1f082199c21b1ae360b3459030edb37dbc6b83",
+          "after_sha256": "acbac36ac265dce04d2aa88b27c3bc5832c6b4a73e0024da2ec6e53ec265756c",
+          "before_bytes": 688,
+          "after_bytes": 738,
+          "archived_before_sha256": "fd97dac118f0b5c7302015830578e5f2f9871e0c36e5869fe380707c41f43462",
+          "archived_after_sha256": "c8f65e0a5a79dd810beb3bf6f467993bf6e389fe592a5728aa4e73b1847e14ee"
+        },
+        {
+          "path": "services/workspace-shell-panel/src/main.rs",
+          "change": "modified",
+          "before_sha256": "0cc3c5fbffb6a603c33603384963c8852485492a5ca24bdf0c2bd1024486b657",
+          "after_sha256": "544f58f0e756363a140f878b04b1dade2b878d418d005b9cf517d987fe7bb2e7",
+          "before_bytes": 9304,
+          "after_bytes": 12526
+        },
+        {
+          "path": "tools/ev/src/workspace.rs",
+          "change": "modified",
+          "before_sha256": "781da186497b07c89aade1fa5a2d6ae12a9eda373157cd90be86e9031bcf6233",
+          "after_sha256": "8153d30a253acbb7d8bdda9e31cd0f5158546fb8e209f2e64d0132312b1b827d",
+          "before_bytes": 24063,
+          "after_bytes": 24500
+        },
+        {
+          "path": "tools/ev/src/workspace/run.rs",
+          "change": "modified",
+          "before_sha256": "f6dff8effee74c1a506421f55f230956ca9aec8d8beecf3f1c3ea986bf9d9cd8",
+          "after_sha256": "803dfada6bf5582bbf4c1254782426979a408ebb4c5a47751727bee559fc393b",
+          "before_bytes": 70540,
+          "after_bytes": 70862
+        },
+        {
+          "path": "tools/ev/src/workspace/scenario.rs",
+          "change": "modified",
+          "before_sha256": "2354c846c782ff2f4f314b1529a700e18658523e3f14edeb6e39488541e5299b",
+          "after_sha256": "6762d77da7bd0682c69ebabdc5184b56dac816be471d63027e33075ca6a1330f",
+          "before_bytes": 67985,
+          "after_bytes": 75012
+        }
+      ],
+      "publication_check": {
+        "git_apply_check_passed": true,
+        "exact_public_postimages_verified": 17,
+        "runtime_validation_performed": false
+      },
+      "public_editorial_metadata_preserved": [
+        "apps/editor/Cargo.toml",
+        "services/workspace-root/Cargo.toml",
+        "services/workspace-shell-panel/Cargo.toml"
+      ],
+      "existing_patch_preserved_byte_for_byte": true
+    }
+  ]
+}

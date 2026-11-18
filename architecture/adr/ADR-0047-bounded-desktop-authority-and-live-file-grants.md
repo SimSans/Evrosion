@@ -77,18 +77,18 @@ window. The initial profile keeps File writes under one serialized trusted
 owner during selection; concurrent external writers require a stronger atomic
 File-side version/selection transaction before they can be admitted.
 
-The [portable desktop source checks](../../docs/release/0.1-preview.md#validation-and-provenance)
+The portable desktop source checks (local engineering archive)
 retain 43 passing policy/graphics/input/picker tests, strict host lint and all
 eight actor feature target checks with exact source bytes. The
-[merged portable core record](../../docs/release/0.1-preview.md#validation-and-provenance)
+merged portable core record (local engineering archive)
 retains 344 kernel and 38 startup-contract tests, strict library/test lint and
 exact source bytes. This includes capacity, generation reuse, legacy v1/Root v2
 and 64 repeated managed grant lifecycle cycles. These checks do not accept
 actual input/consent or the full M4 graph.
-The existing [surface VM proof](../../docs/release/0.1-preview.md#validation-and-provenance)
+The existing surface VM proof (local engineering archive)
 remains the separate, bounded physical component proof.
 
-The [actual full desktop graph](../../docs/release/0.1-preview.md#validation-and-provenance)
+The actual full desktop graph (local engineering archive)
 now passes one fresh VM: seven separate live actors, nine actual starts including
 App/Shell replacement, 216 completed protected calls, three selected grants and
 two actual contained page faults. All fifteen required screen stages match
@@ -107,4 +107,4 @@ The linked full-entry census includes the loader and preceding tests: 226536
 bytes under the unchanged 256KiB stack. It is not a formal whole-program bound.
 Readable Hello uses native viewport pixels, while the first component renderer
 retains its original layout. Preserved failure records and source checks are
-linked from [M4 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+linked from M4 progress.

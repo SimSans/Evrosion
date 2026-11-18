@@ -77,6 +77,7 @@ impl Boundary for Model {
                 }
             }
             syscall::JOB_INFO if cap == 200 || cap == 0 => ok(self.jobs[field as usize]),
+            syscall::PROCESS_JOB_INFO if cap == 100 => ok(self.jobs[field as usize]),
             _ => Reply {
                 status: 1,
                 value: 0,
@@ -88,11 +89,43 @@ impl Boundary for Model {
 fn target() -> StoppedTarget {
     StoppedTarget {
         process_control: 100,
-        job_control: 200,
+        job_authority: JobAuthority::Delegated(200),
         identity: Identity {
             process: 0x20002,
             thread: 0x30003,
         },
+    }
+}
+#[test]
+fn retained_process_control_collects_stopped_job_without_job_handle_or_raw_id() {
+    let mut target = target();
+    target.job_authority = JobAuthority::ProcessControl(target.process_control);
+    let mut c = Collector::new(Model::new());
+    let captured = c.fault(&target, provenance()).unwrap().unwrap();
+    assert_eq!(captured.job.diagnostic_id, 17);
+    assert_eq!(captured.crash.capture().process, target.identity.process);
+    let model = c.into_boundary();
+    assert!(!model.calls.iter().any(|&(n, _, _)| n == syscall::JOB_INFO));
+    assert_eq!(
+        model
+            .calls
+            .iter()
+            .filter(|&&(n, _, _)| n == syscall::PROCESS_JOB_INFO)
+            .count(),
+        10
+    );
+    for authority in [
+        JobAuthority::Current,
+        JobAuthority::ProcessControl(0),
+        JobAuthority::ProcessControl(999),
+    ] {
+        target.job_authority = authority;
+        let mut c = Collector::new(Model::new());
+        assert!(matches!(
+            c.fault(&target, provenance()),
+            Err(Error::Authority)
+        ));
+        assert!(c.into_boundary().calls.is_empty());
     }
 }
 fn provenance() -> Provenance {
@@ -605,4 +638,87 @@ fn actual_send_adapter_advances_only_canonical_acceptance_not_full_or_error() {
             .iter()
             .all(|&(n, h, _)| n == syscall::SEND && h == 300)
     );
+}
+
+#[test]
+fn v4_service_provenance_uses_exact_roles_and_never_names_a_legacy_service_or_package() {
+    use ev_userspace_contract::root_v4::graph::Child as C;
+    for (child, role) in [(C::NetDriver, 23), (C::NetService, 24)] {
+        let p = network_service_provenance(child, [2; 32], [3; 32], 501, 1).unwrap();
+        assert_eq!(p.component, Component::Service(role));
+        assert_eq!(p.package, None);
+        assert_eq!(p.generation, None);
+    }
+    assert_eq!(
+        network_service_provenance(C::App, [2; 32], [3; 32], 501, 1),
+        Err(Error::Identity)
+    );
+}
+
+#[cfg(feature = "native-network")]
+#[test]
+fn fixed_inspector_profiles_remain_readonly_for_clean_foreign_and_pending_v1_v2() {
+    for version in [1, 2] {
+        let mut manifest = generation();
+        manifest.health_version = version;
+        let make = if version == 1 {
+            ev_store::Store::format_new
+        } else {
+            ev_store::Store::format_new_downloaded_v2
+        };
+        let disk = make(
+            Disk::blank(),
+            manifest,
+            b"owner data",
+            ev_store::BootPolicy::new(2).unwrap(),
+            1000,
+        )
+        .unwrap_or_else(|_| panic!("fixed fixture profile"))
+        .into_device();
+        let inspect = if version == 1 {
+            system::inspect
+        } else {
+            system::inspect_downloaded_v2
+        };
+        let foreign = if version == 1 {
+            system::inspect_downloaded_v2
+        } else {
+            system::inspect
+        };
+        let before = disk.clone();
+        let (disk, result) = foreign(disk, 1000);
+        assert!(matches!(result, system::State::Unavailable));
+        assert_eq!(disk.sectors, before.sectors);
+        assert_eq!((disk.writes, disk.flushes), (before.writes, before.flushes));
+        let (mut disk, result) = inspect(disk, 1000);
+        assert!(matches!(result,system::State::Committed {selected,..} if selected==manifest));
+        disk.writes = 0;
+        disk.flushes = 0;
+        disk.fail_write = Some(2);
+        let open = if version == 1 {
+            ev_store::Store::open
+        } else {
+            ev_store::Store::open_downloaded_v2
+        };
+        let mut store = open(disk, 1000).unwrap_or_else(|_| panic!("fixed profile open"));
+        assert!(
+            store
+                .execute(
+                    store.next_operation().unwrap(),
+                    ev_store::Request::WriteMutable {
+                        object: ev_store::ObjectId::user_data(),
+                        bytes: b"pending owner data"
+                    },
+                    1000
+                )
+                .is_err()
+        );
+        let mut disk = store.into_device();
+        disk.fail_write = None;
+        let before = disk.clone();
+        let (disk, result) = inspect(disk, 1000);
+        assert!(matches!(result, system::State::NeedsRecovery));
+        assert_eq!(disk.sectors, before.sectors);
+        assert_eq!((disk.writes, disk.flushes), (before.writes, before.flushes));
+    }
 }

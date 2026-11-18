@@ -66,4 +66,4 @@ revocation, death in either order, exact-object mismatch and old completion whil
 a caller waits on a different route. CPL3 clients/servers must separately prove
 these transitions through actual syscalls, scheduling and fault handling before
 hardware acceptance. Full chain/lock/depth AF-IPC tests and complete M2 acceptance
-remain distinct gates, recorded in [M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+remain distinct gates, recorded in M2 progress.

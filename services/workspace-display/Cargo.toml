@@ -1,0 +1,30 @@
+[package]
+license.workspace = true
+name = "ev-workspace-display"
+version = "0.4.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "ev-workspace-display"
+path = "src/main.rs"
+required-features = ["native-actor"]
+test = false
+bench = false
+
+[features]
+native-actor = ["dep:ev-userspace-runtime"]
+
+[dependencies]
+ev-userspace-contract = { path = "../../libs/userspace-contract" }
+ev-workspace-shell = { path = "../../libs/workspace-shell" }
+ev-graphics = { path = "../../libs/graphics" }
+ev-userspace-runtime = { path = "../../libs/userspace-runtime", optional = true }
+
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_unsafe = "deny"
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "deny"

@@ -1,0 +1,190 @@
+{
+  "schema": 1,
+  "date": "2026-11-16",
+  "status": "PASS scoped portable typed RootV5 admission bridge and bare native binary compile/lint",
+  "scope": "No actual physical V5 loader, target graph/source backing, linked resource admission, device retirement, guest execution, or whole M8 qualification claim.",
+  "source_files": [
+    {
+      "path": "kernel/src/root_manifest_v5.rs",
+      "bytes": 3019,
+      "sha256": "8778204583c032b8610e1de0bc1b2dcfc5819533ae1a36380eedc8537a7f0f00"
+    },
+    {
+      "path": "kernel/src/root_producer_v5.rs",
+      "bytes": 3801,
+      "sha256": "b22af9260284d30877fe041cd31344b1f0befefdd157532f450b2051bd146a75"
+    },
+    {
+      "path": "kernel/src/root_v5_tests.rs",
+      "bytes": 21002,
+      "sha256": "382011d723f057b6eab21f0338c19938cfaf15b37f8413b413c14a56fce29ed8"
+    },
+    {
+      "path": "kernel/src/root_manifest_v2.rs",
+      "bytes": 11417,
+      "sha256": "58d6df18deff54cbd201ef34ed25c5ffa2efdb6258db5c4ea7f5e2d36cd84d54"
+    },
+    {
+      "path": "kernel/src/root_selection.rs",
+      "bytes": 10436,
+      "sha256": "b5c460070a2d6ed6b6828b78868081080017f24c68f75fd5d0b0e690af06c221"
+    },
+    {
+      "path": "kernel/src/root_binding_v2.rs",
+      "bytes": 24137,
+      "sha256": "94b810e87c333d55472e4733758c520eb2362f18539071b786b673b7b5f975d5"
+    },
+    {
+      "path": "kernel/src/root_factory_v2.rs",
+      "bytes": 4090,
+      "sha256": "acd8e51bf5091b47699a1e0855b470a64a9bafde8072ef0d19de6c306e6a83a9"
+    },
+    {
+      "path": "kernel/src/incarnation.rs",
+      "bytes": 57304,
+      "sha256": "0808de1eb7a19a51a3cc5cc6dd70de7969556204c10052c27f433c271c272389"
+    },
+    {
+      "path": "kernel/src/custodian.rs",
+      "bytes": 35787,
+      "sha256": "955aeff03cdff38d2267b6ac573f5ca8384abecc8092d1835293d6851c5430ed"
+    },
+    {
+      "path": "kernel/src/startup_record.rs",
+      "bytes": 6125,
+      "sha256": "d0c1737aa527fccdbde368469ba9e291594144c4a1943b7eb53289c90754c408"
+    },
+    {
+      "path": "kernel/src/executable.rs",
+      "bytes": 27938,
+      "sha256": "4b07610574d28cae1da9645259306fdcea4a2cfc6ee34bb4fd59dc919dc0d265"
+    },
+    {
+      "path": "kernel/src/lib.rs",
+      "bytes": 1583,
+      "sha256": "f745b71d337e8729de0205f6a2d0f357eb4973a673dc4d2c677d024184703010"
+    }
+  ],
+  "command_receipts": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-tests-01.json",
+      "sha256": "c793e2906325957fb8406e1705e46e5f4c65eb97c2b15da4ec0beb19b96ca359",
+      "passed": false
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-tests-02.json",
+      "sha256": "4909eb6b6cf7f3e8187cc170dfaee9e9e931bd7361c8eb58510e7d3c01d5ba75",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-tests-03.json",
+      "sha256": "10000f6ef13dc67f9e2c1ee60a72259b95770268660bf05c5a472f5b4c623b26",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-format-01.json",
+      "sha256": "ed5eb5d0d27d17419a978136e57f72b4af85c1b57a71990190fa0d74c475bca0",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-format-02.json",
+      "sha256": "03a573115f667a7643b4914eb40860544a0b63fcbe2f4a60cfa8dd3c8245bdb6",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-clippy-01.json",
+      "sha256": "aa7c94c88292f4c916a111f6f596c212025401bf4f0138ee1af86df47d04d473",
+      "passed": false
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-clippy-02.json",
+      "sha256": "114e36db8a095d317c58a91e953dde7acf70aab47777bf29eb0e8445240e2012",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-final-tests-01.json",
+      "sha256": "4651b798213d40ed7b8cabbe0a03909de7e09a6af5d0a6bf3ac09edf19d9d50a",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-default-tests-01.json",
+      "sha256": "06140f737bdc67760492e1315b0b0dbedc6cfe7a14652b48ce7adbe327cc593a",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-native-clippy-01.json",
+      "sha256": "d452ebca36c8732db5c9e01160b6cef7d407d16b212c4f10eec8af4aaf1cb235",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/root-v5-default-clippy-01.json",
+      "sha256": "4de5a1262c86a9c64be6f980b169beac0c6e68d72e18fbcad9a0b201a862819e",
+      "passed": true
+    }
+  ],
+  "test_counts": {
+    "selected_kernel": 504,
+    "final_focused_v5": 6,
+    "default_kernel": 487
+  },
+  "wire": {
+    "manifest_magic": "EVBM0005",
+    "profile": 5,
+    "manifest_current_bytes": 1392,
+    "strict_sources": 37,
+    "root_startup_magic": "EVROOT05",
+    "root_startup_bytes": 1104,
+    "root_ABI": "e343d503aa3d2b69814e0774dac4cd1c4c370910d65bc17c0f3724826ecc38e0",
+    "authority_domain": "evrosion.bootstrap.authority.root.v5\\0",
+    "catalogue_bytes": 12288
+  },
+  "admission": {
+    "Root_limits": [
+      65536,
+      512,
+      13,
+      13
+    ],
+    "Root_image_private_loader_bounds": [
+      240,
+      244,
+      246
+    ],
+    "actual_custody_branch_destination_slots": [
+      96,
+      96,
+      96
+    ],
+    "ordinary_slots": 16,
+    "legacy_control_slots": 64,
+    "Root_stack_pages": [
+      256,
+      263
+    ],
+    "Root_stack_guards": [
+      255,
+      264
+    ]
+  },
+  "proofs": [
+    "Every one of11136 manifest bits is bound to trusted expected SHA256.",
+    "Canonical oldV4 still verifies asV4 and never asV5; oldV2/V4 verifiers rejectV5.",
+    "All37 actual source object/lineage generations bind the V5 authority digest; alias and masked recycled generation refuse before installation.",
+    "Only three real selected96-slot banks can receiveV5; default Authority and undersized destinations refuse; staged factory exhaustion leaves metadata unchanged.",
+    "Typed captured epoch/incarnation/process and37 exact installed handles serialize1104 bytes through the SAME retained Custodian/Bindings machine.",
+    "Foreign epoch token replay, duplicate prepare, wrong startup size/hash/address/absence and live source revocation fail closed with admission held.",
+    "Root240 image pages admit metadata;241 and package/protected/catalogue/Workspace/network/stack-guard overlap refuse before physical allocation.",
+    "Measured whole12KiB catalogue digest and exact canonical V5 graph/layout decode join to actual Root image SHA and restart metadata."
+  ],
+  "known_limits": [
+    "Nonzero graph/layout/fullgraph measurement fields in SDK catalogue remain descriptive; actual producer transcript and independent artifact joins are still pending.",
+    "RootDomains factory requires typed verified V5 selection, but factory allocation alone is not a live source or scheduler admission witness.",
+    "A host-only LoadedExecutable model exercises portable admission receipts and never proves physical ownership or VM behavior.",
+    "Existing dynamic signed-image path remains V4-only; this bridge does not silently authorize V5 dynamic images."
+  ],
+  "retained_failures": {
+    "root-v5-tests-01": "Test fixture initially masked only fresh generation0 identities; corrected fixture first retires/reuses an actual source object so slot-only forgery loses a real generation.",
+    "root-v5-clippy-01": "Unused Kind test import; removed."
+  },
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

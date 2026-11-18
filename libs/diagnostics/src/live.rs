@@ -19,6 +19,8 @@ pub enum Role {
     Block,
     Application,
     Display,
+    NetDriver,
+    NetService,
 }
 impl Role {
     pub fn name(self) -> &'static str {
@@ -31,6 +33,8 @@ impl Role {
             Self::Block => "Block",
             Self::Application => "Application",
             Self::Display => "Display",
+            Self::NetDriver => "NetDriver",
+            Self::NetService => "NetService",
         }
     }
     fn code(self) -> u64 {
@@ -46,6 +50,8 @@ impl Role {
             5 => Self::Block,
             6 => Self::Application,
             7 => Self::Display,
+            8 => Self::NetDriver,
+            9 => Self::NetService,
             _ => return None,
         })
     }
@@ -257,4 +263,71 @@ pub fn hex(out: &mut impl Write, bytes: &[u8]) -> fmt::Result {
         write!(out, "{byte:02x}")?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod role_tests {
+    use super::*;
+    fn job() -> Job {
+        Job {
+            diagnostic_id: 3,
+            first_tick: 4,
+            last_tick: 5,
+            subtree: Usage {
+                cpu_ticks: 1,
+                frames: 2,
+                processes: 1,
+                threads: 1,
+            },
+            limits: Usage {
+                cpu_ticks: 16384,
+                frames: 64,
+                processes: 1,
+                threads: 1,
+            },
+        }
+    }
+    #[test]
+    fn additive_network_roles_preserve_all_previous_codes_and_roundtrip_without_packages() {
+        for (code, role) in [
+            Role::Boot,
+            Role::Root,
+            Role::Shell,
+            Role::Input,
+            Role::File,
+            Role::Block,
+            Role::Application,
+            Role::Display,
+            Role::NetDriver,
+            Role::NetService,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            assert_eq!(role.code(), code as u64);
+            assert_eq!(Role::parse(code as u64), Some(role));
+        }
+        for role in [Role::NetDriver, Role::NetService] {
+            let row = Row::new(
+                role,
+                Identity {
+                    process: 7,
+                    thread: 8,
+                },
+                true,
+                [1; 32],
+                None,
+                job(),
+            )
+            .unwrap();
+            assert_eq!(Row::decode(&row.encode()), Ok(row));
+            assert_eq!(
+                Row::new(role, row.identity, true, row.image, Some([2; 32]), job()),
+                Err(Error::Package)
+            );
+            let mut bytes = row.encode();
+            bytes[16..24].copy_from_slice(&10u64.to_le_bytes());
+            assert_eq!(Row::decode(&bytes), Err(Error::Wire));
+        }
+    }
 }

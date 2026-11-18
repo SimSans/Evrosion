@@ -2,6 +2,8 @@
 from pathlib import Path
 import tempfile
 import struct
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 import stack_audit as audit
@@ -80,7 +82,7 @@ class StackAuditTests(unittest.TestCase):
         self.assertEqual(self_cycles, [["a"]])
 
     def test_userspace_stack_extent_flags_and_both_guards_are_measured(self):
-        def elf(size, flags=6, extra_guard=False):
+        def elf(size, flags=6, extra_guard=False, first_page=256, upper_guard=False):
             data = bytearray(64+3*56)
             data[:6] = b"\x7fELF\x02\x01"
             struct.pack_into("<H",data,18,62)
@@ -88,9 +90,9 @@ class StackAuditTests(unittest.TestCase):
             struct.pack_into("<HH",data,54,56,3 if extra_guard else 2)
             base = 1 << 39
             struct.pack_into("<IIQQQQQQ",data,64,1,5,0,base+4096,0,0,4096,4096)
-            struct.pack_into("<IIQQQQQQ",data,120,1,flags,0,base+256*4096,0,0,size,4096)
+            struct.pack_into("<IIQQQQQQ",data,120,1,flags,0,base+first_page*4096,0,0,size,4096)
             if extra_guard:
-                struct.pack_into("<IIQQQQQQ",data,176,1,6,0,base+255*4096,0,0,4096,4096)
+                struct.pack_into("<IIQQQQQQ",data,176,1,6,0,base+(first_page+size//4096 if upper_guard else first_page-1)*4096,0,0,4096,4096)
             return data
         for size in [16384,32768]:
             self.assertEqual(audit.verify_user_stack(elf(size),size)["bytes"],size)
@@ -99,6 +101,74 @@ class StackAuditTests(unittest.TestCase):
                     audit.verify_user_stack(bad,size)
         with self.assertRaises(ValueError):
             audit.verify_user_stack(elf(16384),65536)
+        for size in [16384,32768]:
+            image=elf(size,first_page=480)
+            layout=audit.verify_user_stack(image,size,480)
+            self.assertEqual(layout['first_page'],480)
+            self.assertEqual(layout['lower_guard'],(1<<39)+479*4096)
+            self.assertEqual(layout['upper_guard'],(1<<39)+(480+size//4096)*4096)
+            with self.assertRaises(ValueError):
+                audit.verify_user_stack(image,size) # no implicit relocation
+            for bad in [elf(size,7,first_page=480),elf(size,extra_guard=True,first_page=480),elf(size,extra_guard=True,first_page=480,upper_guard=True)]:
+                with self.assertRaises(ValueError):audit.verify_user_stack(bad,size,480)
+            for page in [0,479,481,509]:
+                with self.assertRaises(ValueError):audit.verify_user_stack(image,size,page)
+
+    def test_unloaded_symbol_metadata_cannot_redirect_userspace_entry_census(self):
+        # A real ELF and GNU disassembly exercise the audit boundary. Only the
+        # unloaded _start symbol value changes; header, PH table and all LOAD
+        # bytes remain exact, so a loaded-image equivalence check still passes.
+        data = bytearray(0x2400)
+        base = 1 << 39
+        entry = base + 4096
+        data[:9] = b"\x7fELF\x02\x01\x01\0\0"
+        struct.pack_into("<HHIQQQIHHHHHH", data, 16,
+                         2, 62, 1, entry, 64, 0x2200, 0, 64, 56, 2, 64, 5, 4)
+        struct.pack_into("<IIQQQQQQ", data, 64,
+                         1, 5, 4096, entry, 0, 17, 4096, 4096)
+        struct.pack_into("<IIQQQQQQ", data, 120,
+                         1, 6, 8192, base + 480*4096, 0, 0, 32768, 4096)
+        data[4096:4113] = bytes.fromhex("554889e54883ec204883c4205dc39090c3")
+        strings = b"\0_start\0decoy\0"
+        sections = b"\0.text\0.symtab\0.strtab\0.shstrtab\0"
+        data[0x2000:0x2000+len(strings)] = strings
+        data[0x2040:0x2040+len(sections)] = sections
+        struct.pack_into("<IBBHQQ", data, 0x2118, 1, 0x12, 0, 1, entry, 14)
+        struct.pack_into("<IBBHQQ", data, 0x2130, 8, 0x12, 0, 1, entry+16, 1)
+        for index, row in enumerate([
+            (1, 1, 6, entry, 4096, 17, 0, 0, 16, 0),
+            (7, 2, 0, 0, 0x2100, 72, 3, 1, 8, 24),
+            (15, 3, 0, 0, 0x2000, len(strings), 0, 0, 1, 0),
+            (23, 3, 0, 0, 0x2040, len(sections), 0, 0, 1, 0),
+        ], 1):
+            struct.pack_into("<IIQQQQIIQQ", data, 0x2200+index*64, *row)
+        bad = bytearray(data)
+        struct.pack_into("<Q", bad, 0x2120, entry+15)
+        self.assertEqual(data[:0x2100], bad[:0x2100])
+        self.assertEqual(audit.load_pointer_reader(data)(entry),
+                         audit.load_pointer_reader(bad)(entry))
+        with tempfile.TemporaryDirectory() as directory:
+            good = Path(directory) / "good.elf"
+            foreign = Path(directory) / "foreign-start.elf"
+            report = Path(directory) / "must-not-exist.json"
+            good.write_bytes(data)
+            foreign.write_bytes(bad)
+            self.assertEqual(audit.functions(good)["_start"]["address"], entry)
+            self.assertEqual(audit.functions(foreign)["_start"]["address"], entry+15)
+            measured = audit.audit(good, userspace=True,
+                                   user_stack_bytes=32768, user_stack_first_page=480)
+            self.assertTrue(measured["passed"])
+            self.assertEqual(measured["resolved_full_entry_bytes"], 48)
+            result = subprocess.run([
+                sys.executable, str(Path(audit.__file__)), "--userspace",
+                "--stack-bytes", "32768", "--stack-first-page", "480",
+                str(foreign), str(report),
+            ], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("_start symbol does not match ELF entry e_entry",
+                          result.stdout + result.stderr)
+            self.assertFalse(report.exists())
+
 
     def test_main_callbacks_are_explicit_and_bound_to_their_actual_runtime(self):
         desktop = "evrosion_kernel::desktop_observation"
@@ -115,6 +185,23 @@ class StackAuditTests(unittest.TestCase):
         self.assertEqual(graph[callers[2]], set())
         self.assertEqual(len(edges), 2)
         self.assertEqual(unresolved[callers[1]], ["actual unresolved instruction"])
+
+    def test_session_callback_wrapper_cannot_disappear_from_runtime_census(self):
+        caller = "evrosion_kernel::desktop_runtime::Runtime::run"
+        session = "evrosion_kernel::session_observation"
+        desktop = "evrosion_kernel::desktop_observation"
+        found = {name: {} for name in [caller, session, desktop]}
+        # The wrapper calls the concrete formatter, while runtime dispatches its
+        # observer through an unresolved trait object. A direct runtime->desktop
+        # supplement alone would omit the wrapper's actual nested frame.
+        graph = {caller: set(), session: {desktop}, desktop: set()}
+        frames = {name: {"frame_bytes": size} for name, size in
+                  [(caller, 128), (session, 64), (desktop, 192)]}
+        audit.main_observer_edges(found, graph, {caller: ["call *%rax"]})
+        total, _, _, reachable = audit.census(graph, frames, caller)
+        self.assertEqual(total, 384)
+        self.assertIn(session, reachable)
+        self.assertEqual(graph[caller], {session, desktop})
 
     def test_report_is_exclusive_and_readonly(self):
         parent = Path(__file__).resolve().parents[2] / "build/test-tmp"

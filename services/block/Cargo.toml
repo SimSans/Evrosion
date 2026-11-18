@@ -1,9 +1,9 @@
 [package]
+license.workspace = true
 name="ev-block-service"
 version.workspace=true
 edition.workspace=true
 publish.workspace=true
-license.workspace = true
 [[bin]]
 name="ev-block-service"
 path="src/main.rs"
@@ -11,6 +11,12 @@ required-features=["executable"]
 test=false
 bench=false
 [features]
+pio-word4=["native-driver"]
+pio-words256=["workspace-driver"]
+native-session=["native-driver","pio-word4"]
+native-network=["native-session"]
+workspace-storage=["dep:ev-store"]
+workspace-driver=["native-network","workspace-storage"]
 executable=[]
 test-write=["executable"]
 test-verify=["executable"]

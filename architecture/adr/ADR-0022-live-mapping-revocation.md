@@ -25,7 +25,7 @@ Host tests validate lease invalidation and destruction ordering. Three real user
 revocations remove existing mappings. Exact CPL3 probes at the old address must
 raise a nonpresent read page fault; remapping is denied and sibling READ remains
 usable. Cumulative normal, two-CPU, negative-image and debugger proofs are linked
-in [portable evidence](../../docs/release/0.1-preview.md#validation-and-provenance).
+in portable evidence (local engineering archive).
 
 This is serialized revocation with parked APs, not a remote TLB shootdown protocol.
 Concurrent execution of these address spaces must add a quiescence/shootdown

@@ -9,6 +9,9 @@ pub enum Region {
     AppRegistry,
     AppData,
     GrantPolicy,
+    /// Additive developer-session namespace; the legacy Block profile refuses
+    /// it. Existing scalar AppData bytes and schema are never reinterpreted.
+    SessionNote,
 }
 impl Region {
     pub const fn wire_start(self) -> u32 {
@@ -17,6 +20,7 @@ impl Region {
             Self::AppRegistry => 16,
             Self::AppData => 32,
             Self::GrantPolicy => 48,
+            Self::SessionNote => 64,
         }
     }
     pub const fn physical_start(self) -> u32 {
@@ -25,6 +29,7 @@ impl Region {
             Self::AppRegistry => 64,
             Self::AppData => 80,
             Self::GrantPolicy => 96,
+            Self::SessionNote => 112,
         }
     }
     pub const fn wire_sector(self, local: u64) -> Option<u32> {
@@ -46,9 +51,32 @@ pub const fn physical_sector(logical: u32) -> Option<u32> {
         _ => None,
     }
 }
+/// Explicitly opted-in session Block route only. No packet selects the profile.
+pub const fn session_physical_sector(logical: u32) -> Option<u32> {
+    match logical {
+        64..=77 => Some(48 + logical),
+        _ => physical_sector(logical),
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn session_note_is_additive_and_legacy_endpoints_cannot_name_it() {
+        for local in 0..REQUIRED_SECTORS {
+            let wire = Region::SessionNote.wire_sector(local).unwrap();
+            assert_eq!(session_physical_sector(wire), Some(112 + local as u32));
+            assert_eq!(physical_sector(wire), None);
+            assert_eq!(crate::desktop::Client::Files.physical_sector(wire), None);
+            assert_eq!(crate::desktop::Client::System.physical_sector(wire), None);
+        }
+        for wire in [62, 63, 78, 79, 80, u32::MAX] {
+            assert_eq!(session_physical_sector(wire), None);
+        }
+        for wire in 0..64 {
+            assert_eq!(session_physical_sector(wire), physical_sector(wire));
+        }
+    }
     #[test]
     fn native_four_regions_roundtrip_and_do_not_touch_file_or_guards() {
         for region in [

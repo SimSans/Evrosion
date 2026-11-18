@@ -156,3 +156,23 @@ fn system_parser_refuses_partial_reserved_noncanonical_and_mixed_metadata() {
     backwards.last_tick = 9;
     assert_eq!(backwards.encode(), Err(super::system::Error::Clock));
 }
+
+#[test]
+fn health_versions_share_existing_u16_wire_without_reinterpreting_or_accepting_unknown() {
+    for version in [1, 2] {
+        let mut value = metadata();
+        value.selected.as_mut().unwrap().health_version = version;
+        let bytes = value.encode().unwrap();
+        assert_eq!(&bytes[8..10], &2u16.to_le_bytes(), "Snapshot wire staysv2");
+        assert_eq!(&bytes[152..154], &version.to_le_bytes());
+        assert_eq!(Snapshot::decode(&bytes), Ok(value));
+        for bad in [0, 3, u16::MAX] {
+            let mut corrupt = bytes;
+            corrupt[152..154].copy_from_slice(&bad.to_le_bytes());
+            assert!(Snapshot::decode(&corrupt).is_err());
+            let mut unsupported = value;
+            unsupported.selected.as_mut().unwrap().health_version = bad;
+            assert!(unsupported.encode().is_err());
+        }
+    }
+}

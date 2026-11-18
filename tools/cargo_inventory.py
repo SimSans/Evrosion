@@ -104,9 +104,9 @@ def refresh():
             "registry": package.get("source", "registry+https://github.com/rust-lang/crates.io-index"),
             "checksum": checksum, "repository": metadata.get("repository"), "lockfiles": package["lockfiles"],
             "license_files": notices, "license_source_note": note,
-            "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-            "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."})
-    inventory = {"recorded": "2026-09-21", "loader_lock_sha256": digest(ROOT / LOCKS[1]), "packages": records}
+            "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+            "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."})
+    inventory = {"recorded": "2026-11-12", "loader_lock_sha256": digest(ROOT / LOCKS[1]), "packages": records}
     INVENTORY.write_text(json.dumps(inventory, indent=2) + "\n")
     check()
 

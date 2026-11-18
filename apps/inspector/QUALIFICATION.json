@@ -1,0 +1,135 @@
+{
+  "schema": 1,
+  "date": "2026-11-16",
+  "status": "PASS focused host/profile/render tests, strict lint, actual native link and ELF/stack preflight; actual Root/VM integration pending",
+  "scope": "No actual grant/backing/accepted-view, 39-source input/event, permission/owner approval, replacement, recovery or whole M8 PASS claim",
+  "host_tests": 4,
+  "source_files": [
+    {
+      "path": "apps/inspector/Cargo.toml",
+      "bytes": 653,
+      "sha256": "a6f5f9b23897dc9ea6ed3ed865527e2ee147b9d62f6064f5b042a83f94010503"
+    },
+    {
+      "path": "apps/inspector/README.md",
+      "bytes": 4399,
+      "sha256": "6b929d28d39f96fe80a47126e8ba2d04b6b811af50fb2651a0c1ba7203589af4"
+    },
+    {
+      "path": "apps/inspector/build.rs",
+      "bytes": 376,
+      "sha256": "647562d2204444fb762c2789bb1a60b1bcfa126eae3e0d12a57f8d04193c1154"
+    },
+    {
+      "path": "apps/inspector/linker.ld",
+      "bytes": 813,
+      "sha256": "28e909416091837861f11ff2257d1708b1cc3271b60f956455b1dcc295e585da"
+    },
+    {
+      "path": "apps/inspector/src/lib.rs",
+      "bytes": 14190,
+      "sha256": "f6a307bf8985b26b8fb9895a5e9588c8163a5f0a5a7cba286dfc988b24c4ec5d"
+    },
+    {
+      "path": "apps/inspector/src/main.rs",
+      "bytes": 11754,
+      "sha256": "0ab2e075a112c456b34d704679ef7f2d3406ee13a0d6ba64ce09a0e76459117d"
+    },
+    {
+      "path": "apps/inspector/src/tests.rs",
+      "bytes": 5466,
+      "sha256": "8381026b9171b0892de63fdc3b7c4c2b2f6218eba5f6671fe4ede18b1028ef3d"
+    },
+    {
+      "path": "libs/workspace-client/src/ui.rs",
+      "bytes": 13419,
+      "sha256": "e69413d7e02ea996204d1c3a9ab264c0d8b568680e506a65113c4e78f75f8927"
+    }
+  ],
+  "command_receipts": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-final-checks-01.json",
+      "sha256": "1f40568f116d0bab0bb2b4e9e2c79fbdb143d9757aafbef9cc32a4b111635976",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-host-lint-01.json",
+      "sha256": "9fff1178b5d681718ac1f0c185718b0bd865379049f2459fe2ecaf2e74ca3783",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-native-lint-02.json",
+      "sha256": "5e72e8a98df87866349fea9f127dc7726130fea0fcdf2264b240c13e659b7278",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-native-build-01.json",
+      "sha256": "61ce30fcc0db10e94060e0a779ed55426b04ddba4ee171c67a7d5993cf183ffe",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-final-format-01.json",
+      "sha256": "204e562d1e6f8a140b4977334e56f2addd6bc4fce01dab0cd454a89d79e71474",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-ui-tests-01.json",
+      "sha256": "0d91e2fe5759ab729dcae56bbd34d77b26afe46ae94fbaedca27a806f6cfde03",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-native-strip-01.json",
+      "sha256": "db804eb162fbba890a302021861c84eadf34e8635b217302ce04d62ce46bfb7b",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-native-stack-01.json",
+      "sha256": "0668254239d98a9b80c46c2e4bdfd329c732aabf23984014d715c405717f9999",
+      "passed": true
+    }
+  ],
+  "artifact": {
+    "canonical": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/ev-native-inspector-native-01/ev-native-inspector.elf",
+      "file_bytes": 45184,
+      "sha256": "033ce385ed4653d3bfd266fc5295cff02e6c0f355d06ac5e3d1017ba68a35cc9",
+      "loaded_pages_including_stack": 17,
+      "stack_pages": 8,
+      "nonstack_loaded_pages": 9,
+      "image_page_bound": 96,
+      "page_bound_passed": true,
+      "loaded_page_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        480,
+        481,
+        482,
+        483,
+        484,
+        485,
+        486,
+        487
+      ]
+    },
+    "elf_report": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/ev-native-inspector-native-01/elf.json",
+    "loaded_bytes_compared_bytewise": true,
+    "private_pages_preflight": 21,
+    "loader_frames_preflight": 23,
+    "stack_report": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/ev-native-inspector-native-01/stack.json",
+    "stack_census_bytes": 3664,
+    "stack_margin_bytes": 29104,
+    "unresolved_calls": 0,
+    "cycles": 0
+  },
+  "retained_failed_attempts": [
+    "inspector-shell-libraries-tests-01: valid all-RW permission255 test fixture corrected to invalid2; protocol unchanged"
+  ],
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

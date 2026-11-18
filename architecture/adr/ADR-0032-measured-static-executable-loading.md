@@ -97,7 +97,7 @@ root without allocating, executes five CPL3 runs, and reclaims all nine frames.
 It verifies initialized data/BSS and stack use, denies RX writes, denies execution
 from data/stack, and faults on the stack guard. Strict serial/evidence parsers and
 the cumulative regression are required. Executed evidence is linked from
-[M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance). Actual Root Supervisor activation,
+M2 progress. Actual Root Supervisor activation,
 trusted bundle/epoch production, sealed singleton custody, real service protocols
 and full AF-007 recovery remain pending.
 

@@ -99,4 +99,4 @@ Host tests exercise repeated lifetimes beyond table capacities, continuously
 dispatchable peers, stale IDs/handles/domains/waits/calls, escaped references,
 generation exhaustion, failed staged reuse, CPU history and retained mailbox
 sequences. Actual repeated CPL3 restart and full Root graph recovery remain
-separate integration gates recorded in [M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+separate integration gates recorded in M2 progress.

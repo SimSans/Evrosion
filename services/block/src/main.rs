@@ -14,6 +14,8 @@ mod generation_actor;
 mod rpc_actor;
 #[cfg(feature = "test-store-client")]
 mod store_actor;
+#[cfg(feature = "workspace-driver")]
+mod workspace_actor;
 
 // SAFETY: unique measured entry/readonly bootstrap and retained private SysV
 // stack, with the common freestanding memory intrinsics and scalar trap ABI.
@@ -31,7 +33,9 @@ global_asm!(
     "call ev_store_main",
     "ud2",
 );
-const MODE: u8 = if cfg!(feature = "desktop-driver") {
+const MODE: u8 = if cfg!(feature = "workspace-driver") {
+    10
+} else if cfg!(feature = "desktop-driver") {
     9
 } else if cfg!(feature = "test-direct-fault") {
     2
@@ -58,6 +62,79 @@ struct Mediated {
     cap: u64,
 }
 impl Ports for Mediated {
+    #[cfg(feature = "pio-words256")]
+    fn input_words256(
+        &mut self,
+        port: u16,
+        deadline: u64,
+        bytes: &mut [u8; 512],
+    ) -> Result<(), u64> {
+        let reply = rt::call4(
+            syscall::PORT_INPUT_WORDS256,
+            self.cap,
+            u64::from(port),
+            deadline,
+            bytes.as_mut_ptr() as u64,
+        );
+        if reply.status != 0 {
+            return Err(reply.status);
+        }
+        if reply.value != 0 || reply.capability != 0 || reply.serial != 0 {
+            return Err(ABI_ERROR);
+        }
+        Ok(())
+    }
+    #[cfg(feature = "pio-words256")]
+    fn output_words256(&mut self, port: u16, deadline: u64, bytes: &[u8; 512]) -> Result<(), u64> {
+        let reply = rt::call4(
+            syscall::PORT_OUTPUT_WORDS256,
+            self.cap,
+            u64::from(port),
+            deadline,
+            bytes.as_ptr() as u64,
+        );
+        if reply.status != 0 {
+            return Err(reply.status);
+        }
+        if reply.value != 0 || reply.capability != 0 || reply.serial != 0 {
+            return Err(ABI_ERROR);
+        }
+        Ok(())
+    }
+    #[cfg(feature = "pio-word4")]
+    fn input_words4(&mut self, port: u16, deadline: u64) -> Result<u64, u64> {
+        let reply = rt::call4(
+            syscall::PORT_INPUT_WORDS4,
+            self.cap,
+            u64::from(port),
+            deadline,
+            0,
+        );
+        if reply.status != 0 {
+            return Err(reply.status);
+        }
+        if reply.capability != 0 || reply.serial != 0 {
+            return Err(ABI_ERROR);
+        }
+        Ok(reply.value)
+    }
+    #[cfg(feature = "pio-word4")]
+    fn output_words4(&mut self, port: u16, value: u64, deadline: u64) -> Result<(), u64> {
+        let reply = rt::call4(
+            syscall::PORT_OUTPUT_WORDS4,
+            self.cap,
+            u64::from(port),
+            deadline,
+            value,
+        );
+        if reply.status != 0 {
+            return Err(reply.status);
+        }
+        if reply.value != 0 || reply.capability != 0 || reply.serial != 0 {
+            return Err(ABI_ERROR);
+        }
+        Ok(())
+    }
     fn input(&mut self, port: u16, width: u8) -> Result<u32, u64> {
         let reply = rt::call4(
             syscall::PORT_INPUT,
@@ -278,6 +355,10 @@ extern "C" fn ev_user_main(record: u64, length: u64, controller_stop: u64) -> ! 
     // SAFETY: exact bounded slice stays within the retained initialized readonly
     // startup page; ordinary process admission verified address/length/digest.
     let bytes = unsafe { core::slice::from_raw_parts(record as *const u8, SIZE) };
+    #[cfg(feature = "workspace-driver")]
+    if MODE == 10 {
+        workspace_actor::run(bytes, record, controller_stop);
+    }
     #[cfg(feature = "desktop-driver")]
     if MODE == 9 {
         desktop_actor::run(bytes, record, controller_stop);

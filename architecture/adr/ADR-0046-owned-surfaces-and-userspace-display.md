@@ -55,7 +55,7 @@ App/Display presentation; independent scanout verification; actual App-aperture
 and Display-write-to-RO-surface page faults; guard/authority rejection; complete
 mapping/table/private-frame retirement. Then ordinary Root-created graph,
 trusted input/focus, genuine picker grant, app crash and relaunch complete M4.
-The [first three-world physical execution](../../docs/release/0.1-preview.md#validation-and-provenance)
+The first three-world physical execution (local engineering archive)
 passes protected presentation, exact full scanout and both contained authority
 faults with 97 peak RAM frames and complete retirement. This is component
 acceptance; the complete graphical gate remains required.

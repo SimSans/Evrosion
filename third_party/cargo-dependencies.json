@@ -1,5 +1,5 @@
 {
-  "recorded": "2026-09-21",
+  "recorded": "2026-11-18",
   "loader_lock_sha256": "ab03ab23fe832382d0d5c1a56b48673b8209c9da60fefac9a10f1b902f2cb302",
   "packages": [
     {
@@ -23,8 +23,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "atomic-polyfill",
@@ -47,8 +47,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "autocfg",
@@ -71,8 +71,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "bit_field",
@@ -95,8 +95,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "bitflags",
@@ -120,8 +120,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "bitflags",
@@ -144,8 +144,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "bitflags",
@@ -168,8 +168,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "block-buffer",
@@ -192,8 +192,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "bootloader",
@@ -216,8 +216,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "bootloader-boot-config",
@@ -241,8 +241,8 @@
         }
       ],
       "license_source_note": "Subcrate omits license texts; using the shared repository's root licenses from bootloader 0.11.17.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "bootloader-x86_64-common",
@@ -265,8 +265,8 @@
         }
       ],
       "license_source_note": "Subcrate omits license texts; using the shared repository's root licenses from bootloader 0.11.17.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "bootloader-x86_64-uefi",
@@ -289,8 +289,8 @@
         }
       ],
       "license_source_note": "Subcrate omits license texts; using the shared repository's root licenses from bootloader 0.11.17.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "bootloader_api",
@@ -314,8 +314,8 @@
         }
       ],
       "license_source_note": "Subcrate omits license texts; using the shared repository's root licenses from bootloader 0.11.17.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "bumpalo",
@@ -338,8 +338,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "byteorder",
@@ -366,8 +366,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "byteorder",
@@ -394,8 +394,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "cfg-if",
@@ -418,8 +418,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "cfg-if",
@@ -442,8 +442,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "conquer-once",
@@ -466,8 +466,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "conquer-util",
@@ -490,8 +490,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "const_fn",
@@ -514,8 +514,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "cpufeatures",
@@ -538,8 +538,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "crc",
@@ -562,8 +562,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "crc-catalog",
@@ -586,8 +586,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "critical-section",
@@ -610,8 +610,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "crypto-common",
@@ -634,8 +634,52 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "curve25519-dalek",
+      "version": "4.1.3",
+      "license": "BSD-3-Clause",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be",
+      "repository": "https://github.com/dalek-cryptography/curve25519-dalek/tree/main/curve25519-dalek",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/curve25519-dalek-4.1.3/LICENSE",
+          "sha256": "cca0bd3c4fcdba74145ef9d49c62337e2c9fbf9368288f11d0547f1b0273219f"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "curve25519-dalek-derive",
+      "version": "0.1.1",
+      "license": "MIT/Apache-2.0",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3",
+      "repository": "https://github.com/dalek-cryptography/curve25519-dalek",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/curve25519-dalek-derive-0.1.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "LICENSES/third-party/curve25519-dalek-derive-0.1.1/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "digest",
@@ -658,8 +702,52 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "ed25519",
+      "version": "2.2.3",
+      "license": "Apache-2.0 OR MIT",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "115531babc129696a58c64a4fef0a8bf9e9698629fb97e9e40767d235cfbcd53",
+      "repository": "https://github.com/RustCrypto/signatures/tree/master/ed25519",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/ed25519-2.2.3/LICENSE-APACHE",
+          "sha256": "78779d420019e6b4630376af8e86b6b335ee8a2f89ede6e0411e0469a326aaa4"
+        },
+        {
+          "path": "LICENSES/third-party/ed25519-2.2.3/LICENSE-MIT",
+          "sha256": "b3470648aff02beb36d7a53240fc9260ed80ed93bd43bace6b67d7ef7336ee33"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "ed25519-dalek",
+      "version": "2.2.0",
+      "license": "BSD-3-Clause",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "70e796c081cee67dc755e1a36a0a172b897fab85fc3f6bc48307991f64e4eca9",
+      "repository": "https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/ed25519-dalek-2.2.0/LICENSE",
+          "sha256": "7a313964a6e050794d2ad57f4863c11f6bbe055c0ae6ce2cf3b9fc45150bada3"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "equivalent",
@@ -682,8 +770,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "errno",
@@ -706,8 +794,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "fastrand",
@@ -730,8 +818,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "fatfs",
@@ -750,8 +838,44 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "fiat-crypto",
+      "version": "0.2.9",
+      "license": "MIT OR Apache-2.0 OR BSD-1-Clause",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d",
+      "repository": "https://github.com/mit-plv/fiat-crypto",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/fiat-crypto-0.2.9/AUTHORS",
+          "sha256": "ad74c036a6afaedc418fed65f171c877c2f74a4c70938a03930aa11c98a20508"
+        },
+        {
+          "path": "LICENSES/third-party/fiat-crypto-0.2.9/COPYRIGHT",
+          "sha256": "6c935d087a2992d0f092665400a2fa99c98db58d96fbe29368f8f48182bed9aa"
+        },
+        {
+          "path": "LICENSES/third-party/fiat-crypto-0.2.9/LICENSE-APACHE",
+          "sha256": "9eacbcb81be660840c714a560a9d65ba07913db98dd4baf969f78dd499fdd60f"
+        },
+        {
+          "path": "LICENSES/third-party/fiat-crypto-0.2.9/LICENSE-BSD-1",
+          "sha256": "0c1240e29b4a2c528bcc3ccc38a98b1dba5e3e6b465da910208935f082e2ced6"
+        },
+        {
+          "path": "LICENSES/third-party/fiat-crypto-0.2.9/LICENSE-MIT",
+          "sha256": "0034712d5e97a4f5b900a160a5c19d582b740d8e0638b4e44fd07e7b492dcd13"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "futures-core",
@@ -774,8 +898,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "futures-task",
@@ -798,8 +922,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "futures-util",
@@ -822,8 +946,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "generic-array",
@@ -842,8 +966,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "getrandom",
@@ -866,8 +990,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "gpt",
@@ -886,8 +1010,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "hash32",
@@ -910,8 +1034,32 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "hash32",
+      "version": "0.3.1",
+      "license": "MIT OR Apache-2.0",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "47d60b12902ba28e2730cd37e95b8c9223af2808df9e902d4df49588d1470606",
+      "repository": "https://github.com/japaric/hash32",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/hash32-0.3.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "LICENSES/third-party/hash32-0.3.1/LICENSE-MIT",
+          "sha256": "c986bcdb83103d4ddf58aeb7b5302359782e54dc4eea14a0cc27c62dcbd50729"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "hashbrown",
@@ -934,8 +1082,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "heapless",
@@ -958,8 +1106,32 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "heapless",
+      "version": "0.9.3",
+      "license": "MIT OR Apache-2.0",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "25ba4bd83f9415b58b4ed8dc5714c76e626a105be4646c02630ad730ad3b5aa4",
+      "repository": "https://github.com/rust-embedded/heapless",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/heapless-0.9.3/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "LICENSES/third-party/heapless-0.9.3/LICENSE-MIT",
+          "sha256": "035e70219855119df4273b3c5b97543ae82e0dd60c520416e759107c602f651b"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "indexmap",
@@ -982,8 +1154,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "itoa",
@@ -1006,8 +1178,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "js-sys",
@@ -1030,8 +1202,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "libc",
@@ -1054,8 +1226,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "linux-raw-sys",
@@ -1086,8 +1258,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "llvm-tools",
@@ -1110,8 +1282,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "lock_api",
@@ -1134,8 +1306,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "log",
@@ -1158,8 +1330,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "log",
@@ -1182,8 +1354,28 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "managed",
+      "version": "0.8.0",
+      "license": "0BSD",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d",
+      "repository": "https://github.com/m-labs/rust-managed.git",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/managed-0.8.0/LICENSE-0BSD.txt",
+          "sha256": "cd29cb316eb7a949599133073c5f5fc8d75d19ed21bdae8b0d4d1c32c5ccf117"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "memchr",
@@ -1210,8 +1402,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "noto-sans-mono-bitmap",
@@ -1235,8 +1427,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate. Rasterized Noto glyphs also use OFL-1.1, as described by the crate README; the Noto project notice is retained separately.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "once_cell",
@@ -1259,8 +1451,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "pin-project-lite",
@@ -1283,8 +1475,32 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "ppv-lite86",
+      "version": "0.2.21",
+      "license": "MIT OR Apache-2.0",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9",
+      "repository": "https://github.com/cryptocorrosion/cryptocorrosion",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/ppv-lite86-0.2.21/LICENSE-APACHE",
+          "sha256": "0218327e7a480793ffdd4eb792379a9709e5c135c7ba267f709d6f6d4d70af0a"
+        },
+        {
+          "path": "LICENSES/third-party/ppv-lite86-0.2.21/LICENSE-MIT",
+          "sha256": "4cada0bd02ea3692eee6f16400d86c6508bbd3bafb2b65fed0419f36d4f83e8f"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "proc-macro2",
@@ -1307,8 +1523,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "proc-macro2",
@@ -1331,8 +1547,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "ptr_meta",
@@ -1351,8 +1567,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "ptr_meta_derive",
@@ -1371,8 +1587,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "quote",
@@ -1395,8 +1611,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "quote",
@@ -1419,8 +1635,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "r-efi",
@@ -1439,8 +1655,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "rand",
@@ -1467,8 +1683,36 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "rand_chacha",
+      "version": "0.9.0",
+      "license": "MIT OR Apache-2.0",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "d3022b5f1df60f26e1ffddd6c66e8aa15de382ae63b3a0c1bfc0e4d3e3f325cb",
+      "repository": "https://github.com/rust-random/rand",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/rand_chacha-0.9.0/COPYRIGHT",
+          "sha256": "90eb64f0279b0d9432accfa6023ff803bc4965212383697eee27a0f426d5f8d5"
+        },
+        {
+          "path": "LICENSES/third-party/rand_chacha-0.9.0/LICENSE-APACHE",
+          "sha256": "35242e7a83f69875e6edeff02291e688c97caafe2f8902e4e19b49d3e78b4cab"
+        },
+        {
+          "path": "LICENSES/third-party/rand_chacha-0.9.0/LICENSE-MIT",
+          "sha256": "209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "rand_core",
@@ -1495,8 +1739,36 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "rand_core",
+      "version": "0.9.5",
+      "license": "MIT OR Apache-2.0",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c",
+      "repository": "https://github.com/rust-random/rand",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/rand_core-0.9.5/COPYRIGHT",
+          "sha256": "90eb64f0279b0d9432accfa6023ff803bc4965212383697eee27a0f426d5f8d5"
+        },
+        {
+          "path": "LICENSES/third-party/rand_core-0.9.5/LICENSE-APACHE",
+          "sha256": "6df43f6f4b5d4587f3d8d71e45532c688fd168afa5fe89d571cb32fa09c4ef51"
+        },
+        {
+          "path": "LICENSES/third-party/rand_core-0.9.5/LICENSE-MIT",
+          "sha256": "209fbbe0ad52d9235e37badf9cadfe4dbdc87203179c0899e738b39ade42177b"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "rand_hc",
@@ -1523,8 +1795,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "raw-cpuid",
@@ -1547,8 +1819,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "rustc_version",
@@ -1571,8 +1843,32 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "rustc_version",
+      "version": "0.4.1",
+      "license": "MIT OR Apache-2.0",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92",
+      "repository": "https://github.com/djc/rustc-version-rs",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/rustc_version-0.4.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "LICENSES/third-party/rustc_version-0.4.1/LICENSE-MIT",
+          "sha256": "c9a75f18b9ab2927829a208fc6aa2cf4e63b8420887ba29cdb265d6619ae82d5"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "rustix",
@@ -1603,8 +1899,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "rustversion",
@@ -1627,8 +1923,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "rustversion",
@@ -1651,8 +1947,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "ryu",
@@ -1675,8 +1971,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "scopeguard",
@@ -1699,8 +1995,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "semver",
@@ -1723,8 +2019,32 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "semver",
+      "version": "1.0.28",
+      "license": "MIT OR Apache-2.0",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd",
+      "repository": "https://github.com/dtolnay/semver",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/semver-1.0.28/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "LICENSES/third-party/semver-1.0.28/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "serde",
@@ -1747,8 +2067,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "serde",
@@ -1771,8 +2091,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "serde-json-core",
@@ -1795,8 +2115,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "serde_core",
@@ -1819,8 +2139,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "serde_core",
@@ -1843,8 +2163,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "serde_derive",
@@ -1867,8 +2187,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "serde_derive",
@@ -1891,8 +2211,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "serde_json",
@@ -1915,8 +2235,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "serde_spanned",
@@ -1939,8 +2259,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "sha2",
@@ -1963,8 +2283,32 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "signature",
+      "version": "2.2.0",
+      "license": "Apache-2.0 OR MIT",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "77549399552de45a898a580c1b41d445bf730df867cc44e6c0233bbc4b8329de",
+      "repository": "https://github.com/RustCrypto/traits/tree/master/signature",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/signature-2.2.0/LICENSE-APACHE",
+          "sha256": "a9040321c3712d8fd0b09cf52b17445de04a23a10165049ae187cd39e5c86be5"
+        },
+        {
+          "path": "LICENSES/third-party/signature-2.2.0/LICENSE-MIT",
+          "sha256": "b3470648aff02beb36d7a53240fc9260ed80ed93bd43bace6b67d7ef7336ee33"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "slab",
@@ -1983,8 +2327,28 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "smoltcp",
+      "version": "0.14.0",
+      "license": "0BSD",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "b6f8b28ad56c6e35524a37dd492af5d1a47e31e1a4d175cd12f89c075f01980f",
+      "repository": "https://github.com/smoltcp-rs/smoltcp.git",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/smoltcp-0.14.0/LICENSE-0BSD.txt",
+          "sha256": "beb2cad88fab8447f7975564e21f9506e733e14c344836f146fa02e811216694"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "spin",
@@ -2003,8 +2367,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "spinning_top",
@@ -2027,8 +2391,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "stable_deref_trait",
@@ -2051,8 +2415,52 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "stable_deref_trait",
+      "version": "1.2.1",
+      "license": "MIT OR Apache-2.0",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596",
+      "repository": "https://github.com/storyyeller/stable_deref_trait",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/stable_deref_trait-1.2.1/LICENSE-APACHE",
+          "sha256": "a60eea817514531668d7e00765731449fe14d059d3249e0bc93b36de45f759f2"
+        },
+        {
+          "path": "LICENSES/third-party/stable_deref_trait-1.2.1/LICENSE-MIT",
+          "sha256": "5e05b024f653a5ce199e77cbbbd42fb5553562ec714b819421ed0c3e552a75d7"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "subtle",
+      "version": "2.6.1",
+      "license": "BSD-3-Clause",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292",
+      "repository": "https://github.com/dalek-cryptography/subtle",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/subtle-2.6.1/LICENSE",
+          "sha256": "d1fc1bc0d155df60b2e7705b6b2ae02a05c96f948e1cec6e2fb86360b09f346b"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "syn",
@@ -2075,8 +2483,32 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "syn",
+      "version": "2.0.119",
+      "license": "MIT OR Apache-2.0",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "872831b642d1a07999a962a351ed35b955ea2cfc8f3862091e2a240a84f17297",
+      "repository": "https://github.com/dtolnay/syn",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/syn-2.0.119/LICENSE-APACHE",
+          "sha256": "62c7a1e35f56406896d7aa7ca52d0cc0d272ac022b5d2796e7d6905db8a3636a"
+        },
+        {
+          "path": "LICENSES/third-party/syn-2.0.119/LICENSE-MIT",
+          "sha256": "23f18e03dc49df91622fe2a76176497404e46ced8a715d9d2b67a7446571cca3"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "syn",
@@ -2099,8 +2531,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "tempfile",
@@ -2123,8 +2555,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "toml",
@@ -2147,8 +2579,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "toml_datetime",
@@ -2171,8 +2603,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "toml_parser",
@@ -2195,8 +2627,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "toml_writer",
@@ -2219,8 +2651,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "typenum",
@@ -2247,8 +2679,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "uart_16550",
@@ -2267,8 +2699,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "ucs2",
@@ -2287,8 +2719,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "uefi",
@@ -2311,8 +2743,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "uefi-macros",
@@ -2335,8 +2767,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "uefi-raw",
@@ -2359,8 +2791,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "uguid",
@@ -2383,8 +2815,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "unicode-ident",
@@ -2411,8 +2843,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "unicode-ident",
@@ -2439,8 +2871,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "usize_conversions",
@@ -2463,8 +2895,8 @@
         }
       ],
       "license_source_note": "Upstream declares MIT/Apache-2.0 but ships no license texts or copyright notice. Standard Apache-2.0 text is supplied from bootloader's LICENSE-APACHE; the original Cargo declaration is preserved separately. No upstream MIT notice has been invented.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "uuid",
@@ -2487,8 +2919,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "version_check",
@@ -2511,8 +2943,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "volatile",
@@ -2535,8 +2967,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "wasm-bindgen",
@@ -2559,8 +2991,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "wasm-bindgen-macro",
@@ -2583,8 +3015,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "wasm-bindgen-macro-support",
@@ -2607,8 +3039,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "wasm-bindgen-shared",
@@ -2631,8 +3063,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "windows-link",
@@ -2655,8 +3087,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "windows-sys",
@@ -2679,8 +3111,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "winnow",
@@ -2699,8 +3131,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "x86",
@@ -2719,8 +3151,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "x86_64",
@@ -2747,8 +3179,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "xmas-elf",
@@ -2767,8 +3199,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "zero",
@@ -2787,8 +3219,88 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "zerocopy",
+      "version": "0.8.63",
+      "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "e5fe1f8f1b06191a00962174c61aa5005e0bb391a6d80d07e24d115c01a92ed8",
+      "repository": "https://github.com/google/zerocopy",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/zerocopy-0.8.63/LICENSE-APACHE",
+          "sha256": "9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3"
+        },
+        {
+          "path": "LICENSES/third-party/zerocopy-0.8.63/LICENSE-BSD",
+          "sha256": "83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32"
+        },
+        {
+          "path": "LICENSES/third-party/zerocopy-0.8.63/LICENSE-MIT",
+          "sha256": "1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "zerocopy-derive",
+      "version": "0.8.63",
+      "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "863ad3ac83293fb4d740aedbfdc9240dd8d1a50c1099acd76ce80ce7c7230c7f",
+      "repository": "https://github.com/google/zerocopy",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/zerocopy-derive-0.8.63/LICENSE-APACHE",
+          "sha256": "9d185ac6703c4b0453974c0d85e9eee43e6941009296bb1f5eb0b54e2329e9f3"
+        },
+        {
+          "path": "LICENSES/third-party/zerocopy-derive-0.8.63/LICENSE-BSD",
+          "sha256": "83c1763356e822adde0a2cae748d938a73fdc263849ccff6b27776dff213bd32"
+        },
+        {
+          "path": "LICENSES/third-party/zerocopy-derive-0.8.63/LICENSE-MIT",
+          "sha256": "1a2f5c12ddc934d58956aa5dbdd3255fe55fd957633ab7d0d39e4f0daa73f7df"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+    },
+    {
+      "name": "zeroize",
+      "version": "1.8.2",
+      "license": "Apache-2.0 OR MIT",
+      "registry": "registry+https://github.com/rust-lang/crates.io-index",
+      "checksum": "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0",
+      "repository": "https://github.com/RustCrypto/utils",
+      "lockfiles": [
+        "Cargo.lock"
+      ],
+      "license_files": [
+        {
+          "path": "LICENSES/third-party/zeroize-1.8.2/LICENSE-APACHE",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "path": "LICENSES/third-party/zeroize-1.8.2/LICENSE-MIT",
+          "sha256": "0b04ee3ce0021a922f43f37a17fee09a5a1ee6d1f4e149d5bf75b72395a49c72"
+        }
+      ],
+      "license_source_note": "License/notice files copied unchanged from this published crate.",
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     },
     {
       "name": "zmij",
@@ -2807,8 +3319,8 @@
         }
       ],
       "license_source_note": "License/notice files copied unchanged from this published crate.",
-      "scope": "Locked host/adapter graph and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership.",
-      "replacement": "Host dependencies stay behind ev/image-builder; loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
+      "scope": "Locked workspace and/or separately locked temporary UEFI loader graph, including optional packages; lockfiles identify membership. Runtime reachability is determined by the recorded build feature graph.",
+      "replacement": "Freestanding dependencies require explicit bounded actor admission; host-only dependencies remain in development tools. Loader and handoff dependencies are replaced together under EXC-0001 before boot-contract Preview."
     }
   ]
 }

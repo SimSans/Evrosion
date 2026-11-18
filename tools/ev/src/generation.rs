@@ -507,6 +507,7 @@ fn failure_json(failure: LastFailure) -> Value {
         LastFailureReason::MissingProgress => "MissingProgress",
         LastFailureReason::StorageFailure => "StorageFailure",
         LastFailureReason::AttemptBudgetExhausted => "AttemptBudgetExhausted",
+        LastFailureReason::CriticalComponentFault => "CriticalComponentFault",
     };
     json!({"generation":failure.generation.get(),"boot_serial":failure.boot_serial,
         "attempts":failure.attempts,"reason":reason,"supervisor_image":hex(&failure.supervisor_image),
@@ -678,6 +679,7 @@ fn run_variant(variant: GenerationVariant) -> Result<()> {
         let bytes = fs::read(root.join("build/m0/manifest.json")).map_err(|e| e.to_string())?;
         storage::immutable_new(&manifest_path, &bytes)?;
         let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+        manifest.validate_policy_rows()?;
         if manifest.fixture.as_deref() != Some(fixture) {
             return Err("selected build is not the generation fixture".into());
         }
@@ -974,6 +976,7 @@ mod tests {
                 LastFailureReason::MissingProgress => 2,
                 LastFailureReason::StorageFailure => 3,
                 LastFailureReason::AttemptBudgetExhausted => 4,
+                LastFailureReason::CriticalComponentFault => 5,
             };
             report.failure_operation = failure.operation.get();
             report.failure_sequence = failure.sequence;

@@ -41,6 +41,8 @@ mod scheduling;
 mod serial;
 mod service_restart;
 mod service_runtime;
+#[cfg(feature = "test-m6-session")]
+mod session_log;
 mod smp;
 mod supervisor_runtime;
 mod threads;
@@ -48,6 +50,9 @@ mod timer;
 mod traps;
 mod user_runtime;
 mod user_space;
+#[cfg(feature = "test-m8-workspace")]
+#[allow(dead_code)] // Mechanism-only builds typecheck this separate gated runner.
+mod workspace_runtime;
 
 use core::fmt::Write;
 use core::panic::PanicInfo;
@@ -67,8 +72,48 @@ const SOURCE_SHA256: &str = match option_env!("EVROSION_SOURCE_SHA256") {
 };
 ev_boot_contract::entry_point!(crate::evrosion_kernel_entry);
 
+#[cfg(feature = "test-m6-session")]
+fn session_observation(
+    serial: &mut impl Write,
+    retained: &mut session_log::Retention,
+    observation: &desktop_runtime::Observation,
+) {
+    use desktop_runtime::Observation;
+    let final_record = match observation {
+        Observation::NativeMemory(_)
+        | Observation::NativeCommonPrefix(_)
+        | Observation::SessionUiCounts(_)
+        | Observation::SessionWindowPadding(_) => true,
+        #[cfg(feature = "test-m6-network")]
+        Observation::StartupPhase(_) | Observation::StartupPhaseCounts { .. } => true,
+        #[cfg(feature = "test-m6-network")]
+        Observation::StartupCpu(_) | Observation::StartupCpuCounts { .. } => true,
+        Observation::NativeState(event) => {
+            event.snapshot.operation.name() == "finish" && event.snapshot.result.name() == "ok"
+        }
+        #[cfg(feature = "test-m6-network")]
+        Observation::SessionDynamicImage(event) => event.op == 0,
+        _ => false,
+    };
+    let mut measure = session_log::Measure::default();
+    desktop_observation(&mut measure, observation);
+    let bytes = measure
+        .finish()
+        .expect("complete bounded session observation");
+    match retained
+        .record(bytes, final_record)
+        .expect("checked session retention accounting")
+    {
+        session_log::Decision::Emit => desktop_observation(serial, observation),
+        session_log::Decision::FirstOmission => {
+            writeln!(serial, "EVROSION_M6_LOG_BOUND protocol=1 build={BUILD_ID} observation={} retained={} detail_bytes={}",retained.observed,retained.retained,retained.detail_bytes).expect("one complete session log boundary");
+        }
+        session_log::Decision::Omit => {}
+    }
+}
+
 #[cfg(feature = "test-m4-desktop")]
-fn desktop_observation(serial: &mut impl Write, observation: desktop_runtime::Observation) {
+fn desktop_observation(serial: &mut impl Write, observation: &desktop_runtime::Observation) {
     match observation {
         desktop_runtime::Observation::Step(step) => {
             let stage = match step.kind {
@@ -123,6 +168,146 @@ fn desktop_observation(serial: &mut impl Write, observation: desktop_runtime::Ob
             writeln!(serial, " identity_matches={}", event.identity_matches)
                 .expect("complete framed Native state diagnostic");
         }
+        #[cfg(feature = "test-m6-session")]
+        desktop_runtime::Observation::SessionRpc(event) => {
+            let phase = match event.phase {
+                desktop_runtime::SessionRpcPhase::Accepted => "accepted",
+                desktop_runtime::SessionRpcPhase::Completed => "completed",
+                desktop_runtime::SessionRpcPhase::Terminal => "terminal",
+                desktop_runtime::SessionRpcPhase::Quiescent => "quiescent",
+            };
+            writeln!(serial, "EVROSION_M6_RPC protocol=1 build={BUILD_ID} phase={phase} call_epoch={} call={} caller_process={} caller_thread={} callee_process={} callee_thread={} endpoint={} request={:016x} started={} tick={} deadline={} status={} callee_cpu={} scheduler_tick={} quota={} period={} window_start={} window_end={} used={} reserved={} remaining={}", event.call_epoch,event.call,event.caller_process,event.caller_thread,event.callee_process,event.callee_thread,event.endpoint,event.request,event.started,event.tick,event.deadline,event.status,event.callee_cpu,event.scheduler_tick,event.budget.quota_ticks,event.budget.period_ticks,event.budget.window_start,event.budget.window_end,event.budget.consumed_ticks,event.budget.reserved_ticks,event.budget.remaining_ticks).expect("bounded actual session RPC trace");
+        }
+        #[cfg(feature = "test-m6-session")]
+        desktop_runtime::Observation::SessionAsyncExpiry(event) => {
+            writeln!(serial, "EVROSION_M6_ASYNC_EXPIRED protocol=1 build={BUILD_ID} sequence={} endpoint={} ticket={} sender_process={} sender_thread={} receiver_process={} receiver_thread={} deadline={} tick={} value={:016x}", event.sequence,event.endpoint,event.ticket,event.sender_process,event.sender_thread,event.receiver_process,event.receiver_thread,event.deadline,event.tick,event.value).expect("bounded queued scalar expiry observation");
+        }
+        #[cfg(feature = "test-m6-session")]
+        desktop_runtime::Observation::SessionBarrier(event) => {
+            writeln!(serial, "EVROSION_M6_BARRIER protocol=1 build={BUILD_ID} count={} call_epoch={} call={} endpoint={} caller_process={} caller_thread={} callee_process={} callee_thread={} frame={} sequence={} flags={} buttons={} request={:016x} reply={:016x} tick={}", event.count,event.call_epoch,event.call,event.endpoint,event.caller_process,event.caller_thread,event.callee_process,event.callee_thread,event.frame,event.sequence,event.flags,event.buttons,event.request,event.reply,event.tick).expect("bounded matched session barrier observation");
+        }
+        #[cfg(feature = "test-m6-session")]
+        desktop_runtime::Observation::SessionCursor(event) => {
+            writeln!(serial, "EVROSION_M6_CURSOR protocol=1 build={BUILD_ID} count={} call_epoch={} call={} endpoint={} caller_process={} caller_thread={} callee_process={} callee_thread={} x={} y={} sequence={} request={:016x} reply={:016x} tick={}", event.count,event.call_epoch,event.call,event.endpoint,event.caller_process,event.caller_thread,event.callee_process,event.callee_thread,event.x,event.y,event.sequence,event.request,event.reply,event.tick).expect("bounded matched session cursor observation");
+        }
+        #[cfg(feature = "test-m7-document-observe")]
+        desktop_runtime::Observation::Document(event) => {
+            write!(serial,"EVROSION_M7_DOCUMENT protocol=1 build={BUILD_ID} process={} thread={} endpoint={} ticket={} nonce={} tick={} frame={} bytes=",event.process,event.thread,event.endpoint,event.ticket,event.nonce,event.tick,event.frame).expect("bounded actual document observation");
+            for byte in event.bytes {
+                write!(serial, "{byte:02x}").expect("document byte");
+            }
+            writeln!(serial).expect("document record");
+        }
+        #[cfg(feature = "test-m6-session")]
+        desktop_runtime::Observation::SessionNote(event) => {
+            let phase = match event.phase {
+                desktop_runtime::SessionNotePhase::Request => "request",
+                desktop_runtime::SessionNotePhase::Accepted => "accepted",
+                desktop_runtime::SessionNotePhase::Delivered => "delivered",
+            };
+            writeln!(serial, "EVROSION_M6_NOTE protocol=1 build={BUILD_ID} phase={phase} count={} endpoint={} ticket={} sender_process={} sender_thread={} receiver_process={} receiver_thread={} nonce={} opcode={} message={:016x} tick={}", event.count,event.endpoint,event.ticket,event.sender_process,event.sender_thread,event.receiver_process,event.receiver_thread,event.nonce,event.opcode,event.message,event.tick).expect("bounded actual session Note delivery observation");
+        }
+        #[cfg(feature = "test-m6-session")]
+        desktop_runtime::Observation::SessionUiCounts(event) => {
+            writeln!(serial, "EVROSION_M6_UI_COUNTS protocol=1 build={BUILD_ID} phase={} barriers={} cursors={} note_requests={} note_accepted={} note_delivered={}", event.phase,event.barriers,event.cursors,event.note_requests,event.note_accepted,event.note_delivered).expect("actual cumulative session UI counts");
+        }
+        #[cfg(feature = "test-m6-session")]
+        desktop_runtime::Observation::SessionWindowPadding(event) => {
+            writeln!(serial, "EVROSION_M6_WINDOW_PADDING protocol=1 build={BUILD_ID} start=256 end=4096 nonzero={} first={} status=observed", event.nonzero,event.first).expect("actual untrusted App window padding observation");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionDynamicImage(event) => {
+            write!(serial, "EVROSION_M6_IMAGE protocol=1 build={BUILD_ID} op={} slot={} phase={} status={} reason={} process={} thread={} job={} tick={} original_cut={} external_frames={} root_cr3={} table={} control={} declared_bytes={} pages={} verified_bytes={} elf_sha256=", event.op,event.slot,event.phase,event.status,event.reason,event.process,event.thread,event.job,event.tick,event.original_cut,event.external_frames,event.root_cr3,event.table,event.control,event.declared_bytes,event.pages,event.verified_bytes).expect("actual bounded dynamic-image state");
+            for byte in event.elf_sha256 {
+                write!(serial, "{byte:02x}").expect("verified dynamic ELF digest");
+            }
+            write!(serial, " content_sha256=").expect("dynamic content digest key");
+            for byte in event.content_sha256 {
+                write!(serial, "{byte:02x}").expect("verified dynamic content digest");
+            }
+            write!(serial, " declared_package_id=").expect("declared package identity key");
+            for byte in event.declared_package_id {
+                write!(serial, "{byte:02x}").expect("declared package identity");
+            }
+            writeln!(
+                serial,
+                " returned_memory_capability={}",
+                event.returned_memory_capability
+            )
+            .expect("actual dynamic-image result, not release acceptance");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionNetworkProgress(event) => {
+            writeln!(serial,"EVROSION_M6_NETWORK_PROGRESS protocol=1 build={BUILD_ID} root_process={} root_thread={} endpoint={} ticket={} tick={} stage={} result={} argument={}", event.root_process,event.root_thread,event.endpoint,event.ticket,event.tick,event.stage,event.result,event.argument).expect("bounded actually accepted Root network policy diagnostic");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionTimeProgress(event) => {
+            writeln!(serial,"EVROSION_M6_TIME_PROGRESS protocol=1 build={BUILD_ID} root_process={} root_thread={} endpoint={} ticket={} tick={} stage={} result={} elapsed_seconds={}", event.root_process,event.root_thread,event.endpoint,event.ticket,event.tick,event.stage,event.result,event.argument).expect("bounded actually accepted Root elapsed diagnostic, not UTC qualification");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionUpdateProgress(event) => {
+            writeln!(serial,"EVROSION_M6_UPDATE_PROGRESS protocol=1 build={BUILD_ID} root_process={} root_thread={} endpoint={} ticket={} tick={} stage={} result={} progress={}", event.root_process,event.root_thread,event.endpoint,event.ticket,event.tick,event.stage,event.result,event.argument).expect("actual local preparation progress, not UTC/release/health authority");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionRpcRejection(event) => {
+            writeln!(serial,"EVROSION_M6_RPC_REJECTION protocol=1 build={BUILD_ID} actor={} process={} thread={} capability={} wire={} endpoint={} deadline={} tick={} branch={} reason={} detail={} parent_call={} parent_deadline={} parent_delivered={}", event.actor,event.process,event.thread,event.capability,event.wire,event.endpoint,event.deadline,event.tick,event.branch,event.reason,event.detail,event.parent_call,event.parent_deadline,event.parent_delivered).expect("actual bounded RPC rejection provenance, not retry or quiescence authority");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionTimeExchange(event) => {
+            writeln!(serial,"EVROSION_M6_TIME_EXCHANGE protocol=1 build={BUILD_ID} root_process={} root_thread={} endpoint={} ticket={} tick={} phase={} tcp={} calls={} error={} detail={}", event.root_process,event.root_thread,event.endpoint,event.ticket,event.tick,event.phase,event.tcp,event.calls,event.error,event.detail).expect("actual bounded private exchange failure snapshot");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionRestart(event) => {
+            writeln!(serial,"EVROSION_M6_RESTART protocol=1 build={BUILD_ID} root_process={} root_thread={} endpoint={} ticket={} tick={} mode={} generation={}",event.root_process,event.root_thread,event.endpoint,event.ticket,event.tick,event.mode,event.generation).expect("actual Root restart intent, not successful cleanup or power authority");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionTimeCheck(event) => {
+            writeln!(serial,"EVROSION_M6_TIME_CHECK protocol=1 build={BUILD_ID} root_process={} root_thread={} endpoint={} ticket={} tick={} stage={} result={} elapsed_seconds={} utc=unqualified", event.root_process,event.root_thread,event.endpoint,event.ticket,event.tick,event.stage,event.result,event.argument).expect("fresh elapsed/anchor diagnostic, not qualified UTC");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionTimeProof(event) => {
+            writeln!(serial,"EVROSION_M6_TIME_PROOF protocol=1 build={BUILD_ID} root_process={} root_thread={} endpoint={} ticket={} tick={} stage={} result={} argument={} utc=unqualified", event.root_process,event.root_thread,event.endpoint,event.ticket,event.tick,event.stage,event.result,event.argument).expect("actual Root private proof diagnostic, never qualified UTC");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionNetworkError(event) => {
+            let actor = match event.actor {
+                0 => "root",
+                7 => "net_driver",
+                8 => "net_service",
+                _ => unreachable!("actual accepted network diagnostic sender"),
+            };
+            writeln!(serial,"EVROSION_M6_NETWORK_ERROR protocol=1 build={BUILD_ID} actor={actor} process={} thread={} endpoint={} ticket={} tick={} layer={} operation={} class={} detail={} subdetail={} progress={}",event.process,event.thread,event.endpoint,event.ticket,event.tick,event.layer,event.operation,event.class,event.detail,event.subdetail,event.progress).expect("actual sender network error diagnostic, not quiescence");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionNetworkExit(event) => {
+            let actor = match event.actor {
+                7 => "net_driver",
+                8 => "net_service",
+                _ => panic!("actual optional network actor index"),
+            };
+            writeln!(serial, "EVROSION_M6_NETWORK_EXIT protocol=1 build={BUILD_ID} actor={actor} process={} thread={} code={} instruction={} tick={} calls={} replies={} hardware_quiescence=unproved",event.process,event.thread,event.code,event.instruction,event.tick,event.calls,event.replies).expect("actual optional network CPU exit, not device quiescence");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::SessionDownloadedAction(event) => {
+            let action = match event.kind {
+                desktop_runtime::NativeActionKind::Start => "start",
+                desktop_runtime::NativeActionKind::Stop => "stop",
+                desktop_runtime::NativeActionKind::Reap => "reap",
+            };
+            write!(serial,"EVROSION_M6_DOWNLOADED_ACTION protocol=1 build={BUILD_ID} action={action} slot={} process={} thread={} job={} elf_sha256=",event.slot,event.process,event.thread,event.job).expect("actual downloaded action");
+            for byte in event.elf_sha256 {
+                write!(serial, "{byte:02x}").expect("actual sealed ELF");
+            }
+            write!(serial, " content_sha256=").expect("downloaded content key");
+            for byte in event.content_sha256 {
+                write!(serial, "{byte:02x}").expect("actual sealed content");
+            }
+            write!(serial, " declared_package_id=").expect("declared downloaded package key");
+            for byte in event.declared_package_id {
+                write!(serial, "{byte:02x}").expect("declared package identity");
+            }
+            writeln!(serial).expect("complete downloaded action");
+        }
         #[cfg(feature = "test-m5-native")]
         desktop_runtime::Observation::NativeAction(event) => {
             let action = match event.kind {
@@ -138,15 +323,45 @@ fn desktop_observation(serial: &mut impl Write, observation: desktop_runtime::Ob
         }
         #[cfg(feature = "test-m5-native")]
         desktop_runtime::Observation::NativeCrash(event) => {
-            native_diagnostic(serial, "CRASH", &event);
+            native_diagnostic(serial, "CRASH", event);
         }
         #[cfg(feature = "test-m5-native")]
         desktop_runtime::Observation::NativeJob(event) => {
-            native_diagnostic(serial, "JOB", &event);
+            native_diagnostic(serial, "JOB", event);
         }
         #[cfg(feature = "test-m5-native")]
         desktop_runtime::Observation::NativeSystem(event) => {
-            native_diagnostic(serial, "SYSTEM", &event);
+            native_diagnostic(serial, "SYSTEM", event);
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::StartupPhase(event) => {
+            writeln!(serial,"EVROSION_M6_STARTUP_PHASE protocol=1 build={BUILD_ID} phase={} wire={} tick={} process={} thread={} peer_process={} peer_thread={} endpoint={} ticket={} call_epoch={} call={} value={:016x}",event.phase,event.wire,event.tick,event.process,event.thread,event.peer_process,event.peer_thread,event.endpoint,event.ticket,event.call_epoch,event.call,event.value).expect("bounded retained actual startup phase");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::StartupCpu(event) => {
+            write!(serial,"EVROSION_M6_STARTUP_CPU protocol=1 build={BUILD_ID} phase={} tick={} process={} thread={} app_job={} ticket={} call_epoch={} call={}",event.phase,event.tick,event.process,event.thread,event.job,event.ticket,event.call_epoch,event.call).expect("bounded two-point CPU identity");
+            if let Some(cpu) = event.sample {
+                writeln!(serial," cpu_valid=true sampled_job={} app_charged_cpu={} scheduler_tick={} quota={} period={} window_start={} window_end={} consumed={} reserved={} remaining={}",cpu.job,cpu.charged,cpu.scheduler_tick,cpu.budget.quota_ticks,cpu.budget.period_ticks,cpu.budget.window_start,cpu.budget.window_end,cpu.budget.consumed_ticks,cpu.budget.reserved_ticks,cpu.budget.remaining_ticks).expect("bounded actual App Job sampled CPU facts");
+            } else {
+                writeln!(serial, " cpu_valid=false").expect("explicit unavailable CPU facts");
+            }
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::StartupCpuCounts {
+            observed,
+            retained,
+            duplicates,
+            overflow,
+        } => {
+            writeln!(serial,"EVROSION_M6_STARTUP_CPU_COUNTS protocol=1 build={BUILD_ID} capacity={} observed={observed} retained={retained} duplicates={duplicates} overflow={overflow} closed=true",ev_kernel::startup_trace::CPU_CAPACITY).expect("bounded two-point CPU counts");
+        }
+        #[cfg(feature = "test-m6-network")]
+        desktop_runtime::Observation::StartupPhaseCounts {
+            observed,
+            retained,
+            overflow,
+        } => {
+            writeln!(serial,"EVROSION_M6_STARTUP_PHASE_COUNTS protocol=1 build={BUILD_ID} capacity={} observed={observed} retained={retained} overflow={overflow} closed=true",ev_kernel::startup_trace::CAPACITY).expect("bounded retained startup counts");
         }
         #[cfg(feature = "test-m5-native")]
         desktop_runtime::Observation::NativeMemory(event) => {
@@ -208,7 +423,7 @@ fn desktop_observation(serial: &mut impl Write, observation: desktop_runtime::Ob
         desktop_runtime::Observation::NativeOwnerPrompt(event) => {
             let prompt = ev_diagnostics::owner::Prompt::decode(&event.bytes)
                 .expect("validated actual owner prompt");
-            native_diagnostic(serial, "OWNER_PROMPT", &event);
+            native_diagnostic(serial, "OWNER_PROMPT", event);
             let mut text = OwnerText {
                 output: serial,
                 report: event.report,
@@ -319,17 +534,37 @@ fn native_diagnostic<const N: usize>(
     writeln!(serial).expect("complete native diagnostic");
 }
 
+/// Keep the consumed map's construction scratch out of the retained runtime
+/// frame. The same checked one-time take transfers the sole allocator owner.
+#[cfg_attr(
+    any(feature = "test-m6-network", feature = "test-m7-document"),
+    inline(never)
+)]
+#[cfg_attr(
+    not(any(feature = "test-m6-network", feature = "test-m7-document")),
+    inline(always)
+)]
+fn bootstrap_frames(map: &mut ev_boot_contract::MemoryMap) -> BootstrapFrames {
+    BootstrapFrames::new(
+        map.take()
+            .expect("validated bootstrap map transferred exactly once"),
+    )
+}
+
 /// First kernel-owned entry, with no loader-specific types. Retained for GDB.
 #[unsafe(no_mangle)]
 #[inline(never)]
-pub fn evrosion_kernel_entry(boot: Result<BootInfoV0, BootError>) -> ! {
+pub fn evrosion_kernel_entry(boot: Result<&mut BootInfoV0, BootError>) -> ! {
     // The desktop observer permits at most 256 checkpoints. The current writer's
     // worst STEP is 448 bytes including CRLF; reserve another 64 * 512 bytes for
     // lifecycle and 16 KiB for preludes/final diagnostics: 160 KiB total, below
     // this finite 256 KiB budget and the unchanged 1 MiB host capture limit.
     // Other profiles keep 8 KiB. This counter allocates no log buffer.
-    // Native adds at most512 actual Job query observations and bounded complete
-    // crash/inspector records. This finite byte counter allocates no log buffer.
+    // Finite Native proofs include at most512 Job query observations. Sustained
+    // sessions retain384KiB of complete observations plus64KiB of fixed final
+    // snapshots; an explicit omission boundary/summary replaces lifetime log
+    // exhaustion. The remaining64KiB covers boot/retirement output. Formatting
+    // is measured before emission without allocating a stack log buffer.
     let serial_budget = if cfg!(feature = "test-m5-native") {
         512 * 1024
     } else if cfg!(feature = "test-m4-desktop") {
@@ -388,7 +623,7 @@ pub fn evrosion_kernel_entry(boot: Result<BootInfoV0, BootError>) -> ! {
         }
         // Boot has one mutable allocator owner, interrupts disabled, and no APs.
         // These frames are only claimed: no physical address is dereferenced.
-        let mut frames = BootstrapFrames::new(boot.memory);
+        let mut frames = bootstrap_frames(&mut boot.memory);
         let first = frames.allocate().expect("bootstrap needs a first frame");
         let second = frames.allocate().expect("bootstrap needs a second frame");
         assert!(first.start() < second.start());
@@ -527,6 +762,46 @@ pub fn evrosion_kernel_entry(boot: Result<BootInfoV0, BootError>) -> ! {
         )?;
         // SAFETY: BSP IF=0, AP parked; retained roots and initialized IRQ/TSS.
         let runtime = unsafe { user_runtime::prove(offset, &mut frames) };
+        #[cfg(feature = "test-m8-workspace-run")]
+        if cfg!(feature = "test-m8-workspace-run") {
+            let assets = workspace_runtime::embedded_assets();
+            writeln!(
+                serial,
+                "EVROSION_M8_KERNEL_RUN phase=selected build={BUILD_ID} actual_bundle=true legacy_root_cast=false"
+            )?;
+            // SAFETY: primitive user/FX/trap/timer proofs restored controller
+            // CR3/IF0, APs parked; actual V5 inputs and allocator remain retained.
+            let proof = unsafe {
+                workspace_runtime::run(
+                    offset,
+                    &mut frames,
+                    framebuffer.expect("V5 actual GOP framebuffer"),
+                    &assets,
+                    2_000_000,
+                    &mut serial,
+                )
+            };
+            writeln!(
+                serial,
+                "EVROSION_M8_KERNEL_RUN phase=ended root_exited={} starts={} calls={} replies={} retained={} scope=execution_only clean_shutdown={}",
+                proof.root_exited,
+                proof.starts,
+                proof.calls,
+                proof.replies,
+                proof.retained,
+                proof.checked_shutdown
+            )?;
+            // Retained sources are deliberately not a normal-cleanup or
+            // recovery PASS. Qualification must inspect actual earlier events.
+            if proof.checked_restart {
+                writeln!(
+                    serial,
+                    "EVROSION_M8_SESSION_POWER phase=platform_restart_requested adapter=q35_ich9 port=0x0cf9 value=0x0f actual_second_boot_required=true"
+                )?;
+                reference_q35_restart();
+            }
+            finish(proof.checked_shutdown);
+        }
         // Keep M1's allocator-start assumptions stable. The independent loader
         // proof reuses and returns frames only after M1 has captured its counts.
         // SAFETY: initialized user boundary, NX/WP and retained direct map;
@@ -855,7 +1130,7 @@ pub fn evrosion_kernel_entry(boot: Result<BootInfoV0, BootError>) -> ! {
                     offset,
                     &mut frames,
                     framebuffer.expect("desktop requires an actual GOP framebuffer"),
-                    |observation| desktop_observation(&mut serial, observation),
+                    |observation| desktop_observation(&mut serial, &observation),
                 )
             };
             assert!(
@@ -888,9 +1163,18 @@ pub fn evrosion_kernel_entry(boot: Result<BootInfoV0, BootError>) -> ! {
                 boot.kernel_virtual_range.start,
                 boot.kernel_virtual_range.end
             )?;
+            #[cfg(feature = "test-m6-network")]
+            let profile = desktop_runtime::CommonProfile::Network {
+                images: [
+                    (b::M5_NATIVE_NET_DRIVER_IMAGE, b::M5_NATIVE_NET_DRIVER_SHA),
+                    (b::M5_NATIVE_NET_SERVICE_IMAGE, b::M5_NATIVE_NET_SERVICE_SHA),
+                ],
+            };
+            #[cfg(not(feature = "test-m6-network"))]
+            let profile = desktop_runtime::CommonProfile::Native;
             let assets = native_runtime::Assets {
                 common: desktop_runtime::CommonAssets {
-                    profile: desktop_runtime::CommonProfile::Native,
+                    profile,
                     root_image: b::M5_NATIVE_ROOT_IMAGE,
                     root_manifest: b::M5_NATIVE_ROOT_MANIFEST,
                     root_measurement: b::M5_NATIVE_ROOT_MEASUREMENT,
@@ -910,6 +1194,8 @@ pub fn evrosion_kernel_entry(boot: Result<BootInfoV0, BootError>) -> ! {
                 bad_shell: (b::M5_NATIVE_BAD_SHELL_IMAGE, b::M5_NATIVE_BAD_SHELL_SHA),
                 packages: [b::M5_NATIVE_PACKAGE_A, b::M5_NATIVE_PACKAGE_B],
             };
+            #[cfg(feature = "test-m6-session")]
+            let mut retained_log = session_log::Retention::new();
             // SAFETY: all preceding actors retired; exact measured Native
             // assets and exclusively retained RAM/GOP/direct-map/BSP ownership.
             let native = unsafe {
@@ -918,15 +1204,40 @@ pub fn evrosion_kernel_entry(boot: Result<BootInfoV0, BootError>) -> ! {
                     &mut frames,
                     framebuffer.expect("Native desktop requires actual GOP"),
                     &assets,
-                    |observation| desktop_observation(&mut serial, observation),
+                    |observation| {
+                        #[cfg(feature = "test-m6-session")]
+                        session_observation(&mut serial, &mut retained_log, &observation);
+                        #[cfg(not(feature = "test-m6-session"))]
+                        desktop_observation(&mut serial, &observation);
+                    },
                 )
             };
+            #[cfg(feature = "test-m6-session")]
+            writeln!(
+                serial,
+                "EVROSION_M6_LOG protocol=1 build={BUILD_ID} observed={} retained={} omitted={} detail_bytes={} final_bytes={} omitted_bytes={} prefix_closed={}",
+                retained_log.observed,
+                retained_log.retained,
+                retained_log.omitted,
+                retained_log.detail_bytes,
+                retained_log.final_bytes,
+                retained_log.omitted_bytes,
+                retained_log.prefix_closed
+            )?;
+            #[cfg(not(feature = "test-m6-network"))]
             let recovery = ev_userspace_contract::root_v2::native::catalogue::Catalogue::decode(
                 b::M5_NATIVE_CATALOGUE,
             )
             .expect("actual Native catalogue")
             .boot_mode()
                 == ev_userspace_contract::root_v2::native::catalogue::BootMode::Recovery;
+            #[cfg(feature = "test-m6-network")]
+            let recovery = ev_userspace_contract::root_v4::catalogue::Catalogue::decode(
+                b::M5_NATIVE_CATALOGUE,
+            )
+            .expect("actual V4 catalogue")
+            .boot_mode()
+                == ev_userspace_contract::root_v4::catalogue::BootMode::Recovery;
             assert!(
                 native.graph.frames
                     && native.graph.metadata
@@ -953,7 +1264,17 @@ pub fn evrosion_kernel_entry(boot: Result<BootInfoV0, BootError>) -> ! {
             }
             assert_eq!((native.bank_maps, native.bank_detaches), (2, 2));
             assert_eq!(native.bank_reclaimed, native.package_pages.iter().sum());
+            #[cfg(not(feature = "test-m6-network-negative"))]
             assert_eq!(native.graph.calls, native.graph.replies);
+            #[cfg(feature = "test-m6-network-negative")]
+            assert_eq!(
+                native.graph.calls,
+                native
+                    .graph
+                    .replies
+                    .checked_add(native.network_no_ack_returns)
+                    .expect("bounded actual negative no-ACK accounting")
+            );
             writeln!(
                 serial,
                 "{} protocol=1 build={BUILD_ID} status=PASS processes={} starts={} calls={} replies={} faults={} restarts={} grants={} app_a_starts={} app_b_starts={} app_a_stops={} app_b_stops={} app_a_reaps={} app_b_reaps={} app_a_process={} app_b_process={} app_a_thread={} app_b_thread={} package_a_pages={} package_b_pages={} bank_maps={} bank_detaches={} bank_reclaimed={} readonly_rejections={} root_exit=0 frames=true metadata=true guards=true {}",
@@ -1650,6 +1971,28 @@ pub fn evrosion_kernel_entry(boot: Result<BootInfoV0, BootError>) -> ! {
 #[inline(never)]
 pub fn evrosion_deliberate_panic() -> ! {
     panic!("M0 deliberate panic: observable and symbolizable");
+}
+
+#[cfg(feature = "test-m8-workspace-run")]
+fn reference_q35_restart() -> ! {
+    #[cfg(feature = "qemu-test-exit")]
+    {
+        // SAFETY: selected Internal Q35 executor only, BSP controller IF0/APs
+        // parked; exact captured Root checked COMPLETE has stopped every actor,
+        // excluded IPC/window debt and performed ATA FLUSH/NIC STOP+scrub. No
+        // ordinary caller receives this port or reaches this one-shot adapter.
+        unsafe {
+            core::arch::asm!("cli", "out dx, al", in("dx") 0x0cf9u16,
+                in("al") 0x0fu8, options(nomem, nostack));
+        }
+        loop {
+            // SAFETY: if reset does not happen, retain the quiesced machine;
+            // never resume normal work or manufacture a successful boot.
+            unsafe { core::arch::asm!("cli", "hlt", options(nomem, nostack)) };
+        }
+    }
+    #[cfg(not(feature = "qemu-test-exit"))]
+    finish(false)
 }
 
 fn finish(passed: bool) -> ! {

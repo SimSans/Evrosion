@@ -1,5 +1,6 @@
 //! Portable policy models only; model delivery values are not capabilities.
 use super::*;
+mod edit;
 
 fn requester() -> Requester {
     Requester {

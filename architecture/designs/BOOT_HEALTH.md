@@ -56,10 +56,32 @@ sequence through later success and journal/manifest reuse. Automatic recovery
 and explicit owner selection preserve mutable object bytes. Owner cancellation,
 timeout, invalid input and EOF never authorize selection or writes.
 
-Executed subset evidence is linked from [M3 progress](../../docs/release/0.1-preview.md#validation-and-provenance):
+Executed subset evidence is linked from M3 progress:
 actual fault and missing-progress generations, current-v2 interruption/replay,
 scoped File/Object access, owner UART commands and private-snapshot live CLI.
-The [103-check cumulative gate](../../docs/release/0.1-preview.md#validation-and-provenance)
+The 103-check cumulative gate (local engineering archive)
 and [M3 reconciliation](../M3_ACCEPTANCE.md) now verify this bounded A-014 scope.
 This does not certify continuous health monitoring or every physical exhaustion/
 corruption branch.
+
+
+## Separately versioned M6 downloaded cohort
+
+The initial M3 and Native3 health contracts above retain their anchored64-tick
+policy. [ADR0100](../adr/ADR-0100-versioned-downloaded-cohort-startup-policy.md)
+supersedes only the experimental M6 downloaded-cohort v1 timing with an explicit
+health_version2 maximum512-tick policy, fixed once at the same first actual Root
+LIVE after durable Admission and shortened by the original operation cut. It is
+a bounded failure policy, not a hard-real-time guarantee from CPU quota ceilings.
+All genuine protected reads, actual Present/Critical, seven fresh LIVE checks,
+System probe and ordered durable KnownGood publication remain required. Old v1
+health is refused by the v2 resolver without formatting or reinterpretation;
+original M3/Native3 verifiers and64-tick boundary models stay unchanged. Resource
+and actual new-policy qualification remain separate from this contract decision.
+
+The shared Store codec understands healthversions1/2, while its historical
+consumer constructors remain stickyv1. Only explicit downloaded-Systemv2
+constructors may replay or publishv2; all live refs and pending Stage manifests
+are checked before mutation. Exact cohort/admission/hash validation remains
+separate. This preserves the legacy64 and ordinary data paths while enabling
+the separately qualified M6 policy.

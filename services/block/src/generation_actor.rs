@@ -476,6 +476,7 @@ fn failure_reason(failure: LastFailure) -> u64 {
         LastFailureReason::MissingProgress => 2,
         LastFailureReason::StorageFailure => 3,
         LastFailureReason::AttemptBudgetExhausted => 4,
+        LastFailureReason::CriticalComponentFault => 5,
     }
 }
 #[cfg(feature = "test-owner-client")]

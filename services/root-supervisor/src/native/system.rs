@@ -74,6 +74,11 @@ pub fn manifest(
     slot: Slot,
     generation: u64,
 ) -> Result<GenerationManifest, Error> {
+    // The V4 System cohort/health recipe is not yet implemented. Metadata
+    // compatibility cannot convert it into an admitted Native3 generation.
+    if packages.is_network() {
+        return Err(Error::Manifest);
+    }
     let generation = GenerationId::new(generation).ok_or(Error::Generation)?;
     let cat = packages.catalogue();
     let selected = match slot {

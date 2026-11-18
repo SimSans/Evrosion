@@ -44,10 +44,10 @@ package policy stays outside the generic kernel mechanisms. Native capability
 declarations remain requests; a selected File still requires the actual trusted
 picker and exact live-process handoff.
 
-[Portable source evidence](../../docs/release/0.1-preview.md#validation-and-provenance)
+Portable source evidence (local engineering archive)
 retains 20 package/lifecycle tests, ten picker regressions, two host producer/
 ELF-admission tests and strict host/bare-metal checks. The
-[actual desktop graph](../../docs/release/0.1-preview.md#validation-and-provenance)
+actual desktop graph (local engineering archive)
 now executes Hello with its exact package/image/catalogue binding. This is
 development-bundle deployment, not durable installation. Persistent
 installation/activation/update/rollback/removal, Job inspection and live provider

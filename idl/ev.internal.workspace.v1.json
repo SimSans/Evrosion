@@ -1,0 +1,201 @@
+{
+  "schema": 1,
+  "maturity": "Internal",
+  "authority": "actual_receive_route_and_authenticated_caller_fix_dataset_object_scope_and_rights_not_wire_metadata",
+  "transport": {
+    "control_bytes": 256,
+    "control_capabilities": 0,
+    "max_outstanding_per_actual_incarnation_and_route": 1,
+    "deadline": "finite_absolute_monotonic_no_implicit_extension",
+    "timeout": "ends_wait_not_execution_quarantine_until_matching_actual_completion_or_proven_quiescence",
+    "operation_id": "nonzero_per_actual_requester_correlation_never_backend_global_selector",
+    "actual_identity_binding": "authenticated_endpoint_caller_incarnation_lease_operation_and_canonical_request_fingerprint_outside_wire",
+    "retry": "no_automatic_fresh_id_after_acceptance_or_uncertainty",
+    "reconciliation": "query_same_operation_then_explicit_recovery_no_unbounded_exactly_once_claim"
+  },
+  "outcomes": {
+    "Completed": 0,
+    "Denied": 1,
+    "Conflict": 2,
+    "NotFound": 3,
+    "NoSpace": 4,
+    "Busy": 5,
+    "Unsupported": 6,
+    "Accepted": 7,
+    "Uncertain": 8,
+    "Cancelled": 9,
+    "Corrupt": 10,
+    "Stale": 11,
+    "End": 12
+  },
+  "interface": "ev.internal.workspace",
+  "version": 1,
+  "wire": {
+    "request_magic": "EVWSRQ01",
+    "response_magic": "EVWSRS01",
+    "endianness": "little",
+    "object": {
+      "slot": "u16_root0_or_child1_through_256",
+      "generation": "u64_nonzero_nonmax"
+    },
+    "dataset": "response_only_16_nonzero_bytes_descriptive_not_authority",
+    "name": "utf8_1_to_96_bytes_no_separator_control_dot_or_dotdot",
+    "namespace_revision": "u64_not_max_expected_for_mutations_and_paged_list",
+    "methods": {
+      "Inspect": 1,
+      "List": 2,
+      "Create": 3,
+      "Rename": 4,
+      "Move": 5,
+      "Trash": 6,
+      "Restore": 7,
+      "QueryOperation": 8
+    },
+    "list": "one_bounded_entry_per_response_after_slot_cursor0_through_256_and_expected_namespace_revision",
+    "no_wire_sector_volume_backend_global_operation_or_capability_selector": true
+  },
+  "layout": {
+    "request": {
+      "magic": [
+        0,
+        8
+      ],
+      "opcode": [
+        8,
+        1
+      ],
+      "request_id_u64": [
+        16,
+        8
+      ],
+      "operation_id_u64": [
+        24,
+        8
+      ],
+      "deadline_u64": [
+        32,
+        8
+      ],
+      "expected_namespace_revision_u64": [
+        40,
+        8
+      ],
+      "object": [
+        48,
+        16
+      ],
+      "destination": [
+        64,
+        16
+      ],
+      "cursor_u16": [
+        80,
+        2
+      ],
+      "kind_u8": [
+        82,
+        1
+      ],
+      "name_length_u8": [
+        83,
+        1
+      ],
+      "name_utf8": [
+        84,
+        96
+      ]
+    },
+    "response": {
+      "magic": [
+        0,
+        8
+      ],
+      "outcome_u8": [
+        8,
+        1
+      ],
+      "has_entry_u8_0_or_1": [
+        9,
+        1
+      ],
+      "kind_u8": [
+        10,
+        1
+      ],
+      "entry_state_u8": [
+        11,
+        1
+      ],
+      "name_length_u8": [
+        12,
+        1
+      ],
+      "request_id_u64": [
+        16,
+        8
+      ],
+      "operation_id_u64": [
+        24,
+        8
+      ],
+      "namespace_revision_u64": [
+        32,
+        8
+      ],
+      "dataset_id": [
+        40,
+        16
+      ],
+      "object": [
+        56,
+        16
+      ],
+      "parent": [
+        72,
+        16
+      ],
+      "object_revision_u64": [
+        88,
+        8
+      ],
+      "file_size_u32": [
+        96,
+        4
+      ],
+      "next_cursor_u16_or_65535": [
+        100,
+        2
+      ],
+      "name_utf8": [
+        104,
+        96
+      ]
+    },
+    "object_record": {
+      "slot_u16": [
+        0,
+        2
+      ],
+      "generation_u64": [
+        8,
+        8
+      ]
+    },
+    "reserved": "all_unlisted_bytes_unused_variant_fields_and_name_padding_must_be_zero",
+    "root_metadata": "slot0_directory_parent_self_live_empty_name_only_no_empty_mutation_names",
+    "kinds": {
+      "File": 1,
+      "Directory": 2
+    },
+    "entry_states": {
+      "Live": 1,
+      "Trashed": 2
+    }
+  },
+  "semantics": {
+    "directory_listing": "metadata_not_content_authority",
+    "mutations": "require_actual_caller_rights_for_every_source_and_destination",
+    "object_lifetime": "rename_preserves_identity_reuse_requires_generation_and_retired_old_grants",
+    "legacy": "file_v1_store_v2_unchanged_no_implicit_migration_or_format"
+  }
+}

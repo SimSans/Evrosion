@@ -10,6 +10,7 @@ use sha2::{Digest as _, Sha256};
 mod codec;
 pub mod desktop;
 pub mod native;
+pub mod network;
 #[cfg(test)]
 mod tests;
 
@@ -113,12 +114,14 @@ pub struct GenerationManifest {
     pub required_checks: u32,
 }
 impl GenerationManifest {
+    /// Structural wire support only; Store additionally enforces its fixed
+    /// constructor profile before recovery or publication.
     pub fn valid(&self) -> bool {
         self.cohort != ZERO
             && self.supervisor_image != ZERO
             && self.abi != ZERO
             && self.health_contract != ZERO
-            && self.health_version == 1
+            && matches!(self.health_version, 1 | 2)
             && self.required_checks == (HEALTH_STORAGE | HEALTH_SUPERVISOR)
     }
 }
@@ -163,15 +166,37 @@ pub enum LastFailureReason {
     MissingProgress,
     StorageFailure,
     AttemptBudgetExhausted,
+    /// The admitted Root stayed distinct from an actually faulted critical child.
+    CriticalComponentFault,
 }
 /// One durable LAST failure, preserved across journal and manifest-slot reuse.
 /// IDs/stamps are diagnostic provenance and never persistent capability handles.
+/// Hash-bound reference to an immutable diagnostic capsule already durably
+/// written/read back by the trusted controller through its content Arena.
+/// It grants neither an object capability nor authority to read an address.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FailureEvidence {
+    pub object_start: u32,
+    pub bytes: u32,
+    pub sha256: Digest,
+}
+impl FailureEvidence {
+    fn valid(self) -> bool {
+        self.bytes > 0 && self.bytes <= 4096 && self.sha256 != ZERO
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CriticalFaultReport {
+    pub admitted: AdmissionReport,
+    pub evidence: FailureEvidence,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LastFailure {
     pub generation: GenerationId,
     pub boot_serial: u64,
     pub attempts: u8,
     pub reason: LastFailureReason,
+    pub evidence: Option<FailureEvidence>,
     pub supervisor_image: Digest,
     pub process_stamp: Option<Digest>,
     pub operation: OperationId,
@@ -184,7 +209,12 @@ pub enum Request<'a> {
     BeginBoot(GenerationId),
     Admission(AdmissionReport),
     Health(HealthReport),
-    WriteMutable { object: ObjectId, bytes: &'a [u8] },
+    /// Validate the same Root admission; child fault evidence is distinct.
+    CriticalFault(CriticalFaultReport),
+    WriteMutable {
+        object: ObjectId,
+        bytes: &'a [u8],
+    },
     SelectKnownGood,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -270,11 +300,50 @@ impl Operation {
         codec::operation(request)
     }
 }
+/// Trusted consumer interpretation, never selected from mutable media. Codec
+/// support for a version does not opt historical constructors into that policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HealthProfile {
+    LegacyV1,
+    DownloadedV2,
+}
+impl HealthProfile {
+    fn accepts(self, version: u16) -> bool {
+        version
+            == match self {
+                Self::LegacyV1 => 1,
+                Self::DownloadedV2 => 2,
+            }
+    }
+    fn operation(self, op: &Operation) -> bool {
+        match op.kind {
+            1 => codec::decode_manifest(&op.body[..usize::from(op.len)])
+                .is_some_and(|m| self.accepts(m.health_version)),
+            4 | 5 | 8 => codec::decode_admission(op)
+                .is_some_and(|report| self.accepts(report.health_version)),
+            _ => true,
+        }
+    }
+}
+/// Trusted consumer validation before mutable-only recovery can write. This
+/// interpretation is supplied by trusted policy, never selected from media.
+/// A callback grants no device, allocation, package or application authority.
+pub enum MutablePayload<'a> {
+    Committed(&'a [u8]),
+    Pending {
+        committed: &'a [u8],
+        proposed: &'a [u8],
+    },
+}
+
+type PayloadValidator<'a> = &'a mut dyn FnMut(MutablePayload<'_>) -> bool;
+
 pub struct Store<D: SectorIo> {
     device: D,
     root: Root,
     buffer: Sector,
     poisoned: bool,
+    health_profile: HealthProfile,
 }
 fn digest(bytes: &[u8]) -> Digest {
     Sha256::digest(bytes).into()
@@ -288,11 +357,47 @@ fn valid_deadline<E>(deadline: u64) -> Result<(), Error<E>> {
 }
 
 impl<D: SectorIo> Store<D> {
+    /// Historical constructors remain healthv1, including creation-only data.
     pub fn format_new(
+        device: D,
+        initial: GenerationManifest,
+        user: &[u8],
+        policy: BootPolicy,
+        deadline: u64,
+    ) -> Result<Self, RejectedDevice<D>> {
+        Self::format_profile(
+            device,
+            initial,
+            user,
+            policy,
+            HealthProfile::LegacyV1,
+            deadline,
+        )
+    }
+    /// Explicit trusted downloaded-System policy. This grants no I/O, format,
+    /// publisher, admission or health authority; the caller owns those checks.
+    pub fn format_new_downloaded_v2(
+        device: D,
+        initial: GenerationManifest,
+        user: &[u8],
+        policy: BootPolicy,
+        deadline: u64,
+    ) -> Result<Self, RejectedDevice<D>> {
+        Self::format_profile(
+            device,
+            initial,
+            user,
+            policy,
+            HealthProfile::DownloadedV2,
+            deadline,
+        )
+    }
+    fn format_profile(
         mut device: D,
         initial: GenerationManifest,
         user: &[u8],
         policy: BootPolicy,
+        health_profile: HealthProfile,
         deadline: u64,
     ) -> Result<Self, RejectedDevice<D>> {
         let result = (|| {
@@ -300,7 +405,10 @@ impl<D: SectorIo> Store<D> {
             if device.sectors() < REQUIRED_SECTORS {
                 return Err(Error::Capacity);
             }
-            if !initial.valid() || user.len() > PAYLOAD_BYTES {
+            if !initial.valid()
+                || !health_profile.accepts(initial.health_version)
+                || user.len() > PAYLOAD_BYTES
+            {
                 return Err(Error::InvalidRequest);
             }
             let mut buffer = [0; SECTOR_BYTES];
@@ -378,13 +486,68 @@ impl<D: SectorIo> Store<D> {
                 root,
                 buffer: [0; SECTOR_BYTES],
                 poisoned: false,
+                health_profile,
             }),
             Err(error) => Err(RejectedDevice { device, error }),
         }
     }
-    pub fn open(mut device: D, deadline: u64) -> Result<Self, RejectedDevice<D>> {
+    pub fn open(device: D, deadline: u64) -> Result<Self, RejectedDevice<D>> {
+        Self::open_profile(device, None, HealthProfile::LegacyV1, None, deadline)
+    }
+    /// Explicit downloaded-System healthv2 cold/recovery path. The selected
+    /// newest head, every live reference and pending journal keep this policy.
+    pub fn open_downloaded_v2(device: D, deadline: u64) -> Result<Self, RejectedDevice<D>> {
+        Self::open_profile(device, None, HealthProfile::DownloadedV2, None, deadline)
+    }
+    /// Open a caller-owned mutable-only namespace. Before recovery may write,
+    /// require its exact immutable format-creation manifest, untouched initial
+    /// generation/lifecycle state, and only a pending user-data mutation. This
+    /// adds exact namespace checks to the historical healthv1 profile.
+    pub fn open_mutable_namespace(
+        device: D,
+        expected_creation: &GenerationManifest,
+        deadline: u64,
+    ) -> Result<Self, RejectedDevice<D>> {
+        Self::open_profile(
+            device,
+            Some(expected_creation),
+            HealthProfile::LegacyV1,
+            None,
+            deadline,
+        )
+    }
+    /// Open an exact mutable namespace only after the trusted consumer accepts
+    /// its committed payload and any checksum/base-bound pending mutation. All
+    /// callbacks run before any recovery write or flush. Refusal preserves the
+    /// actual device and bytes; it neither formats nor repairs foreign payloads.
+    /// The caller must independently own the whole region and retain its exact
+    /// original creation descriptor. The callback is not a permission check.
+    pub fn open_mutable_namespace_checked(
+        device: D,
+        expected_creation: &GenerationManifest,
+        mut validate: impl FnMut(MutablePayload<'_>) -> bool,
+        deadline: u64,
+    ) -> Result<Self, RejectedDevice<D>> {
+        Self::open_profile(
+            device,
+            Some(expected_creation),
+            HealthProfile::LegacyV1,
+            Some(&mut validate),
+            deadline,
+        )
+    }
+    fn open_profile(
+        mut device: D,
+        expected_creation: Option<&GenerationManifest>,
+        health_profile: HealthProfile,
+        mut validate: Option<PayloadValidator<'_>>,
+        deadline: u64,
+    ) -> Result<Self, RejectedDevice<D>> {
         let result = (|| {
             valid_deadline(deadline)?;
+            if expected_creation.is_some_and(|m| !health_profile.accepts(m.health_version)) {
+                return Err(Error::Unsupported);
+            }
             if device.sectors() < REQUIRED_SECTORS {
                 return Err(Error::Capacity);
             }
@@ -425,11 +588,23 @@ impl<D: SectorIo> Store<D> {
             root,
             buffer: [0; SECTOR_BYTES],
             poisoned: false,
+            health_profile,
         };
-        let result = store
-            .verify_references(deadline)
-            .and_then(|()| store.recover(deadline))
-            .and_then(|()| store.verify_references(deadline));
+        let result = (|| {
+            if let Some(expected) = expected_creation {
+                store.check_mutable_namespace(expected, deadline)?;
+            }
+            store.verify_references(deadline)?;
+            if let Some(check) = validate.as_mut() {
+                let mut bytes = [0; PAYLOAD_BYTES];
+                let len = store.read_mutable(ObjectId::user_data(), &mut bytes, deadline)?;
+                if !check(MutablePayload::Committed(&bytes[..len])) {
+                    return Err(Error::Conflict);
+                }
+            }
+            store.recover(deadline, expected_creation.is_some(), validate)?;
+            store.verify_references(deadline)
+        })();
         match result {
             Ok(()) => Ok(store),
             Err(error) => Err(RejectedDevice {
@@ -460,6 +635,20 @@ impl<D: SectorIo> Store<D> {
             return Err(Error::RecoveryRequired);
         }
         self.load_manifest(self.root.active, deadline)
+    }
+    /// Read the actual protected immutable manifest, including while another
+    /// candidate is selected. This is local committed Store state, not health
+    /// observation or publisher authentication from a caller-supplied label.
+    pub fn known_good_manifest(
+        &mut self,
+        deadline: u64,
+    ) -> Result<Option<GenerationManifest>, Error<D::Error>> {
+        self.check(deadline)?;
+        if self.root.known_good >= 2 {
+            Ok(None)
+        } else {
+            self.load_manifest(self.root.known_good, deadline).map(Some)
+        }
     }
     pub fn known_good(&self) -> Option<GenerationId> {
         if self.root.known_good < 2 {
@@ -571,6 +760,11 @@ impl<D: SectorIo> Store<D> {
     ) -> Result<Receipt, Error<D::Error>> {
         self.check(deadline)?;
         let operation = Operation::from_request(request)?;
+        // Before the idempotent receipt branch too: a foreign request cannot
+        // obtain an ACK from an already committed journal row.
+        if !self.health_profile.operation(&operation) {
+            return Err(Error::InvalidRequest);
+        }
         if let Err(error) = self.verify_references(deadline) {
             self.poisoned = true;
             return Err(error);
@@ -668,6 +862,9 @@ impl<D: SectorIo> Store<D> {
         {
             return Err(Error::Corrupt);
         }
+        if !self.health_profile.accepts(manifest.health_version) {
+            return Err(Error::Unsupported);
+        }
         Ok(manifest)
     }
     fn verify_references(&mut self, deadline: u64) -> Result<(), Error<D::Error>> {
@@ -681,7 +878,39 @@ impl<D: SectorIo> Store<D> {
         self.read_mutable(ObjectId::user_data(), &mut [0; PAYLOAD_BYTES], deadline)?;
         Ok(())
     }
-    fn recover(&mut self, deadline: u64) -> Result<(), Error<D::Error>> {
+    fn check_mutable_namespace(
+        &mut self,
+        expected: &GenerationManifest,
+        deadline: u64,
+    ) -> Result<(), Error<D::Error>> {
+        let root = &self.root;
+        if !expected.valid()
+            || root.active != 0
+            || root.known_good != 2
+            || root.staged != 1
+            || root.phase != 2
+            || root.attempts != 0
+            || root.highest_generation != expected.generation.get()
+            || root.generations[1] != GenerationRef::EMPTY
+            || root.admitted_stamp != ZERO
+            || root.boot_serial != 0
+            || root.admitted_serial != 0
+            || root.boot_pending
+            || root.last_failure.is_some()
+        {
+            return Err(Error::Conflict);
+        }
+        if self.load_manifest(0, deadline)? != *expected {
+            return Err(Error::Conflict);
+        }
+        Ok(())
+    }
+    fn recover(
+        &mut self,
+        deadline: u64,
+        mutable_only: bool,
+        validate: Option<PayloadValidator<'_>>,
+    ) -> Result<(), Error<D::Error>> {
         let Some(next) = self
             .root
             .last_operation
@@ -711,6 +940,29 @@ impl<D: SectorIo> Store<D> {
             }
         }
         if let Some(operation) = pending {
+            // A Stage manifest may not be reachable from the committed root
+            // yet. Validate the checksum/base-bound actual pending operation.
+            if !self.health_profile.operation(&operation) {
+                return Err(Error::Unsupported);
+            }
+            if mutable_only && operation.kind != 6 {
+                return Err(Error::Conflict);
+            }
+            if let Some(check) = validate {
+                // Keep the committed bytes independent of the shared decode
+                // buffer. Both payloads are validated before transition or any
+                // root/data/journal publication can occur.
+                let mut committed = [0; PAYLOAD_BYTES];
+                let len = self.read_mutable(ObjectId::user_data(), &mut committed, deadline)?;
+                if operation.kind != 6
+                    || !check(MutablePayload::Pending {
+                        committed: &committed[..len],
+                        proposed: &operation.body[..usize::from(operation.len)],
+                    })
+                {
+                    return Err(Error::Conflict);
+                }
+            }
             let state = self.transition(&operation, deadline)?;
             self.publish(next, &operation, state, deadline)?;
         }
@@ -790,7 +1042,7 @@ impl<D: SectorIo> Store<D> {
                     root.boot_pending = true;
                 }
             }
-            4 | 5 => {
+            4 | 5 | 8 => {
                 let report = codec::decode_admission(operation).ok_or(Error::InvalidRequest)?;
                 let manifest = self.load_manifest(root.active, deadline)?;
                 if !matches!(root.phase, 0 | 2)
@@ -837,6 +1089,7 @@ impl<D: SectorIo> Store<D> {
                             2 => LastFailureReason::ProcessFault,
                             3 => LastFailureReason::MissingProgress,
                             4 => LastFailureReason::StorageFailure,
+                            5 => LastFailureReason::CriticalComponentFault,
                             _ => return Err(Error::InvalidRequest),
                         };
                         root.last_failure = Some(Self::failure(
@@ -846,6 +1099,11 @@ impl<D: SectorIo> Store<D> {
                             Some(report.process_stamp),
                             reason,
                         )?);
+                        if operation.kind == 8 {
+                            root.last_failure.as_mut().unwrap().evidence = Some(
+                                codec::critical_evidence(operation).ok_or(Error::InvalidRequest)?,
+                            );
+                        }
                         let candidate = root.phase == 2
                             && root.known_good < 2
                             && root.active != root.known_good;
@@ -886,6 +1144,7 @@ impl<D: SectorIo> Store<D> {
             boot_serial: root.boot_serial,
             attempts: root.attempts,
             reason,
+            evidence: None,
             supervisor_image,
             process_stamp,
             operation: root
@@ -916,6 +1175,9 @@ impl<D: SectorIo> Store<D> {
         next: Root,
         deadline: u64,
     ) -> Result<Receipt, Error<D::Error>> {
+        if !self.health_profile.operation(operation) {
+            return Err(Error::InvalidRequest);
+        }
         match operation.kind {
             1 => {
                 let slot = next.staged - 1;

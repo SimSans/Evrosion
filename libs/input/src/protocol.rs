@@ -11,25 +11,6 @@ pub enum Error {
     Replay,
     Cancelled,
 }
-fn key_code(key: Key) -> u8 {
-    match key {
-        Key::Tab => 1,
-        Key::Enter => 2,
-        Key::Escape => 3,
-        Key::Up => 4,
-        Key::Down => 5,
-    }
-}
-fn key(code: u8) -> Result<Key, Error> {
-    match code {
-        1 => Ok(Key::Tab),
-        2 => Ok(Key::Enter),
-        3 => Ok(Key::Escape),
-        4 => Ok(Key::Up),
-        5 => Ok(Key::Down),
-        _ => Err(Error::Key),
-    }
-}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct KeyEvent {
     pub key: Key,
@@ -37,44 +18,35 @@ pub struct KeyEvent {
     pub release_known: bool,
     pub approval_ready: bool,
 }
+fn generated_error(error: ev_userspace_contract::focused_input::Error) -> Error {
+    use ev_userspace_contract::focused_input::Error as E;
+    match error {
+        E::Key => Error::Key,
+        E::Flags => Error::Flags,
+        E::Sequence => Error::Sequence,
+        E::Length | E::Header | E::CapabilityCount => Error::Header,
+    }
+}
 impl KeyEvent {
     pub fn encode(self) -> Result<[u8; 8], Error> {
-        if self.sequence == 0 || self.sequence == u32::MAX {
-            return Err(Error::Sequence);
+        ev_userspace_contract::focused_input::KeyEvent {
+            key: self.key,
+            sequence: self.sequence,
+            release_known: self.release_known,
+            approval_ready: self.approval_ready,
         }
-        if self.key != Key::Enter && (self.release_known || self.approval_ready)
-            || self.approval_ready && !self.release_known
-        {
-            return Err(Error::Flags);
-        }
-        let mut b = [
-            b'K',
-            1,
-            key_code(self.key),
-            u8::from(self.release_known) | (u8::from(self.approval_ready) << 1),
-            0,
-            0,
-            0,
-            0,
-        ];
-        b[4..].copy_from_slice(&self.sequence.to_le_bytes());
-        Ok(b)
+        .encode()
+        .map_err(generated_error)
     }
     pub fn decode(b: [u8; 8]) -> Result<Self, Error> {
-        if b[0] != b'K' || b[1] != 1 {
-            return Err(Error::Header);
-        }
-        if b[3] & !3 != 0 {
-            return Err(Error::Flags);
-        }
-        let event = Self {
-            key: key(b[2])?,
-            sequence: u32::from_le_bytes(b[4..].try_into().unwrap()),
-            release_known: b[3] & 1 != 0,
-            approval_ready: b[3] & 2 != 0,
-        };
-        event.encode()?;
-        Ok(event)
+        let event = ev_userspace_contract::focused_input::KeyEvent::decode(&b, 0)
+            .map_err(generated_error)?;
+        Ok(Self {
+            key: event.key,
+            sequence: event.sequence,
+            release_known: event.release_known,
+            approval_ready: event.approval_ready,
+        })
     }
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -156,6 +128,88 @@ impl BarrierReply {
         Ok(result)
     }
 }
+/// Explicit session opt-in; legacy KBR1/B1 bytes remain unchanged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SessionBarrierRequest {
+    nonce: u32,
+}
+impl SessionBarrierRequest {
+    pub fn new(nonce: u32) -> Result<Self, Error> {
+        BarrierRequest::new(nonce)?;
+        Ok(Self { nonce })
+    }
+    pub const fn nonce(self) -> u32 {
+        self.nonce
+    }
+    pub fn encode(self) -> [u8; 8] {
+        let mut bytes = *b"KBR2\0\0\0\0";
+        bytes[4..].copy_from_slice(&self.nonce.to_le_bytes());
+        bytes
+    }
+    pub fn decode(bytes: [u8; 8]) -> Result<Self, Error> {
+        if &bytes[..4] != b"KBR2" {
+            return Err(Error::Header);
+        }
+        Self::new(u32::from_le_bytes(bytes[4..].try_into().unwrap()))
+    }
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PointerState {
+    pub held: u8,
+    /// A complete actual packet has observed this button released. Reset/quiet
+    /// alone never supplies this knowledge; held and released may both be set.
+    pub released: u8,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SessionBarrierReply {
+    pub sequence: u32,
+    pub enter: EnterState,
+    pub pointer: PointerState,
+}
+impl SessionBarrierReply {
+    pub fn keyboard(self) -> BarrierReply {
+        BarrierReply {
+            sequence: self.sequence,
+            enter: self.enter,
+        }
+    }
+    pub fn encode(self) -> Result<[u8; 8], Error> {
+        self.keyboard().encode()?;
+        if (self.pointer.held | self.pointer.released) & !7 != 0 {
+            return Err(Error::Flags);
+        }
+        let mut bytes = [
+            b'B',
+            2,
+            self.enter.flags(),
+            self.pointer.held | self.pointer.released << 3,
+            0,
+            0,
+            0,
+            0,
+        ];
+        bytes[4..].copy_from_slice(&self.sequence.to_le_bytes());
+        Ok(bytes)
+    }
+    pub fn decode(bytes: [u8; 8]) -> Result<Self, Error> {
+        if bytes[0] != b'B' || bytes[1] != 2 {
+            return Err(Error::Header);
+        }
+        if bytes[2] & !15 != 0 || bytes[3] & !63 != 0 {
+            return Err(Error::Flags);
+        }
+        let result = Self {
+            sequence: u32::from_le_bytes(bytes[4..].try_into().unwrap()),
+            enter: EnterState::from_flags(bytes[2]),
+            pointer: PointerState {
+                held: bytes[3] & 7,
+                released: bytes[3] >> 3,
+            },
+        };
+        result.encode()?;
+        Ok(result)
+    }
+}
 /// The caller must obtain the snapshot from an actual authenticated Input RPC
 /// AFTER trusted UI Present. This reducer is no proof of either precondition.
 pub struct FreshGate {
@@ -196,6 +250,46 @@ impl FreshGate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn session_barrier_binds_real_button_state_without_changing_v1_golden_bytes() {
+        let legacy = BarrierReply {
+            sequence: 0x04030201,
+            enter: EnterState {
+                main_released: true,
+                keypad_released: false,
+                main_held: true,
+                keypad_held: false,
+            },
+        };
+        assert_eq!(legacy.encode(), Ok([b'B', 1, 5, 0, 1, 2, 3, 4]));
+        assert_eq!(
+            BarrierRequest::new(0x04030201).unwrap().encode(),
+            [b'K', b'B', b'R', b'1', 1, 2, 3, 4]
+        );
+        for held in 0..8 {
+            for released in 0..8 {
+                let reply = SessionBarrierReply {
+                    sequence: legacy.sequence,
+                    enter: legacy.enter,
+                    pointer: PointerState { held, released },
+                };
+                let bytes = reply.encode().unwrap();
+                assert_eq!(SessionBarrierReply::decode(bytes), Ok(reply));
+                assert!(BarrierReply::decode(bytes).is_err());
+                assert_eq!(reply.keyboard(), legacy);
+                for (index, mask) in [(2, 16), (3, 64), (3, 128)] {
+                    let mut bad = bytes;
+                    bad[index] |= mask;
+                    assert!(SessionBarrierReply::decode(bad).is_err());
+                }
+            }
+        }
+        assert!(SessionBarrierReply::decode(legacy.encode().unwrap()).is_err());
+        let request = SessionBarrierRequest::new(7).unwrap();
+        assert_eq!(SessionBarrierRequest::decode(request.encode()), Ok(request));
+        assert!(BarrierRequest::decode(request.encode()).is_err());
+        assert!(SessionBarrierRequest::new(u32::MAX).is_err());
+    }
     #[test]
     fn canonical_key_and_barrier_frames_are_total_and_reject_reserved_combinations() {
         let event = KeyEvent {

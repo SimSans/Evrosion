@@ -95,6 +95,42 @@ pub mod desktop_plan;
 
 #[cfg(feature = "native-contract")]
 pub mod native_plan;
+#[cfg(feature = "native-contract")]
+pub mod native_sources;
 
 #[cfg(feature = "native-contract")]
 pub mod native_diagnostics;
+
+#[cfg(feature = "desktop-contract")]
+pub mod desktop_outbox;
+
+#[cfg(feature = "desktop-contract")]
+pub mod desktop_profile;
+
+#[cfg(feature = "native-network")]
+pub mod native_network;
+
+#[cfg(feature = "native-network")]
+pub mod native_acquisition;
+
+#[cfg(feature = "native-network")]
+#[path = "native/update_runtime/engine.rs"]
+pub mod native_update;
+
+#[cfg(feature = "native-network")]
+pub mod vm_rtc;
+
+#[cfg(feature = "native-network")]
+pub mod native_image;
+
+#[cfg(feature = "native-network")]
+pub mod native_cold;
+
+#[cfg(feature = "native-network")]
+pub mod native_fetch;
+
+#[cfg(feature = "native-network")]
+pub mod downloaded_health;
+
+#[cfg(feature = "native-contract")]
+pub mod native_package_profile;

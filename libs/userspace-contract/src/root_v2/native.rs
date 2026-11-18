@@ -22,6 +22,11 @@ pub const ABI: [u8; 32] = [
 pub const ROOT_STACK_FIRST_PAGE: u64 = 256;
 pub const ROOT_STACK_PAGES: u64 = 8;
 pub const ROOT_STACK_BYTES: u64 = ROOT_STACK_PAGES * 4096;
+/// Additional measured layout for the separately built M6 session profile.
+/// Existing Native3 bootstrap roles/bytes and finite-profile layout are intact.
+pub const SESSION_NOTE_PAGE: u64 = 506;
+pub const SESSION_SHARED_SLOTS: usize = 3;
+pub const SESSION_LAYOUT: &[u8] = b"evrosion.session.layout.v1\0RootAppFileRW506;sharedClaims3;NoteDataWire64..77Physical112..125;NoteEnvelope2;InputCommonTextSequence1;duration0CPUWindowed;transaction8192;childRPC1024;quiescence1024;queuedRetention9728-not-delivery-guarantee\0";
 pub const PACKAGE_MAX_PAGES: u64 = 63;
 pub const PACKAGE_PAGE_BYTES: u64 = 4096;
 pub const PACKAGE_MAX_BYTES: u64 = PACKAGE_MAX_PAGES * PACKAGE_PAGE_BYTES;

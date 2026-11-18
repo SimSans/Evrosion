@@ -11,7 +11,7 @@ The [custody design](../designs/ROOT_AUTHORITY_CUSTODY.md) requires an immutable
 measured manifest before Root Supervisor activation. No parser existed. Implement
 a small Internal binary format in `kernel/src/bootstrap_manifest.rs`, independent
 of runtime handles and Rust struct layout. This is an incremental Level B
-implementation under the accepted engineering direction; it changes no foundational guarantee.
+implementation under the founder mandate; it changes no foundational guarantee.
 
 Accept only canonical bytes: explicit little-endian fields, exact record count
 and length, zero reserved bytes and strictly increasing unique object selectors.
@@ -97,7 +97,7 @@ Host tests cover a known SHA-256 vector, all single-bit manifest mutations,
 every truncation, trailing data, invalid authenticated records, capacity limits,
 bad image/ABI, 4,096 bounded malformed samples and real scheduler/restart-policy
 consumption. Cross-target lint/build and the cumulative M1 gate check regression.
-Evidence is in the [M2 progress record](../../docs/release/0.1-preview.md#validation-and-provenance).
+Evidence is in the M2 progress record.
 
 No Root Supervisor boot, authority minting, AF-007F system-recovery acceptance or
 full M2 completion is claimed. The next gate is trusted boot-bundle production,

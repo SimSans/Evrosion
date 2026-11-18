@@ -64,7 +64,100 @@ pub struct RejectedRouteRetirement {
     pub route: SelectedReadRoute,
     pub error: Error,
 }
+/// Unique actual-stopped selected-inbox owner. It preserves immutable selected
+/// policy and ticket/escrow history; no raw PID or boolean can construct it.
+#[cfg(feature = "workspace-authority")]
+pub struct StoppedSelectedRoute {
+    root: Token,
+    controller: SpaceId,
+    target: Metadata,
+    mailbox: Mailbox,
+}
+#[cfg(feature = "workspace-authority")]
+pub struct RejectedStoppedSelectedRoute {
+    pub owner: StoppedSelectedRoute,
+    pub error: Error,
+}
+#[cfg(feature = "workspace-authority")]
+impl StoppedSelectedRoute {
+    pub fn target_metadata(&self) -> Metadata {
+        self.target
+    }
+    #[allow(clippy::too_many_arguments, clippy::result_large_err)]
+    pub fn rebind(
+        mut self,
+        a: &Authority,
+        s: &Scheduler,
+        r: &Registry<'_>,
+        current: Token,
+        process_control: Handle,
+        receive_selector: u64,
+        endpoint_control: Handle,
+    ) -> Result<SelectedReadRoute, RejectedStoppedSelectedRoute> {
+        let checked = (|| -> Result<_, Error> {
+            if current != self.root
+                || !a.is_live_space(self.controller)
+                || s.process_terminated(current.process())
+                || s.process_job(current.process())? != current.job()
+            {
+                return Err(Error::StaleRoot);
+            }
+            let target = r.active_metadata(a, s, self.controller, process_control)?;
+            let process_object = a
+                .authorize(
+                    self.controller,
+                    process_control,
+                    Kind::Process,
+                    Rights::CONTROL,
+                )?
+                .identity();
+            let receive = r.grant(a, self.controller, process_control, receive_selector)?;
+            self.mailbox.reopen_selected_empty(
+                a,
+                self.controller,
+                endpoint_control,
+                target.domain,
+                receive,
+            )?;
+            Ok((target, process_object, receive))
+        })();
+        match checked {
+            Ok((target, process_object, receive)) => Ok(SelectedReadRoute {
+                root: self.root,
+                controller: self.controller,
+                process_control,
+                process_object,
+                target,
+                receive,
+                mailbox: self.mailbox,
+            }),
+            Err(error) => Err(RejectedStoppedSelectedRoute { owner: self, error }),
+        }
+    }
+}
 impl SelectedReadRoute {
+    /// Produce only after the same old Registry owner is actually terminated
+    /// and every queued capability/escrow is settled. Must precede forgetting
+    /// that old row. Rebinding later cannot reset message sequence or policy.
+    #[cfg(feature = "workspace-authority")]
+    #[allow(clippy::result_large_err)]
+    pub fn into_stopped_route(
+        self,
+        a: &Authority,
+        s: &Scheduler,
+        r: &Registry<'_>,
+    ) -> Result<StoppedSelectedRoute, RejectedRouteRetirement> {
+        let root = self.root;
+        let controller = self.controller;
+        let target = self.target;
+        self.into_stopped_mailbox(a, s, r)
+            .map(|mailbox| StoppedSelectedRoute {
+                root,
+                controller,
+                target,
+                mailbox,
+            })
+    }
     /// Production constructor: consumes the one actual managed mailbox after
     /// live ProcessCONTROL/active-row/RX validation, never allocates another
     /// escrow and never accepts a caller-selected process/domain identity.

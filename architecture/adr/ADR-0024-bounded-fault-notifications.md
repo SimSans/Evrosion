@@ -25,7 +25,7 @@ the fatal boundary rather than becoming ordinary process notifications.
 
 ## Verification
 
-[Portable evidence](../../docs/release/0.1-preview.md#validation-and-provenance)
+Portable evidence (local engineering archive)
 links 73 host tests and cumulative QEMU/debugger results. Actual UD, PF and GP
 records reach surviving CPL3 processes once; missing receive authority is denied.
 Host tests exercise malformed records, unauthorized publication/receipt, queue

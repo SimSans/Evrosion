@@ -185,6 +185,7 @@ impl<P: Io> Console<P> {
             LastFailureReason::MissingProgress => "missing progress",
             LastFailureReason::StorageFailure => "a storage failure",
             LastFailureReason::AttemptBudgetExhausted => "its boot attempt limit",
+            LastFailureReason::CriticalComponentFault => "an actual critical component fault",
         };
         self.format(format_args!(
             "\r\nEvrosion generation {} could not start: {}.\r\nFailed image: ",
@@ -356,6 +357,7 @@ mod tests {
             boot_serial: 2,
             attempts: 1,
             reason: LastFailureReason::ProcessFault,
+            evidence: None,
             supervisor_image: [2; 32],
             process_stamp: Some([3; 32]),
             operation: ev_store::OperationId::new(10).unwrap(),

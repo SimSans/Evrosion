@@ -2,7 +2,9 @@
 //! A single serialized kernel dispatcher mutates these tables. No Rust/kernel
 //! lock survives return to userspace; only the exact logical owner/lease does.
 use crate::{
-    capability::{self, Authority, Handle, Kind, MAX_OBJECTS, Rights, SpaceId},
+    capability::{
+        self, Authority, Handle, Kind, OBJECT_STORAGE_CAPACITY as MAX_OBJECTS, Rights, SpaceId,
+    },
     rpc::{self, LockClass, Rpc},
     scheduler::{self, Scheduler, ThreadId},
 };

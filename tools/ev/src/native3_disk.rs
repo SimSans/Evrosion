@@ -366,6 +366,28 @@ fn file(bytes: &[u8], object: Object) -> Result<Value> {
     value["global_operation"] = json!(0);
     Ok(value)
 }
+/// Independent read-only document observer. The expected content/revision is
+/// supplied before inspection, never inferred from an App success marker.
+pub(crate) fn document(bytes: &[u8], counter: u64, text: &[u8]) -> Result<Value> {
+    let mut store = open_region(bytes, 32, file_manifest(Object::Notes), counter)?;
+    let mut body = [0; 256];
+    let length = store
+        .read_mutable(ObjectId::user_data(), &mut body, DEADLINE)
+        .map_err(|e| format!("document cold read: {e:?}"))?;
+    let envelope =
+        Envelope::decode(&body[..length]).map_err(|e| format!("document envelope: {e:?}"))?;
+    if envelope.counter() != counter
+        || envelope.global_operation() != counter
+        || envelope.payload() != text
+    {
+        return Err("document cold bytes/revision differ".into());
+    }
+    let mut proof = checked_device(store.into_device())?;
+    proof["counter"] = json!(counter);
+    proof["payload_sha256"] = json!(format!("{:x}", Sha256::digest(text)));
+    proof["private_file"] = file(bytes, Object::Private)?;
+    Ok(proof)
+}
 /// Read-only actual raw-byte observer; only explicit expected phase facts are
 /// accepted, never successful guest markers or caller-supplied package tags.
 fn inspect_app(

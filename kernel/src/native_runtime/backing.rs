@@ -10,6 +10,10 @@ use ev_kernel::{
     scheduler::{JobId, Scheduler},
 };
 use ev_userspace_contract::root_v2::native;
+#[cfg(feature = "test-m6-network")]
+use ev_userspace_contract::root_v4::catalogue::Catalogue;
+#[cfg(not(feature = "test-m6-network"))]
+use native::catalogue::Catalogue;
 use sha2::{Digest, Sha256};
 
 pub(crate) struct Ram {
@@ -365,7 +369,7 @@ impl NativeBacking {
         frames: &mut BootstrapFrames,
         offset: u64,
         bits: u8,
-        catalogue: &native::catalogue::Catalogue<'_>,
+        catalogue: &Catalogue<'_>,
         app_b: &[u8],
         app_b_sha: [u8; 32],
         bad_shell: &[u8],

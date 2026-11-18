@@ -25,7 +25,8 @@ pub struct Failure {
     pub generation: u64,
     pub boot_serial: u64,
     pub attempts: u8,
-    /// ProcessFault1, MissingProgress2, StorageFailure3, AttemptBudgetExhausted4.
+    /// RootProcessFault1, MissingProgress2, StorageFailure3, AttemptBudgetExhausted4,
+    /// CriticalComponentFault5 (actual child fault, distinct from Root fault).
     pub reason: u8,
     pub supervisor_image: [u8; 32],
     pub process_stamp: Option<[u8; 32]>,
@@ -109,7 +110,7 @@ impl Snapshot {
         if let Some(m) = self.selected
             && (m.generation == 0
                 || m.generation == u64::MAX
-                || m.health_version != 1
+                || !matches!(m.health_version, 1 | 2)
                 || m.required_checks != 3
                 || [m.cohort, m.supervisor_image, m.abi, m.health_contract].contains(&[0; 32]))
         {
@@ -120,7 +121,7 @@ impl Snapshot {
                 || f.generation == u64::MAX
                 || f.boot_serial == 0
                 || !(1..=8).contains(&f.attempts)
-                || !(1..=4).contains(&f.reason)
+                || !(1..=5).contains(&f.reason)
                 || f.supervisor_image == [0; 32]
                 || f.process_stamp == Some([0; 32])
                 || f.operation == 0
@@ -262,7 +263,55 @@ impl Snapshot {
         } else if bytes[13] & 4 != 0 || bytes[168..272].iter().any(|b| *b != 0) {
             return Err(Error::Reserved);
         }
+        if bytes[8..10] == 1u16.to_le_bytes()
+            && value
+                .last_failure
+                .is_some_and(|failure| failure.reason == 5)
+        {
+            return Err(Error::Identity);
+        }
         value.validate()?;
         Ok(value)
+    }
+}
+
+#[cfg(test)]
+mod critical_component_tests {
+    use super::*;
+    #[test]
+    fn child_fault_reason_is_distinct_and_roundtrips_only_current_wire() {
+        let mut snapshot = Snapshot::new(State::Committed, 10, 11);
+        snapshot.selected = Some(Manifest {
+            generation: 2,
+            cohort: [1; 32],
+            supervisor_image: [2; 32],
+            abi: [3; 32],
+            health_contract: [4; 32],
+            health_version: 1,
+            required_checks: 3,
+        });
+        snapshot.known_good = Some(2);
+        snapshot.last_failure = Some(Failure {
+            generation: 3,
+            boot_serial: 4,
+            attempts: 1,
+            reason: 5,
+            supervisor_image: [2; 32],
+            process_stamp: Some([5; 32]),
+            operation: 9,
+            sequence: 9,
+        });
+        let bytes = snapshot.encode().unwrap();
+        assert_eq!(Snapshot::decode(&bytes), Ok(snapshot));
+        let mut old = bytes;
+        old[8..10].copy_from_slice(&1u16.to_le_bytes());
+        assert_eq!(Snapshot::decode(&old), Err(Error::Identity));
+        let mut unknown = bytes;
+        unknown[185] = 6;
+        assert_eq!(Snapshot::decode(&unknown), Err(Error::Identity));
+        let mut root = snapshot;
+        root.last_failure.as_mut().unwrap().reason = 1;
+        assert_ne!(root.encode().unwrap(), bytes);
+        assert_eq!(Snapshot::decode(&root.encode().unwrap()), Ok(root));
     }
 }

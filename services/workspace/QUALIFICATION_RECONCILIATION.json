@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "created_utc": "2026-11-16T00:28:56.774884+00:00",
+  "status": "PASS scoped host tests, actual native link and ELF/stack preflight; VM integration pending",
+  "scope": "Root-only service reconciliation implementation. No actual Kernel retirement/Root control/device shutdown/cold recovery or complete M8 gate acceptance claim.",
+  "service_tests": 25,
+  "new_reconciliation_tests": 9,
+  "store_tests": 15,
+  "preserved_store_cut_suite": true,
+  "source_files": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/src/lib.rs",
+      "bytes": 43550,
+      "sha256": "e2caf4c372f6481da5856735e6b2a0e4ede654bcf8ab60c8b1c24c35013690cc"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/src/control.rs",
+      "bytes": 14517,
+      "sha256": "08f0510ffca5587b751a1e929d07cce2be9187a2e4147c8f6d5e87c6654ce664"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/src/namespace.rs",
+      "bytes": 20075,
+      "sha256": "31fbbd241c7bb4126bb4ffa0b0c85506239a9d8a88a0b0b9c632217e8dae26c1"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/src/native/mod.rs",
+      "bytes": 25891,
+      "sha256": "689d24a613ec6d8245fec1a8cbf98d923e9f553884fe7a98f36d2fb0428005fb"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/src/native/origin.rs",
+      "bytes": 2485,
+      "sha256": "62702913a9bad106f1a5028c0759b2cc2f4547f871ff2a6d77e83e98dea3af99"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/src/native/window.rs",
+      "bytes": 2820,
+      "sha256": "d96f96b7f6af074a609ce4d40cc3fac17e5cf25a49dd48759fe08451fa67cd8a"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/src/native/resident.rs",
+      "bytes": 1287,
+      "sha256": "c95b1f65d31491ba1415f516fbdc870ff280e5fc87ef2018d88413e10519a9af"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/src/retirement_tests.rs",
+      "bytes": 9369,
+      "sha256": "da68c1efa472f3a4623a0af057705b0835fd76accd318428420cded6dc6fbacd"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/src/namespace_tests.rs",
+      "bytes": 21410,
+      "sha256": "a2b90be4fb7fabc33b901217c3bd1bc06346f621c75d59011e9c05fb6ea8489a"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/src/tests.rs",
+      "bytes": 25672,
+      "sha256": "a191c64f2adb333e894293b474e15a800b06024018c90e601169fcc77b9eb246"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/libs/workspace-store/src/engine.rs",
+      "bytes": 53595,
+      "sha256": "c55c1b2515bd1acf6d8bee21334bc4d2fb7a7e57aef825980adb14934d5ff2e1"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/services/workspace/README.md",
+      "bytes": 10146,
+      "sha256": "92b529ad67649a4e2263f5c0eec3908ed24ff723c0046eb4a6b0931890a75659"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/architecture/adr/ADR-0112-workspace-route-and-stage-reconciliation.md",
+      "bytes": 5685,
+      "sha256": "8ddfb17290c990366aa673a3178fbddbfbfc9bf53e7ce48cff101db8d6d00ddd"
+    }
+  ],
+  "command_receipts": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-reconcile-tests-02.json",
+      "bytes": 973,
+      "sha256": "d3b2169f3241ca4440ebc00816aefdecc6adcccd03681a1f6d9ee9a1ed9b36b4"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-reconcile-native-lint-02.json",
+      "bytes": 1230,
+      "sha256": "da9079990979298f43f48138a5a49ba0b422390c8473570076bba7639ea713cb"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-reconcile-native-build-01.json",
+      "bytes": 1194,
+      "sha256": "67c1d1f5979449557dd539660adcb588c09a7712998a498d21bb45b0e46f52b9"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-reconcile-canonical-01.json",
+      "bytes": 1265,
+      "sha256": "444cd3415c10ff57fa6407137d52b601d9352f9e594ca5ab0c37344170a29be6"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-reconcile-stack-01.json",
+      "bytes": 1198,
+      "sha256": "4cc4e6522e22ba856d44c343ab65a58220cbf9b9b18647522ca1ac64860aa30f"
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-reconcile-host-lint-01.json",
+      "bytes": 1029,
+      "sha256": "127ca4aaead5e2470c85a6e4efd7b8a42ace4617f829c3f38a47faa86e2f6323"
+    }
+  ],
+  "canonical_elf": {
+    "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-reconcile-native-01/ev-workspace-service.elf",
+    "file_bytes": 237248,
+    "sha256": "2a6ba4da76803cba8fce27d52fbab4f2a06099484a92b446ec01d070d0f20257",
+    "loaded_pages_including_stack": 58,
+    "stack_pages": 8,
+    "nonstack_loaded_pages": 50,
+    "image_page_bound": 96,
+    "page_bound_passed": true,
+    "loaded_page_indices": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      480,
+      481,
+      482,
+      483,
+      484,
+      485,
+      486,
+      487
+    ]
+  },
+  "canonical_proof": {
+    "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-reconcile-native-01/CANONICAL_ELF.json",
+    "bytes": 3968,
+    "sha256": "74204b3c57feec7fa79557bca7446003b05fe889e48444cd4cac149a2991726a"
+  },
+  "stack_proof": {
+    "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-reconcile-native-01/STACK_AUDIT.json",
+    "bytes": 1034646,
+    "sha256": "911f87295456f6005c83b81e38c3bebdc822afe93a42dc48c7dc2ff469b8e43f"
+  },
+  "declared_stack_bytes": 32768,
+  "resolved_entry_census_bytes": 15432,
+  "stack_limitations": "Actual linked fixed-prologue/resolved reference census only, no formal whole-program or runtime high-water claim.",
+  "kernel_retirement_is_separate": true,
+  "unknown_accepted_work_cannot_hot_reset": true,
+  "cold_orphan_stage_preserved": true,
+  "legacy_volume_opened_or_changed": false,
+  "original_qualification_retained": "services/workspace/QUALIFICATION.json",
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

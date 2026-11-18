@@ -34,12 +34,18 @@ const MEASURED: [u8; 32] = [
 /// rather than accepting a caller assertion that some other memory was loaded.
 pub(crate) type LoadedImage = PrivateLoadedImage<MAX_PRIVATE_PAGES>;
 pub(crate) type LoadedRoot = PrivateLoadedRoot<MAX_PRIVATE_PAGES>;
-#[cfg(feature = "test-m5-native")]
+#[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
 pub(crate) type NativeLoadedImage =
     PrivateLoadedImage<{ ev_kernel::executable::NATIVE_ROOT_MAX_PRIVATE_PAGES }>;
-#[cfg(feature = "test-m5-native")]
+#[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
 pub(crate) type NativeLoadedRoot =
     PrivateLoadedRoot<{ ev_kernel::executable::NATIVE_ROOT_MAX_PRIVATE_PAGES }>;
+#[cfg(feature = "test-m6-network")]
+pub(crate) type NetworkLoadedImage =
+    PrivateLoadedImage<{ ev_kernel::executable::ROOT_V4_MAX_PRIVATE_PAGES }>;
+#[cfg(feature = "test-m6-network")]
+pub(crate) type NetworkLoadedRoot =
+    PrivateLoadedRoot<{ ev_kernel::executable::ROOT_V4_MAX_PRIVATE_PAGES }>;
 pub(crate) struct PrivateLoadedImage<const N: usize> {
     pub(crate) root: PrivateLoadedRoot<N>,
     entry: u64,
@@ -48,8 +54,16 @@ pub(crate) struct PrivateLoadedImage<const N: usize> {
     startup: Option<ev_kernel::loaded_image::Startup>,
 }
 const _: () = {
-    assert!(core::mem::size_of::<LoadedImage>() <= 2048);
-    assert!(core::mem::size_of::<LoadedRoot>() <= 2048);
+    // V4 retains one additional move-only mapping ledger entry for Root505.
+    // This metadata allowance is not a stack/quota increase: actual linked
+    // Kernel call-chain admission still enforces the unchanged256KiB stack.
+    let allowance = if cfg!(feature = "test-m6-network") {
+        core::mem::size_of::<Option<(u64, ev_kernel::memory_object::MappingLease)>>()
+    } else {
+        0
+    };
+    assert!(core::mem::size_of::<LoadedImage>() <= 2048 + allowance);
+    assert!(core::mem::size_of::<LoadedRoot>() <= 2048 + allowance);
 };
 
 /// Reusable controller slot. Empty is a tombstone with no backing, never an
@@ -122,6 +136,31 @@ impl<const N: usize> Deref for PrivateLoadedRoot<N> {
     }
 }
 impl<const N: usize> PrivateLoadedRoot<N> {
+    /// # Safety
+    /// Exact stopped/held selected V5 owner and retained extent claims. No
+    /// admitted ProcessLease permits an exclusive borrow of this root.
+    #[cfg(feature = "test-m8-workspace")]
+    pub(crate) unsafe fn workspace_leaf_inactive(
+        &mut self,
+        first: usize,
+        pages: usize,
+    ) -> Result<crate::user_space::WorkspaceLeaf<'_, N>, &'static str> {
+        let root = self.backing.as_mut().ok_or("empty workspace root")?;
+        // SAFETY: caller and narrow underlying guard share actual exclusion.
+        unsafe { root.workspace_leaf_inactive(first, pages) }
+    }
+    /// # Safety
+    /// Exact captured Root/controller/AP exclusion and retained dynamic PT owner.
+    #[cfg(feature = "test-m6-network")]
+    pub(crate) unsafe fn dynamic_leaf_captured(
+        &self,
+        table: &ev_kernel::memory::PhysicalFrame,
+        controller: u64,
+    ) -> Result<crate::user_space::DynamicLeaf<'_, N>, &'static str> {
+        let root = self.backing.as_ref().ok_or("empty dynamic Root")?;
+        // SAFETY: forwards actual captured/owned frame contract above.
+        unsafe { root.dynamic_leaf_captured(table, controller) }
+    }
     /// # Safety
     /// Same held/stopped/inactive root contract as the narrow UserRoot API.
     #[cfg(any(feature = "test-m4-display", feature = "test-m4-desktop"))]
@@ -287,6 +326,123 @@ impl<const N: usize> PrivateLoadedRoot<N> {
         // inactive-root/authority/occupancy checks preserve a refused lease.
         unsafe { self.map_prebound_inactive(authority, object, lease, PREBOUND_APPLICATION_PAGE) }
     }
+    /// # Safety
+    /// Actual held/stopped M6 Root, restored CR3, retained initialized AppFile
+    /// object and lease. This is the existing Root-owned AppFile capability;
+    /// its separate506 mapping never aliases System IO508 or catalogue507.
+    #[cfg(feature = "test-m6-session")]
+    pub(crate) unsafe fn map_session_note_inactive(
+        &mut self,
+        authority: &Authority,
+        object: &MemoryObject,
+        lease: MappingLease,
+    ) -> Result<(), RejectedSharedMap> {
+        if !lease.writable() {
+            return Err(RejectedSharedMap {
+                error: SharedMapError::Unavailable,
+                lease,
+            });
+        }
+        // SAFETY: caller supplies the existing inactive-root ownership guard.
+        unsafe {
+            self.map_prebound_inactive(
+                authority,
+                object,
+                lease,
+                ev_userspace_contract::root_v2::native::SESSION_NOTE_PAGE * FRAME_SIZE,
+            )
+        }
+    }
+    /// # Safety
+    /// Held/stopped V4 Root; exact retained client-window claim, no active RPC.
+    #[cfg(feature = "test-m6-network")]
+    pub(crate) unsafe fn map_network_client_inactive(
+        &mut self,
+        a: &Authority,
+        object: &MemoryObject,
+        lease: MappingLease,
+    ) -> Result<(), RejectedSharedMap> {
+        if !lease.writable() {
+            return Err(RejectedSharedMap {
+                error: SharedMapError::Unavailable,
+                lease,
+            });
+        }
+        // SAFETY: same exact inactive-root lease discipline, fixed V4 page505.
+        unsafe {
+            self.map_prebound_inactive(
+                a,
+                object,
+                lease,
+                ev_userspace_contract::root_v4::ROOT_NET_CLIENT_PAGE * FRAME_SIZE,
+            )
+        }
+    }
+    #[cfg(feature = "test-m6-network")]
+    pub(crate) fn validate_network_client(
+        &self,
+        a: &Authority,
+        object: &MemoryObject,
+    ) -> Result<(), SharedMapError> {
+        let root = self.backing.as_ref().ok_or(SharedMapError::Empty)?;
+        let lease = root
+            .shared_mapping(ev_userspace_contract::root_v4::ROOT_NET_CLIENT_PAGE * FRAME_SIZE)
+            .ok_or(SharedMapError::Missing)?;
+        if !lease.writable() {
+            return Err(SharedMapError::Unavailable);
+        }
+        object
+            .validate_mapping(a, lease)
+            .map_err(SharedMapError::Authority)
+    }
+    /// # Safety
+    /// Actual stopped Root and quiesced client RPC; exact retained object.
+    #[cfg(feature = "test-m6-network")]
+    pub(crate) unsafe fn unmap_network_client_inactive(
+        &mut self,
+        object: &mut MemoryObject,
+    ) -> Result<(), SharedMapError> {
+        // SAFETY: the exact fixed505 mapping is no longer accessible by any CPU.
+        unsafe {
+            self.unmap_prebound_inactive(
+                object,
+                ev_userspace_contract::root_v4::ROOT_NET_CLIENT_PAGE * FRAME_SIZE,
+            )
+        }
+    }
+    #[cfg(feature = "test-m6-session")]
+    pub(crate) fn validate_session_note(
+        &self,
+        authority: &Authority,
+        object: &MemoryObject,
+    ) -> Result<(), SharedMapError> {
+        let root = self.backing.as_ref().ok_or(SharedMapError::Empty)?;
+        let lease = root
+            .shared_mapping(ev_userspace_contract::root_v2::native::SESSION_NOTE_PAGE * FRAME_SIZE)
+            .ok_or(SharedMapError::Missing)?;
+        if !lease.writable() {
+            return Err(SharedMapError::Unavailable);
+        }
+        object
+            .validate_mapping(authority, lease)
+            .map_err(SharedMapError::Authority)
+    }
+    /// # Safety
+    /// Exact stopped Root and quiesced App/File users; preserve the actual lease
+    /// until this unmap returns it to the retained AppFile object owner.
+    #[cfg(feature = "test-m6-session")]
+    pub(crate) unsafe fn unmap_session_note_inactive(
+        &mut self,
+        object: &mut MemoryObject,
+    ) -> Result<(), SharedMapError> {
+        // SAFETY: the caller has retired every user of the exact fixed506 lease.
+        unsafe {
+            self.unmap_prebound_inactive(
+                object,
+                ev_userspace_contract::root_v2::native::SESSION_NOTE_PAGE * FRAME_SIZE,
+            )
+        }
+    }
 
     #[cfg(any(feature = "test-m3-file", feature = "test-m4-desktop"))]
     pub(crate) fn validate_application(
@@ -446,6 +602,54 @@ impl<const N: usize> PrivateLoadedRoot<N> {
     }
 }
 impl<const N: usize> PrivateLoadedImage<N> {
+    /// # Safety
+    /// Exact measured selected plan and typed record, actual held process,
+    /// exclusive allocator/IF0/controller root/AP exclusion. External extent
+    /// and Display owners must be installed/retained before admission.
+    #[cfg(feature = "test-m8-workspace")]
+    pub(crate) unsafe fn load_workspace(
+        offset: u64,
+        bits: u8,
+        original: u64,
+        image: &Image<'_>,
+        startup: ev_kernel::startup_record::Record<'_>,
+        frames: &mut BootstrapFrames,
+    ) -> Result<Self, &'static str> {
+        use ev_kernel::executable::StartupLayout;
+        if !matches!(
+            image.startup_layout(),
+            StartupLayout::ServiceV1 | StartupLayout::ServiceV5 | StartupLayout::RootV5
+        ) {
+            return Err("not selected startup layout");
+        }
+        startup
+            .check_layout(image.startup_layout())
+            .map_err(|_| "selected typed startup mismatch")?;
+        // SAFETY: same initialized physical loader, exact parsed record/plan.
+        let root = unsafe {
+            PrivateUserRoot::load_private_record(
+                offset,
+                bits,
+                original,
+                image,
+                Some(startup),
+                frames,
+            )?
+        };
+        Ok(Self {
+            root: PrivateLoadedRoot {
+                backing: Some(root),
+            },
+            entry: image.entry(),
+            stack: image.stack_top(),
+            manifest: image.manifest_digest(),
+            startup: Some(ev_kernel::loaded_image::Startup {
+                address: image.bootstrap_page().ok_or("selected startup page")?,
+                bytes: startup.bytes().len(),
+                digest: Sha256::digest(startup.bytes()).into(),
+            }),
+        })
+    }
     #[cfg(any(feature = "test-m4-display", feature = "test-m4-desktop"))]
     pub(crate) fn borrowed_information(&self, process: ProcessId, frames: u64) -> Information {
         Information {
@@ -544,7 +748,7 @@ impl<const N: usize> PrivateLoadedImage<N> {
     /// Same actual held allocator/CPU ownership as load_root_v2, with the exact
     /// profile3 record. Bank claims must be installed by the outer native owner
     /// before it can produce an admitted LoadedExecutable lease.
-    #[cfg(feature = "test-m5-native")]
+    #[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
     pub(crate) unsafe fn load_native_root(
         offset: u64,
         bits: u8,
@@ -567,6 +771,36 @@ impl<const N: usize> PrivateLoadedImage<N> {
             manifest: image.manifest_digest(),
             startup: Some(ev_kernel::loaded_image::Startup {
                 address: startup_address,
+                bytes: startup.len(),
+                digest: Sha256::digest(startup).into(),
+            }),
+        })
+    }
+    /// # Safety
+    /// Exact held V4 plan and startup, sole allocator and restored controller.
+    #[cfg(feature = "test-m6-network")]
+    pub(crate) unsafe fn load_root_v4(
+        offset: u64,
+        bits: u8,
+        original: u64,
+        image: &Image<'_>,
+        startup: &[u8; ev_userspace_contract::root_v4::SIZE],
+        frames: &mut BootstrapFrames,
+    ) -> Result<Self, &'static str> {
+        let address = image.bootstrap_page().ok_or("missing RootV4 page")?;
+        // SAFETY: named V4 parser retains exact initialized physical ownership.
+        let root = unsafe {
+            PrivateUserRoot::load_root_v4(offset, bits, original, image, startup, frames)?
+        };
+        Ok(Self {
+            root: PrivateLoadedRoot {
+                backing: Some(root),
+            },
+            entry: image.entry(),
+            stack: image.stack_top(),
+            manifest: image.manifest_digest(),
+            startup: Some(ev_kernel::loaded_image::Startup {
+                address,
                 bytes: startup.len(),
                 digest: Sha256::digest(startup).into(),
             }),

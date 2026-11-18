@@ -92,7 +92,7 @@ not dispatch while a peer does, rejects a wrong Job budget, and revokes each gro
 while preserving custody roots. These are prepared fixtures, not a reboot,
 supervisor crash/replacement or SMP runtime proof. The image bytes remain `abc`.
 Strict serial/evidence parsing and the cumulative regression guard these claims.
-Executed evidence is linked in [M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+Executed evidence is linked in M2 progress.
 
 Remaining work: trusted boot epoch/bundle selection, sealed runtime ownership,
 validated executable/address-space construction, atomic activation, real

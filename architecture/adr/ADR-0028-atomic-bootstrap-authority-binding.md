@@ -11,7 +11,7 @@ Manifest measurement alone does not prove that a selector resolves to the right
 live object. Installing grants incrementally could leave a partial authority set
 after a late mismatch or capacity failure. Add a bounded resolver and transactional
 derivation to the existing authority mechanism. This is a Level B refinement under
-the accepted engineering direction, preserving the [custody design](../designs/ROOT_AUTHORITY_CUSTODY.md).
+the founder mandate, preserving the [custody design](../designs/ROOT_AUTHORITY_CUSTODY.md).
 
 `bootstrap_binding::install` holds exclusive access to the authority tables across
 catalog validation, live authorization, canonical set hashing and batch installation.
@@ -88,4 +88,4 @@ correct batch, WRITE remains denied, root revocation invalidates its READ descen
 and the unrelated endpoint survives. The image is deliberately a digest fixture,
 not a supervisor executable. `python3 tools/m2/binding.py` checks exact proof markers
 on repeated one/two-CPU boots and includes the complete M1 regression. See
-[M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance) for executed evidence.
+M2 progress for executed evidence.

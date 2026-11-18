@@ -60,7 +60,7 @@ impl Runtime<'_, '_> {
         assert!(self.pending.iter().all(Option::is_none));
         // Input/Block/File/Display are alive until the observed scenario ends;
         // stopping one never masquerades as preserving it across App/Shell restart.
-        for index in 1..=6 {
+        for index in 1..=ACTORS {
             if let Some(actor) = self.actors[index - 1].as_ref() {
                 if actor.retired {
                     continue;
@@ -68,7 +68,7 @@ impl Runtime<'_, '_> {
                 self.stop_actor(index).unwrap();
             }
         }
-        for index in 1..=6 {
+        for index in 1..=ACTORS {
             if let Some(actor) = self.actors[index - 1].as_ref() {
                 if actor.retired {
                     continue;
@@ -101,7 +101,7 @@ impl Runtime<'_, '_> {
         self.collect_jobs();
         assert!(self.actors.iter().all(Option::is_none));
         assert!(self.jobs.iter().all(Option::is_none));
-        for index in 0..16 {
+        for index in 0..WIRES {
             let Some(mut wire) = self.wires[index].take() else {
                 continue;
             };
@@ -151,7 +151,51 @@ impl Runtime<'_, '_> {
             #[cfg(feature = "test-m5-native")]
             RootImage::Native(owner) => {
                 let image = owner.into_image();
+                #[cfg(feature = "test-m6-network")]
+                {
+                    // SAFETY: actual Root terminated/domain closed and every
+                    // child retired/forgotten; exact exclusive image returned.
+                    let dynamic_result = unsafe {
+                        self.dynamic.shutdown(
+                            &image.loaded().root,
+                            self.a,
+                            self.s,
+                            self.registry,
+                            frames,
+                            self.hw,
+                        )
+                    };
+                    (self.observations)(Observation::SessionDynamicImage(self.dynamic.snapshot(
+                        0,
+                        self.root.meta,
+                        image.loaded().root.root(),
+                        crate::timer::now(),
+                        dynamic_result.map(|()| (0, 0)),
+                    )));
+                    dynamic_result.expect("actual dynamic code/reader retirement");
+                }
                 let loaded = image.loaded_inactive(self.s).unwrap();
+                #[cfg(feature = "test-m6-session")]
+                // SAFETY: Root is stopped, all accepted RPCs and users have
+                // quiesced; release the exact extra claim before RAM teardown.
+                unsafe {
+                    #[cfg(not(feature = "test-m6-network"))]
+                    let which = Scalar::Application;
+                    #[cfg(feature = "test-m6-network")]
+                    let which = Scalar::Note;
+                    loaded
+                        .root
+                        .unmap_session_note_inactive(self.backing.scalar_mut(which))
+                }
+                .unwrap();
+                #[cfg(feature = "test-m6-network")]
+                // SAFETY: exact stopped Root; every accepted client request settled.
+                unsafe {
+                    loaded
+                        .root
+                        .unmap_network_client_inactive(self.backing.scalar_mut(Scalar::NetClient))
+                }
+                .unwrap();
                 for (which, aux) in [(Scalar::System, false), (Scalar::Catalogue, true)] {
                     // SAFETY: exact stopped Root, actual scalar owner and restored CR3.
                     unsafe {

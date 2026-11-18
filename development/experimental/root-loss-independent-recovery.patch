@@ -1,0 +1,391 @@
+diff --git a/services/workspace-root/Cargo.toml b/services/workspace-root/Cargo.toml
+--- a/services/workspace-root/Cargo.toml
++++ b/services/workspace-root/Cargo.toml
+@@ -14,6 +14,7 @@
+ 
+ [features]
+ native-actor = []
++test-m8-root-loss-after-save = ["native-actor"]
+ 
+ [dependencies]
+ ev-userspace-contract = { path = "../../libs/userspace-contract" }
+diff --git a/services/workspace-root/src/lib.rs b/services/workspace-root/src/lib.rs
+--- a/services/workspace-root/src/lib.rs
++++ b/services/workspace-root/src/lib.rs
+@@ -13,6 +13,8 @@
+ pub mod render;
+ pub mod requirements;
+ pub mod retirement;
++#[cfg(feature = "test-m8-root-loss-after-save")]
++pub mod root_loss_probe;
+ pub mod semantic;
+ pub mod shutdown;
+ use ev_userspace_contract::root_v5::{
+diff --git a/services/workspace-root/src/native/mod.rs b/services/workspace-root/src/native/mod.rs
+--- a/services/workspace-root/src/native/mod.rs
++++ b/services/workspace-root/src/native/mod.rs
+@@ -101,6 +101,8 @@
+     next_control: u64,
+     registration: u64,
+     states: [Option<AppState>; 4],
++    #[cfg(feature = "test-m8-root-loss-after-save")]
++    root_loss_probe: ev_workspace_root::root_loss_probe::Probe,
+     leases: [Option<filegrant::Lease>; 4],
+     paused: [Option<ev_workspace_client::ui::ReleaseMode>; 4],
+     file_may_be_held: [bool; 4],
+@@ -297,6 +299,10 @@
+                 }
+                 Event::State(state) if slot.index() < 4 => {
+                     self.states[slot.index()] = Some(state);
++                    #[cfg(feature = "test-m8-root-loss-after-save")]
++                    if child == Child::EditorOne {
++                        self.root_loss_probe.observe(state, now());
++                    }
+                 }
+                 Event::Open if matches!(child, Child::EditorOne | Child::EditorTwo) => {
+                     self.request_picker(slot.index())
+@@ -424,6 +430,12 @@
+         self.policy = Some(policy);
+     }
+     fn tick(&mut self) {
++        #[cfg(feature = "test-m8-root-loss-after-save")]
++        if self.root_loss_probe.due(now()) {
++            // Actual Root EXIT is observed by the unchanged Kernel. No power
++            // completion, host kill, recovery write, or successful cleanup.
++            rt::exit(ev_workspace_root::root_loss_probe::EXIT_CODE);
++        }
+         if self.shutdown_tick() {
+             return;
+         }
+diff --git a/services/workspace-root/src/native/resident.rs b/services/workspace-root/src/native/resident.rs
+--- a/services/workspace-root/src/native/resident.rs
++++ b/services/workspace-root/src/native/resident.rs
+@@ -43,6 +43,9 @@
+         ptr::addr_of_mut!((*slot).next_control).write(0);
+         ptr::addr_of_mut!((*slot).registration).write(0);
+         ptr::addr_of_mut!((*slot).states).write([None; 4]);
++        #[cfg(feature = "test-m8-root-loss-after-save")]
++        ptr::addr_of_mut!((*slot).root_loss_probe)
++            .write(ev_workspace_root::root_loss_probe::Probe::new());
+         ptr::addr_of_mut!((*slot).leases).write([const { None }; 4]);
+         ptr::addr_of_mut!((*slot).paused).write([None; 4]);
+         ptr::addr_of_mut!((*slot).file_may_be_held).write([false; 4]);
+diff --git a/services/workspace-root/src/root_loss_probe.rs b/services/workspace-root/src/root_loss_probe.rs
+new file mode 100644
+--- /dev/null
++++ b/services/workspace-root/src/root_loss_probe.rs
+@@ -0,0 +1,80 @@
++//! Selected internal qualification fault; absent from the normal Root artifact.
++//! A real Dirty -> Saving -> Saved sequence arms one fixed delayed Root exit.
++//! App state is a pacing trigger only; independent cold bytes prove persistence.
++use ev_workspace_client::ui::State;
++
++pub const EXIT_CODE: u64 = 0x4d38;
++const DELAY_TICKS: u64 = 8192;
++
++#[derive(Default)]
++pub struct Probe {
++    phase: u8,
++    exit_at: Option<u64>,
++}
++impl Probe {
++    pub const fn new() -> Self {
++        Self {
++            phase: 0,
++            exit_at: None,
++        }
++    }
++    pub fn observe(&mut self, state: State, now: u64) {
++        if self.exit_at.is_some() {
++            return;
++        }
++        self.phase = match (self.phase, state) {
++            (_, State::Dirty) => 1,
++            (1, State::Saving) => 2,
++            (2, State::Saved) => {
++                self.exit_at = now.checked_add(DELAY_TICKS).filter(|n| *n != u64::MAX);
++                3
++            }
++            (2, State::Saving) => 2,
++            _ => 0,
++        };
++    }
++    pub fn due(&self, now: u64) -> bool {
++        self.exit_at.is_some_and(|at| now >= at)
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn initial_saved_or_dirty_without_save_cannot_arm() {
++        let mut p = Probe::new();
++        p.observe(State::Saved, 1);
++        p.observe(State::Dirty, 2);
++        p.observe(State::Saved, 3);
++        assert!(!p.due(u64::MAX));
++    }
++    #[test]
++    fn uncertain_save_does_not_arm() {
++        let mut p = Probe::new();
++        p.observe(State::Dirty, 1);
++        p.observe(State::Saving, 2);
++        p.observe(State::Uncertain, 3);
++        p.observe(State::Saved, 4);
++        assert!(!p.due(u64::MAX));
++    }
++    #[test]
++    fn actual_sequence_has_one_fixed_delay_without_renewal() {
++        let mut p = Probe::new();
++        p.observe(State::Dirty, 1);
++        p.observe(State::Saving, 2);
++        p.observe(State::Saved, 3);
++        assert!(!p.due(3 + DELAY_TICKS - 1));
++        p.observe(State::Saved, 4000);
++        p.observe(State::Dirty, 5000);
++        assert!(p.due(3 + DELAY_TICKS));
++    }
++    #[test]
++    fn invalid_clock_overflow_cannot_force_exit() {
++        let mut p = Probe::new();
++        p.observe(State::Dirty, 1);
++        p.observe(State::Saving, 2);
++        p.observe(State::Saved, u64::MAX - 1);
++        assert!(!p.due(u64::MAX));
++    }
++}
+diff --git a/tools/ev/src/workspace.rs b/tools/ev/src/workspace.rs
+--- a/tools/ev/src/workspace.rs
++++ b/tools/ev/src/workspace.rs
+@@ -36,7 +36,7 @@
+         ]
+     }
+ }
+-pub const HELP: &str = "Usage: cargo run -p ev --features workspace -- workspace packages --root PATH --output NEW_DIR --files ELF --editor ELF --inspector ELF [--editor-candidate ELF]\n       ... workspace prepare|build --root PATH --output NEW_DIR --artifacts INPUT_JSON\n       ... workspace preview --root PATH --prepared DIR [--timeout SECONDS] [--headless] [--host-provision-new | --owned-data-template PATH --owned-data-template-sha256 HEX] [--ovmf-code PATH --ovmf-vars PATH] [--scenario files-basic|files-a1|files-shutdown|files-restart|inspector-own|inspector-reader|large-io|large-io-finite|legacy-owner]\n       ... workspace rebuild --root PATH --output NEW_DIR [--provision-new]\nA1 producer declarations are explicit --files-semantic-tree/--editor-semantic-tree/--inspector-semantic-tree/--editor-candidate-semantic-tree flags for packages, or semantic_tree booleans in artifact JSON.\nAll paths are explicit Internal inputs. Preview creates only a new owned96MiB disk and private OVMF variables. legacy-owner requires an explicit verified owned template, performs no edit/Save and checks the whole disk unchanged after VM exit. No VM success or update/installer acceptance follows from packaging.\n";
++pub const HELP: &str = "Usage: cargo run -p ev --features workspace -- workspace packages --root PATH --output NEW_DIR --files ELF --editor ELF --inspector ELF [--editor-candidate ELF]\n       ... workspace prepare|build --root PATH --output NEW_DIR --artifacts INPUT_JSON\n       ... workspace preview --root PATH --prepared DIR [--timeout SECONDS] [--headless] [--host-provision-new | --owned-data-template PATH --owned-data-template-sha256 HEX] [--ovmf-code PATH --ovmf-vars PATH] [--scenario files-basic|files-a1|files-shutdown|files-restart|root-recovery|inspector-own|inspector-reader|large-io|large-io-finite|legacy-owner]\n       ... workspace rebuild --root PATH --output NEW_DIR [--provision-new]\nA1 producer declarations are explicit --files-semantic-tree/--editor-semantic-tree/--inspector-semantic-tree/--editor-candidate-semantic-tree flags for packages, or semantic_tree booleans in artifact JSON.\nAll paths are explicit Internal inputs. Preview creates only a new owned96MiB disk and private OVMF variables. legacy-owner requires an explicit verified owned template, performs no edit/Save and checks the whole disk unchanged after VM exit. No VM success or update/installer acceptance follows from packaging.\n";
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub enum Operation {
+     Packages,
+@@ -154,6 +154,7 @@
+                             && value != "files-a1"
+                             && value != "files-shutdown"
+                             && value != "files-restart"
++                            && value != "root-recovery"
+                             && value != "inspector-own"
+                             && value != "inspector-reader"
+                             && value != "large-io"
+@@ -273,7 +274,10 @@
+         } else {
+             120
+         };
+-        let template = matches!(scenario, "large-io" | "large-io-finite" | "legacy-owner");
++        let template = matches!(
++            scenario,
++            "large-io" | "large-io-finite" | "legacy-owner" | "root-recovery"
++        );
+         if result.timeout < minimum
+             || template != result.owned_data_template.is_some()
+             || (!template && !result.host_provision_new)
+@@ -331,6 +335,35 @@
+     use super::*;
+     fn p(words: &[&str]) -> Result<Options, String> {
+         parse(&words.iter().map(OsString::from).collect::<Vec<_>>())
++    }
++    #[test]
++    fn independent_root_recovery_requires_verified_existing_template() {
++        let base = [
++            "preview",
++            "--root",
++            "r",
++            "--prepared",
++            "p",
++            "--scenario",
++            "root-recovery",
++            "--timeout",
++            "120",
++        ];
++        assert!(p(&base).is_err());
++        let mut provision = base.to_vec();
++        provision.push("--host-provision-new");
++        assert!(p(&provision).is_err());
++        let hash = "a".repeat(64);
++        let mut owned = base.to_vec();
++        owned.extend([
++            "--owned-data-template",
++            "t",
++            "--owned-data-template-sha256",
++            &hash,
++        ]);
++        assert!(p(&owned).is_ok());
++        owned.push("--host-provision-new");
++        assert!(p(&owned).is_err());
+     }
+     #[test]
+     fn own_inspector_requires_new_owned_disk_and_at_least300_seconds() {
+diff --git a/tools/ev/src/workspace/run.rs b/tools/ev/src/workspace/run.rs
+--- a/tools/ev/src/workspace/run.rs
++++ b/tools/ev/src/workspace/run.rs
+@@ -732,6 +732,8 @@
+     let mut scenario = options.scenario.as_ref().map(|profile| {
+         if profile == "inspector-reader" {
+             super::scenario::Scenario::reader(&root)
++        } else if profile == "root-recovery" {
++            super::scenario::Scenario::recovery(&root)
+         } else if profile == "files-restart" {
+             super::scenario::Scenario::restart(&root)
+         } else if profile == "inspector-own" {
+@@ -765,7 +767,7 @@
+             .and_then(|value| value.get(..16))
+             .ok_or("prepared source identity missing")?
+     );
+-    if restart_selected {
++    if restart_selected || options.scenario.as_deref() == Some("root-recovery") {
+         scenario
+             .as_mut()
+             .unwrap()
+@@ -926,7 +928,11 @@
+     let shutdown_selected = options.scenario.as_deref().is_some_and(|p| {
+         matches!(
+             p,
+-            "files-shutdown" | "inspector-own" | "inspector-reader" | "files-restart"
++            "files-shutdown"
++                | "inspector-own"
++                | "inspector-reader"
++                | "files-restart"
++                | "root-recovery"
+         )
+     });
+     let restart_evidence = restart_selected.then(|| {
+@@ -957,7 +963,7 @@
+         .is_some_and(|proof| proof.is_ok());
+     bundle::write_json_new(
+         &directory.join("observation.json"),
+-        &serde_json::json!({"schema":1,"scope":if restart_selected{"Actual owned guest reset, fresh same-build second boot, native reopen and final checked shutdown are required. No common Root-loss recovery or full M8 acceptance."}else if shutdown_selected{"Actual owned files-shutdown observation; checked Kernel shutdown and cold bytes are required separately. No restart/recovery or full M8 acceptance."}else{"Actual QEMU observation; no clean quiescence, recovery or milestone acceptance follows"},"exit_code":status.code(),"timeout":timed_out,"disk_floor_reached":disk_floor_reached,"fatal_guest_line":fatal_guest_line,"scenario_error":scenario_error,"scenario_cold_bytes":scenario_bytes,"clean_shutdown":clean_shutdown,"checked_shutdown_evidence":shutdown_evidence,"checked_restart_evidence":restart_evidence,"restart_native_reopen_complete":restart_selected&&restart_witness.is_some()&&scenario.as_ref().is_some_and(|s|s.complete())&&scenario_error.is_none(),"elapsed_ms":vm_elapsed_ms,"host_postcheck_elapsed_ms":start.elapsed().as_millis().saturating_sub(vm_elapsed_ms),"serial_bytes":output.len(),"serial_sha256":bundle::hex(&bundle::hash(&output)),"disk_sha256":build::hash_file(&data)?,"host_provision_new":options.host_provision_new,"template_source_unchanged":template_unchanged,"m8_acceptance":false}),
++        &serde_json::json!({"schema":1,"scope":if options.scenario.as_deref()==Some("root-recovery"){"Independent healthy Root boot from an explicit verified owned image, fresh protected native reopen and checked shutdown. Earlier actual Root loss and exact preservation must be independently proved; no in-place replacement or full M8 acceptance."}else if restart_selected{"Actual owned guest reset, fresh same-build second boot, native reopen and final checked shutdown are required. No common Root-loss recovery or full M8 acceptance."}else if shutdown_selected{"Actual owned files-shutdown observation; checked Kernel shutdown and cold bytes are required separately. No restart/recovery or full M8 acceptance."}else{"Actual QEMU observation; no clean quiescence, recovery or milestone acceptance follows"},"exit_code":status.code(),"timeout":timed_out,"disk_floor_reached":disk_floor_reached,"fatal_guest_line":fatal_guest_line,"scenario_error":scenario_error,"scenario_cold_bytes":scenario_bytes,"clean_shutdown":clean_shutdown,"checked_shutdown_evidence":shutdown_evidence,"checked_restart_evidence":restart_evidence,"restart_native_reopen_complete":restart_selected&&restart_witness.is_some()&&scenario.as_ref().is_some_and(|s|s.complete())&&scenario_error.is_none(),"elapsed_ms":vm_elapsed_ms,"host_postcheck_elapsed_ms":start.elapsed().as_millis().saturating_sub(vm_elapsed_ms),"serial_bytes":output.len(),"serial_sha256":bundle::hex(&bundle::hash(&output)),"disk_sha256":build::hash_file(&data)?,"host_provision_new":options.host_provision_new,"template_source_unchanged":template_unchanged,"m8_acceptance":false}),
+     )?;
+     println!(
+         "M8 actual VM evidence: {} (timeout={timed_out}, exit={:?})",
+diff --git a/tools/ev/src/workspace/scenario.rs b/tools/ev/src/workspace/scenario.rs
+--- a/tools/ev/src/workspace/scenario.rs
++++ b/tools/ev/src/workspace/scenario.rs
+@@ -71,6 +71,7 @@
+     reader: bool,
+     restart: bool,
+     reopened: bool,
++    recovery: bool,
+     root_binding: Option<String>,
+     power_pacing: Option<PowerPacing>,
+ }
+@@ -593,6 +594,7 @@
+             reader: false,
+             restart: false,
+             reopened: false,
++            recovery: false,
+             root_binding: None,
+             power_pacing: None,
+         }
+@@ -650,6 +652,7 @@
+             reader: false,
+             restart: false,
+             reopened: false,
++            recovery: false,
+             root_binding: None,
+             power_pacing: None,
+         }
+@@ -685,6 +688,25 @@
+         scenario.steps = plan.steps;
+         scenario.reopened = true;
+         scenario.gate_capture = 3000;
++        scenario
++    }
++    pub(super) fn recovery(root: &Path) -> Self {
++        let mut scenario = Self::reopened(root);
++        let mut plan = Plan {
++            steps: Vec::new(),
++            at: 12_000,
++            x: 320,
++            y: 240,
++            capture: 400,
++        };
++        // Independent boot must begin without the old live File grant.
++        plan.await_view(1, "Choose a file", "", -1);
++        plan.capture("independent-recovery-Editor-has-no-old-selection");
++        // Reuse the protected reopen/power sequence. Historical capture labels
++        // carry 'restart'; this profile does not issue or infer any reset.
++        plan.reopen_after_restart();
++        scenario.steps = plan.steps;
++        scenario.recovery = true;
+         scenario
+     }
+     fn with_profile(
+@@ -801,6 +823,7 @@
+             reader,
+             restart,
+             reopened: false,
++            recovery: false,
+             root_binding: None,
+             power_pacing: None,
+         }
+@@ -1057,7 +1080,7 @@
+     pub(super) fn report(&self, path: &Path, error: &Option<String>) -> Result<(), String> {
+         super::bundle::write_json_new(
+             path,
+-            &serde_json::json!({"schema":1,"scope":"Fixed synthetic reference-device PS2 input, actual Root/Apps decide outcomes; NOT human approval or authority evidence","scenario":if self.restart{"files-restart-before-reset"}else if self.reopened{"files-restart-second-boot"}else if self.reader{"inspector-reader"}else if self.own{"inspector-own"}else if self.shutdown{"files-shutdown"}else if self.legacy{"legacy-owner"}else if self.large_finite{"large-io-finite"}else if self.large{"large-io"}else if self.a1 {"files-a1"}else{"files-basic"},"profile":"Root logical640x480 initialcursor320,240; Files/Editor1 factory geometry; current protected Root picker footer70..79","planned":self.steps,"actual":self.observed,"completed_actions":self.next,"total_actions":self.steps.len(),"all_actions_delivered":self.complete(),"error":error,"expected_file":if self.legacy{"original Notes/Private READ only"}else if self.large{"large1m.txt"}else{"note1"},"expected_text":if self.legacy{"unchanged explicit owned template; no document edits or Save"}else if self.large{"1MiB ASCII pattern with last byte replaced by Z; initial caret is EOF and body click focuses only"}else{TEXT},"finite_transfer_observer":self.large_finite,"load_save_host_gate_ms":if self.large_finite{ev_workspace_client::transfer::MAX_TRANSFER_TICKS+4*ev_workspace_client::transfer::FILE_RPC_TICKS}else{10000},"host_gate_scope":"Explicit reference observation allowance, not a ticks-to-wall-time guarantee or any admitted RPC renewal","checked_shutdown_required":self.shutdown,"actual_guest_restart_required":self.restart,"fresh_second_boot_native_reopen":self.reopened,"own_Inspector_reader_exact_callback_observer":self.reader,"own_Inspector_actual_control_and_second_Save_observer":self.own,"own_Inspector_cold_minimum_note_revision":if self.own{3}else{2},"proof":"Independent cold bytes confirm persistence/preservation separately; glyph/nonce gates pace input and retain observations, not broad authority/negative-access/consent acceptance"}),
++            &serde_json::json!({"schema":1,"scope":"Fixed synthetic reference-device PS2 input, actual Root/Apps decide outcomes; NOT human approval or authority evidence","scenario":if self.recovery{"independent-root-recovery"}else if self.restart{"files-restart-before-reset"}else if self.reopened{"files-restart-second-boot"}else if self.reader{"inspector-reader"}else if self.own{"inspector-own"}else if self.shutdown{"files-shutdown"}else if self.legacy{"legacy-owner"}else if self.large_finite{"large-io-finite"}else if self.large{"large-io"}else if self.a1 {"files-a1"}else{"files-basic"},"profile":"Root logical640x480 initialcursor320,240; Files/Editor1 factory geometry; current protected Root picker footer70..79","planned":self.steps,"actual":self.observed,"completed_actions":self.next,"total_actions":self.steps.len(),"all_actions_delivered":self.complete(),"error":error,"expected_file":if self.legacy{"original Notes/Private READ only"}else if self.large{"large1m.txt"}else{"note1"},"expected_text":if self.legacy{"unchanged explicit owned template; no document edits or Save"}else if self.large{"1MiB ASCII pattern with last byte replaced by Z; initial caret is EOF and body click focuses only"}else{TEXT},"finite_transfer_observer":self.large_finite,"load_save_host_gate_ms":if self.large_finite{ev_workspace_client::transfer::MAX_TRANSFER_TICKS+4*ev_workspace_client::transfer::FILE_RPC_TICKS}else{10000},"host_gate_scope":"Explicit reference observation allowance, not a ticks-to-wall-time guarantee or any admitted RPC renewal","checked_shutdown_required":self.shutdown,"actual_guest_restart_required":self.restart,"fresh_second_boot_native_reopen":self.reopened,"own_Inspector_reader_exact_callback_observer":self.reader,"own_Inspector_actual_control_and_second_Save_observer":self.own,"own_Inspector_cold_minimum_note_revision":if self.own{3}else{2},"proof":"Independent cold bytes confirm persistence/preservation separately; glyph/nonce gates pace input and retain observations, not broad authority/negative-access/consent acceptance"}),
+         )
+     }
+ }
+@@ -1137,6 +1160,52 @@
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    #[test]
++    fn independent_recovery_proves_empty_selection_before_new_protected_open() {
++        let scenario = Scenario::recovery(Path::new("."));
++        assert!(scenario.recovery && scenario.reopened && scenario.shutdown && !scenario.restart);
++        let empty = scenario
++            .steps
++            .iter()
++            .position(|s| {
++                matches!(
++                    s.action,
++                    Action::Capture {
++                        label: "independent-recovery-Editor-has-no-old-selection",
++                        ..
++                    }
++                )
++            })
++            .unwrap();
++        let protected = scenario
++            .steps
++            .iter()
++            .position(|s| {
++                matches!(
++                    s.action,
++                    Action::Capture {
++                        label: "restart-new-boot-protected-open-before-distinct-confirm",
++                        ..
++                    }
++                )
++            })
++            .unwrap();
++        assert!(empty < protected);
++        assert_eq!(
++            scenario
++                .steps
++                .iter()
++                .filter(|s| matches!(s.action, Action::ReleasedShutdownConfirm))
++                .count(),
++            1
++        );
++        assert!(
++            !scenario
++                .steps
++                .iter()
++                .any(|s| matches!(s.action, Action::ReleasedRestartConfirm))
++        );
++    }
+     #[test]
+     fn reader_profile_requires_root_callback_and_new_pixels_before_revoke_and_checked_power() {
+         let basic = Scenario::new(Path::new("/sdk"));

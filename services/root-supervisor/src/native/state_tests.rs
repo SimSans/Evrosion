@@ -17,17 +17,27 @@ use sha2::{Digest as _, Sha256};
 use std::{cell::RefCell, rc::Rc, vec, vec::Vec};
 const DEADLINE: u64 = 1500;
 const STOP: u64 = 1000;
-struct Fixture {
+pub(super) struct Fixture {
+    session: bool,
     cat: [u8; nc::SIZE],
     context: ev_userspace_contract::Context,
     a: Vec<u8>,
     b: Vec<u8>,
 }
 impl Fixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self::with_data_declaration(true, true)
     }
     fn with_data_declaration(request: bool, contract: bool) -> Self {
+        Self::profile(request, contract, false, false)
+    }
+    pub(super) fn session_note() -> Self {
+        Self::profile(true, true, true, true)
+    }
+    pub(super) fn session_without_note() -> Self {
+        Self::profile(true, true, true, false)
+    }
+    fn profile(request: bool, contract: bool, session: bool, note: bool) -> Self {
         let elf = include_bytes!("../../../../kernel/fixtures/bootstrap-static-v1.elf");
         let app = AppId::new([4; 16]).unwrap();
         let build = |label| {
@@ -53,7 +63,22 @@ impl Fixture {
                         oldest_readable: 1,
                     },
                     entrypoint: "bin/main.elf",
-                    contracts: if contract {
+                    contracts: if note {
+                        &[
+                            Contract {
+                                name: "ev.app.private-data",
+                                major: 1,
+                                minimum_minor: 0,
+                                features: 0,
+                            },
+                            Contract {
+                                name: "ev.app.session-note",
+                                major: 1,
+                                minimum_minor: 0,
+                                features: 0,
+                            },
+                        ]
+                    } else if contract {
                         &[Contract {
                             name: "ev.app.private-data",
                             major: 1,
@@ -132,7 +157,12 @@ impl Fixture {
             layout_measurement: measurement,
         };
         let draft = nc::encode(desc([1; 32])).unwrap();
-        let measurement = native_plan::layout_measurement(&nc::Catalogue::decode(&draft).unwrap());
+        let decoded = nc::Catalogue::decode(&draft).unwrap();
+        let measurement = if session {
+            native_plan::session_layout_measurement(&decoded)
+        } else {
+            native_plan::layout_measurement(&decoded)
+        };
         let cat = nc::encode(desc(measurement)).unwrap();
         let mut context = ev_userspace_contract::Context {
             epoch: 1,
@@ -154,16 +184,30 @@ impl Fixture {
             .unwrap(),
         )
         .into();
-        Self { cat, context, a, b }
+        Self {
+            cat,
+            context,
+            a,
+            b,
+            session,
+        }
     }
-    fn packages(&self) -> Packages<'_> {
-        Packages::verify(&self.cat, self.context, &self.a, &self.b).unwrap()
+    pub(super) fn packages(&self) -> Packages<'_> {
+        if self.session {
+            Packages::verify_session(&self.cat, self.context, &self.a, &self.b).unwrap()
+        } else {
+            Packages::verify(&self.cat, self.context, &self.a, &self.b).unwrap()
+        }
     }
     fn mode(mut self, mode: nc::BootMode) -> Self {
         self.cat[nc::BOOT_MODE_OFFSET..nc::BOOT_MODE_OFFSET + 2]
             .copy_from_slice(&(mode as u16).to_le_bytes());
         let cat = nc::Catalogue::decode(&self.cat).unwrap();
-        let measurement = native_plan::layout_measurement(&cat);
+        let measurement = if self.session {
+            native_plan::session_layout_measurement(&cat)
+        } else {
+            native_plan::layout_measurement(&cat)
+        };
         self.cat[1584..1616].copy_from_slice(&measurement);
         self.context.manifest = Sha256::digest(
             native::manifest_profile(root_v2::ManifestInputs {
@@ -181,7 +225,7 @@ impl Fixture {
     }
 }
 #[derive(Clone)]
-struct Buffer(Rc<RefCell<Sector>>);
+pub(crate) struct Buffer(Rc<RefCell<Sector>>);
 impl Window for Buffer {
     fn load(&self, out: &mut Sector) {
         *out = *self.0.borrow();
@@ -190,34 +234,58 @@ impl Window for Buffer {
         *self.0.borrow_mut() = *input;
     }
 }
-struct Media {
-    cache: Vec<Sector>,
-    durable: Vec<Sector>,
-    writes: Vec<usize>,
-    fail_next: bool,
-    lose_write_reply: bool,
-    lose_flush_reply: bool,
+pub(crate) struct Media {
+    pub(super) cache: Vec<Sector>,
+    pub(super) durable: Vec<Sector>,
+    pub(super) writes: Vec<usize>,
+    pub(super) fail_next: bool,
+    pub(super) lose_write_reply: bool,
+    pub(super) lose_flush_reply: bool,
+    calls: Vec<block::Request>,
 }
-struct Link {
+pub(crate) struct Link {
+    session: bool,
+    network: bool,
     media: Rc<RefCell<Media>>,
     buffer: Buffer,
 }
 impl Wire for Link {
     type Error = ();
+    fn supports_session(&self) -> bool {
+        self.network
+    }
+    fn capture_session_deadline(&self, deadline: u64) -> Option<u64> {
+        (self.network && deadline > 100).then_some(deadline.min(1124))
+    }
     fn call(&mut self, bytes: [u8; 8], _: u64) -> Result<[u8; 8], ()> {
         let req = block::Request::decode(&bytes).unwrap();
         let mut m = self.media.borrow_mut();
+        m.calls.push(req);
         if m.fail_next {
             m.fail_next = false;
             return Err(());
         }
         match req {
             block::Request::Read { sector } => {
-                let physical = ev_store::native::physical_sector(sector).unwrap() as usize;
+                let physical = (if self.network {
+                    ev_store::network::physical_sector(sector)
+                } else if self.session {
+                    ev_store::native::session_physical_sector(sector)
+                } else {
+                    ev_store::native::physical_sector(sector)
+                })
+                .unwrap() as usize;
                 self.buffer.store(&m.cache[physical]);
             }
             block::Request::Write { sector } => {
-                let physical = ev_store::native::physical_sector(sector).unwrap() as usize;
+                let physical = (if self.network {
+                    ev_store::network::physical_sector(sector)
+                } else if self.session {
+                    ev_store::native::session_physical_sector(sector)
+                } else {
+                    ev_store::native::physical_sector(sector)
+                })
+                .unwrap() as usize;
                 let mut bytes = [0; 512];
                 self.buffer.load(&mut bytes);
                 m.cache[physical] = bytes;
@@ -249,9 +317,10 @@ fn disk() -> Rc<RefCell<Media>> {
         fail_next: false,
         lose_write_reply: false,
         lose_flush_reply: false,
+        calls: Vec::new(),
     }))
 }
-fn composed_disk() -> Rc<RefCell<Media>> {
+pub(super) fn composed_disk() -> Rc<RefCell<Media>> {
     let media = disk();
     {
         let mut m = media.borrow_mut();
@@ -263,24 +332,46 @@ fn composed_disk() -> Rc<RefCell<Media>> {
     media
 }
 fn state(media: Rc<RefCell<Media>>) -> State<Link, Buffer> {
-    let buffer = Buffer(Rc::new(RefCell::new([0; 512])));
-    State::new(
-        Backend::new(
-            Link {
-                media,
-                buffer: buffer.clone(),
-            },
-            buffer,
-            STOP,
-        )
-        .unwrap(),
-    )
+    state_profile(media, false)
 }
-fn cold(media: &Rc<RefCell<Media>>) {
+pub(super) fn state_session(media: Rc<RefCell<Media>>) -> State<Link, Buffer> {
+    state_profile(media, true)
+}
+fn state_profile(media: Rc<RefCell<Media>>, session: bool) -> State<Link, Buffer> {
+    state_profile_network(media, session, false)
+}
+#[cfg(feature = "native-network")]
+pub(crate) fn state_network(media: Rc<RefCell<Media>>) -> State<Link, Buffer> {
+    state_profile_network(media, true, true)
+}
+fn state_profile_network(
+    media: Rc<RefCell<Media>>,
+    session: bool,
+    network: bool,
+) -> State<Link, Buffer> {
+    let buffer = Buffer(Rc::new(RefCell::new([0; 512])));
+    let backend = Backend::new(
+        Link {
+            media,
+            session,
+            network,
+            buffer: buffer.clone(),
+        },
+        buffer,
+        if network { 0 } else { STOP },
+    )
+    .unwrap();
+    #[cfg(feature = "native-network")]
+    if network {
+        return State::new_downloaded_v2(backend);
+    }
+    State::new(backend)
+}
+pub(crate) fn cold(media: &Rc<RefCell<Media>>) {
     let mut m = media.borrow_mut();
     m.cache = m.durable.clone();
 }
-fn transition(s: &mut State<Link, Buffer>, p: &Packages<'_>, change: Change) {
+pub(super) fn transition(s: &mut State<Link, Buffer>, p: &Packages<'_>, change: Change) {
     s.fence();
     s.prepare(p, change, DEADLINE).unwrap();
     s.commit(p, DEADLINE).unwrap();
@@ -1114,4 +1205,101 @@ fn accepted_device_mutation_with_lost_reply_is_fenced_and_cold_replays_at_most_o
             "already recovered operation must not apply twice"
         );
     }
+}
+
+#[path = "install_tests.rs"]
+mod install_tests;
+
+#[path = "launch_tests.rs"]
+mod launch_tests;
+
+#[cfg(feature = "native-network")]
+#[path = "../native_sources/state_tests.rs"]
+pub(crate) mod downloaded_sources;
+
+#[cfg(feature = "native-network")]
+#[path = "state_tests/settled_update.rs"]
+mod settled_update;
+
+#[cfg(feature = "native-network")]
+pub(crate) fn health_bytes(media: &Rc<RefCell<Media>>) -> Vec<Sector> {
+    media.borrow().durable.clone()
+}
+
+/// Count real transport requests, including reads and failed calls.
+#[cfg(feature = "native-network")]
+pub(crate) fn storage_calls(media: &Rc<RefCell<Media>>) -> usize {
+    media.borrow().calls.len()
+}
+
+#[cfg(feature = "native-network")]
+#[test]
+fn fixed_system_profile_uses_explicit_constructor_not_feature_or_mutable_media() {
+    let f = Fixture::new();
+    let p = f.packages();
+    let legacy = native_plan::system::manifest(&p, native_plan::system::Slot::Good, 1).unwrap();
+    let media = composed_disk();
+    let mut downloaded = state_network(media.clone());
+    let mut manifest = legacy;
+    manifest.health_version = 2;
+    manifest.health_contract = Sha256::digest(crate::downloaded_health::HEALTH_DESCRIPTION).into();
+    // Fixture metadata, not a claim that an unverified subject was admitted.
+    downloaded
+        .initialize_downloaded_manifest(manifest, DEADLINE)
+        .unwrap();
+    assert_eq!(
+        downloaded
+            .system_snapshot(DEADLINE)
+            .unwrap()
+            .unwrap()
+            .selected,
+        Some(manifest)
+    );
+    assert!(
+        matches!(downloaded.inspect_system(DEADLINE),crate::native_diagnostics::system::State::Committed {selected,..} if selected==manifest)
+    );
+    let backend = downloaded.take_content_backend(false).unwrap();
+    downloaded
+        .restore_content_backend(backend)
+        .unwrap_or_else(|_| panic!("same backend"));
+    assert_eq!(
+        downloaded
+            .system_snapshot(DEADLINE)
+            .unwrap()
+            .unwrap()
+            .selected,
+        Some(manifest)
+    );
+    drop(downloaded);
+    cold(&media);
+    let before = health_bytes(&media);
+    let writes = media.borrow().writes.len();
+    let mut ordinary = state(media.clone());
+    assert!(ordinary.system_snapshot(DEADLINE).is_err());
+    assert_eq!(media.borrow().writes.len(), writes);
+    assert_eq!(health_bytes(&media), before);
+    assert!(matches!(
+        ordinary.inspect_system(DEADLINE),
+        crate::native_diagnostics::system::State::Unavailable
+    ));
+    drop(ordinary);
+    let media = composed_disk();
+    let mut ordinary = state(media.clone());
+    ordinary.system_initialize(&p, DEADLINE).unwrap();
+    assert_eq!(
+        ordinary
+            .system_snapshot(DEADLINE)
+            .unwrap()
+            .unwrap()
+            .selected,
+        Some(legacy)
+    );
+    drop(ordinary);
+    cold(&media);
+    let before = health_bytes(&media);
+    let writes = media.borrow().writes.len();
+    let mut downloaded = state_network(media.clone());
+    assert!(downloaded.system_snapshot(DEADLINE).is_err());
+    assert_eq!(media.borrow().writes.len(), writes);
+    assert_eq!(health_bytes(&media), before);
 }

@@ -48,7 +48,7 @@ debug symbols and build identity. Validate input at the adapter; never expose
 the external format as an Evrosion Stable ABI. The loader remains trusted to
 supply valid Rust references and mapped memory; arithmetic and metadata checks
 cannot sanitize arbitrary unmapped pointers. License and notice records cover
-both Cargo graphs, with missing upstream texts explicitly documented.
+both Cargo graphs; the dependency inventory records their precise scope.
 
 ## Removal plan
 
@@ -69,5 +69,5 @@ prove safe boot behavior.
 ## Resolution evidence
 
 Still Active. The adapter and repeated boot evidence establish the M0 development
-path, not removal of the temporary dependency. See [M0 progress](../../docs/release/0.1-preview.md#validation-and-provenance)
+path, not removal of the temporary dependency. See the M0 progress record (local engineering archive)
 and [ADR-0001](../adr/ADR-0001-m0-kernel-and-toolchain.md).

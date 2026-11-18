@@ -47,6 +47,8 @@ impl Snapshot {
 }
 impl Runtime<'_, '_> {
     pub(super) fn completed_opaque(&mut self, p: Pending, value: u64) {
+        #[cfg(feature = "test-m6-session")]
+        self.completed_session_ui(p, value);
         #[cfg(feature = "test-m5-native")]
         if p.file_replace
             && let Some(native) = &mut self.native
@@ -101,6 +103,16 @@ impl Runtime<'_, '_> {
             && &request[..4] == b"FMQ1"
             && request[5..] == [0, 0, 0]
         {
+            #[cfg(feature = "test-m6-session")]
+            if &reply[..4] == b"FME1"
+                && (1..=10).contains(&u32::from_le_bytes(reply[4..].try_into().unwrap()))
+            {
+                // Exact defined Internal errors are not content words. Fail
+                // closed on the reserved-word collision too; never assemble
+                // a fake counter/digest snapshot from repeated refusals.
+                self.snapshots[index] = Snapshot::default();
+                return;
+            }
             self.snapshots[index].observe(request[4], value, crate::timer::now());
         }
     }
@@ -111,8 +123,54 @@ impl Runtime<'_, '_> {
         process: ProcessId,
         thread: ThreadId,
         value: u64,
+        _delivery: (Ticket, u64),
     ) {
-        if receiver != 0 || wire != 15 || value.to_le_bytes() != *b"EVOPEN01" {
+        #[cfg(feature = "test-m6-network")]
+        if receiver == 0 {
+            self.startup_event(2, wire, (process, thread), value, _delivery);
+        }
+        #[cfg(feature = "test-m6-session")]
+        self.received_session_note(receiver, wire, process, thread, value, _delivery);
+        let body = value.to_le_bytes();
+        #[cfg(feature = "test-m7-document")]
+        let document = ev_userspace_contract::document_control::Request::decode(&body, 0)
+            .ok()
+            .filter(|r| {
+                r.operation() != ev_userspace_contract::document_control::Operation::Publish
+            });
+        #[cfg(not(feature = "test-m7-document"))]
+        let document: Option<()> = None;
+        #[cfg(feature = "test-m7-document-observe")]
+        if receiver == 0
+            && wire == 15
+            && self.document_samples < 128
+            && let Ok(request) = ev_userspace_contract::document_control::Request::decode(&body, 0)
+            && request.operation() == ev_userspace_contract::document_control::Operation::Publish
+            && let Some(actual) = self.session_current_app()
+            && (process, thread) == (actual.process, actual.thread)
+        {
+            #[cfg(feature = "test-m6-network")]
+            let address = self.backing.alias(Scalar::Note);
+            #[cfg(not(feature = "test-m6-network"))]
+            let address = self.backing.alias(Scalar::Application);
+            let bytes = core::array::from_fn(|offset| {
+                // SAFETY: retained V3 semantic/AppFile page. This actual
+                // requester holds its loan until the matching Root reply.
+                unsafe { (address as *const u8).add(offset).read_volatile() }
+            });
+            self.document_samples += 1;
+            (self.observations)(Observation::Document(DocumentObservation {
+                process: actual.process.diagnostic_id(),
+                thread: actual.thread.diagnostic_id(),
+                endpoint: self.wires[wire].as_ref().unwrap().object,
+                ticket: _delivery.0.0,
+                nonce: request.nonce(),
+                tick: crate::timer::now(),
+                frame: self.last_present[0].map_or(0, |p| p.frame),
+                bytes,
+            }));
+        }
+        if receiver != 0 || wire != 15 || (body != *b"EVOPEN01" && document.is_none()) {
             return;
         }
         let Some(actor) = self.actors[Child::App.index()].as_ref() else {
@@ -136,10 +194,200 @@ impl Runtime<'_, '_> {
         }
         if self.open.is_none() {
             self.awaiting_open = Some(actual);
+            #[cfg(feature = "test-m7-document")]
+            {
+                self.document_request = document.map(|r| (actual, r));
+            }
         }
     }
-    pub(super) fn accepted_event(&mut self, index: usize, wire: usize, value: u64) {
+    pub(super) fn accepted_event(
+        &mut self,
+        index: usize,
+        wire: usize,
+        value: u64,
+        _ticket: Ticket,
+        _tick: u64,
+    ) {
+        #[cfg(feature = "test-m6-network")]
+        if index == Child::App.index() + 1 {
+            let actual = self.current(index);
+            self.startup_event(
+                1,
+                wire,
+                (actual.process, actual.thread),
+                value,
+                (_ticket, _tick),
+            );
+        }
+        #[cfg(feature = "test-m6-session")]
+        self.accepted_session_note(index, wire, value, _ticket, _tick);
         let body = value.to_le_bytes();
+        // Metadata cannot nominate another actor. Only the actual accepted
+        // current Root Events route can request a later checked host restart.
+        #[cfg(feature = "test-m6-network")]
+        if index == 0
+            && wire == 15
+            && let Ok(request) =
+                ev_userspace_contract::root_v4::owner_session::Restart::decode(body)
+        {
+            let root = self.root.meta;
+            (self.observations)(Observation::SessionRestart(SessionRestart {
+                root_process: root.process.diagnostic_id(),
+                root_thread: root.thread.diagnostic_id(),
+                endpoint: self.wires[wire].as_ref().unwrap().object,
+                ticket: _ticket.0,
+                tick: _tick,
+                mode: request.mode(),
+                generation: request.generation(),
+            }));
+        }
+        // Opaque bounded diagnostic fields only: actual trap/endpoint binding
+        // supplies identity. No Driver bytes may nominate Root or its layer.
+        #[cfg(feature = "test-m6-network")]
+        if wire == 15 && body[..2] == *b"NE" && body[4] != 0 && body[7] <= 1 {
+            let expected_layer = match index {
+                0 => 3,
+                7 => 1,
+                8 => 2,
+                _ => 0,
+            };
+            if expected_layer != 0 && body[2] == expected_layer {
+                let actual = self.metadata(index).unwrap();
+                (self.observations)(Observation::SessionNetworkError(SessionNetworkError {
+                    actor: index as u8,
+                    process: actual.process.diagnostic_id(),
+                    thread: actual.thread.diagnostic_id(),
+                    endpoint: self.wires[wire].as_ref().unwrap().object,
+                    ticket: _ticket.0,
+                    tick: _tick,
+                    layer: body[2],
+                    operation: body[3],
+                    class: body[4],
+                    detail: body[5],
+                    subdetail: body[6],
+                    progress: body[7],
+                }));
+            }
+        }
+        // Diagnostic policy facts from an actually accepted Root frame only.
+        // Child bytes cannot nominate Root identity. These do not grant health,
+        // device quiescence, entropy quality or permission to retire an owner.
+        #[cfg(feature = "test-m6-network")]
+        if index == 0
+            && wire == 15
+            && body[..2] == *b"NW"
+            && (1..=8).contains(&body[2])
+            && body[3] <= 4
+        {
+            let root = self.root.meta;
+            (self.observations)(Observation::SessionNetworkProgress(
+                SessionNetworkProgress {
+                    root_process: root.process.diagnostic_id(),
+                    root_thread: root.thread.diagnostic_id(),
+                    endpoint: self.wires[wire].as_ref().unwrap().object,
+                    ticket: _ticket.0,
+                    tick: _tick,
+                    stage: body[2],
+                    result: body[3],
+                    argument: u32::from_le_bytes(body[4..].try_into().unwrap()),
+                },
+            ));
+        }
+        #[cfg(feature = "test-m6-network")]
+        if index == 0
+            && wire == 15
+            && body[..2] == *b"TM"
+            && (1..=3).contains(&body[2])
+            && body[3] <= 3
+        {
+            let root = self.root.meta;
+            (self.observations)(Observation::SessionTimeProgress(SessionNetworkProgress {
+                root_process: root.process.diagnostic_id(),
+                root_thread: root.thread.diagnostic_id(),
+                endpoint: self.wires[wire].as_ref().unwrap().object,
+                ticket: _ticket.0,
+                tick: _tick,
+                stage: body[2],
+                result: body[3],
+                argument: u32::from_le_bytes(body[4..].try_into().unwrap()),
+            }));
+        }
+        #[cfg(feature = "test-m6-network")]
+        if index == 0
+            && wire == 15
+            && body[..2] == *b"TP"
+            && (1..=4).contains(&body[2])
+            && body[3] <= 5
+        {
+            let root = self.root.meta;
+            (self.observations)(Observation::SessionTimeProof(SessionNetworkProgress {
+                root_process: root.process.diagnostic_id(),
+                root_thread: root.thread.diagnostic_id(),
+                endpoint: self.wires[wire].as_ref().unwrap().object,
+                ticket: _ticket.0,
+                tick: _tick,
+                stage: body[2],
+                result: body[3],
+                argument: u32::from_le_bytes(body[4..].try_into().unwrap()),
+            }));
+        }
+        #[cfg(feature = "test-m6-network")]
+        if index == 0
+            && wire == 15
+            && body[..3] == *b"TE\x01"
+            && (1..=10).contains(&body[3])
+            && (body[4] <= 10 || body[4] == 255)
+            && body[5] <= 128
+            && (1..=6).contains(&body[6])
+            && ((body[6] == 6 && (1..=8).contains(&body[7])) || (body[6] != 6 && body[7] == 0))
+        {
+            let root = self.root.meta;
+            (self.observations)(Observation::SessionTimeExchange(SessionTimeExchange {
+                root_process: root.process.diagnostic_id(),
+                root_thread: root.thread.diagnostic_id(),
+                endpoint: self.wires[wire].as_ref().unwrap().object,
+                ticket: _ticket.0,
+                tick: _tick,
+                phase: body[3],
+                tcp: body[4],
+                calls: body[5],
+                error: body[6],
+                detail: body[7],
+            }));
+        }
+        #[cfg(feature = "test-m6-network")]
+        if index == 0 && wire == 15 && body[..2] == *b"TC" && body[2] == 1 && body[3] <= 3 {
+            let root = self.root.meta;
+            (self.observations)(Observation::SessionTimeCheck(SessionNetworkProgress {
+                root_process: root.process.diagnostic_id(),
+                root_thread: root.thread.diagnostic_id(),
+                endpoint: self.wires[wire].as_ref().unwrap().object,
+                ticket: _ticket.0,
+                tick: _tick,
+                stage: body[2],
+                result: body[3],
+                argument: u32::from_le_bytes(body[4..].try_into().unwrap()),
+            }));
+        }
+        #[cfg(feature = "test-m6-network")]
+        if index == 0
+            && wire == 15
+            && body[..2] == *b"UP"
+            && (((1..=4).contains(&body[2]) && body[3] == 0)
+                || (body[2] == 5 && (1..=6).contains(&body[3])))
+        {
+            let root = self.root.meta;
+            (self.observations)(Observation::SessionUpdateProgress(SessionNetworkProgress {
+                root_process: root.process.diagnostic_id(),
+                root_thread: root.thread.diagnostic_id(),
+                endpoint: self.wires[wire].as_ref().unwrap().object,
+                ticket: _ticket.0,
+                tick: _tick,
+                stage: body[2],
+                result: body[3],
+                argument: u32::from_le_bytes(body[4..].try_into().unwrap()),
+            }));
+        }
         #[cfg(feature = "test-m5-native")]
         if index == Child::Shell.index() + 1 && wire == 15 && body == *b"EVSHCRD1" {
             let actor = self.actors[Child::Shell.index()].as_ref().unwrap();
@@ -217,7 +465,25 @@ impl Runtime<'_, '_> {
                 native.readonly_denial = None;
             }
         }
-        if index == 0 && wire == Channel::ShellControl.index() && body[0..4] == [b'R', 3, 0, 0] {
+        if index == 0
+            && wire == Channel::ShellControl.index()
+            && body[0] == b'R'
+            && body[2..4] == [0, 0]
+            && (body[1] == 3 || (cfg!(feature = "test-m7-document") && matches!(body[1], 19 | 20)))
+        {
+            #[cfg(feature = "test-m7-document")]
+            if !match (body[1], self.document_request) {
+                (3, None) => true,
+                (19 | 20, Some((target, request))) => {
+                    self.awaiting_open == Some(target)
+                        && (body[1] == 20)
+                            == (request.operation()
+                                == ev_userspace_contract::document_control::Operation::OpenEdit)
+                }
+                _ => false,
+            } {
+                return;
+            }
             let serial = u32::from_le_bytes(body[4..].try_into().unwrap());
             if let Some(target) = self.awaiting_open.take()
                 && serial > self.request
@@ -274,10 +540,21 @@ impl Runtime<'_, '_> {
                 self.selection = Some(Selection {
                     target,
                     request,
-                    wire: if body[2] == 1 {
-                        Channel::NotesRead.index()
-                    } else {
-                        Channel::PrivateRead.index()
+                    wire: {
+                        #[cfg(feature = "test-m7-document")]
+                        let edit = self.document_request.is_some_and(|(actual, request)| {
+                            actual == target
+                                && request.operation()
+                                    == ev_userspace_contract::document_control::Operation::OpenEdit
+                        });
+                        #[cfg(not(feature = "test-m7-document"))]
+                        let edit = false;
+                        match (body[2], edit) {
+                            (1, true) => Channel::NotesWrite.index(),
+                            (2, true) => Channel::PrivateWrite.index(),
+                            (1, false) => Channel::NotesRead.index(),
+                            _ => Channel::PrivateRead.index(),
+                        }
                     },
                     tick: crate::timer::now(),
                 });
@@ -386,16 +663,28 @@ impl Runtime<'_, '_> {
                     }
                     Kind::System => {
                         let bytes: [u8; 384] = report.bytes[..384].try_into().unwrap();
-                        if ev_diagnostics::system::Snapshot::decode(&bytes).is_err() {
+                        let Ok(snapshot) = ev_diagnostics::system::Snapshot::decode(&bytes) else {
                             native.diagnostic_error = true;
                             return;
-                        }
+                        };
                         (self.observations)(Observation::NativeSystem(NativeDiagnostic {
                             report: report.serial,
                             root_process,
                             root_thread,
                             bytes,
                         }));
+                        #[cfg(feature = "test-m6-network")]
+                        if snapshot.current.is_some_and(|current| {
+                            matches!(
+                                current.phase,
+                                ev_diagnostics::system::Phase::Healthy
+                                    | ev_diagnostics::system::Phase::Failed
+                            )
+                        }) {
+                            self.startup_flush();
+                        }
+                        #[cfg(not(feature = "test-m6-network"))]
+                        let _ = snapshot;
                     }
                 }
             }
@@ -459,5 +748,211 @@ impl Runtime<'_, '_> {
             }
             Err(_) => native.report_error = true,
         }
+    }
+}
+
+#[cfg(feature = "test-m6-session")]
+impl Runtime<'_, '_> {
+    fn completed_session_ui(&mut self, pending: Pending, value: u64) {
+        let request = pending.value;
+        let caller = self.metadata(pending.caller).unwrap();
+        let callee = self.metadata(pending.callee).unwrap();
+        let endpoint = self.wires[pending.wire].as_ref().unwrap().object;
+        if pending.wire == Channel::InputBarrier.index()
+            && pending.caller == Child::Shell.index() + 1
+            && pending.callee == Child::Input.index() + 1
+            && let Some(presented) = self.last_present[1]
+            && let Some(update) = session_ui::barrier_at_present(
+                request,
+                value,
+                caller.process.diagnostic_id(),
+                presented.shell_process,
+                presented.frame,
+                &mut self.session_ui[0],
+            )
+        {
+            let fields = update.fields;
+            // Preserve the same actual Shell/Input/Present join as KBR1.
+            // Operational freshness must continue after the serial sample cap.
+            self.barrier = Some(Barrier {
+                shell: caller.process,
+                frame: u64::from(fields.frame),
+                tick: crate::timer::now(),
+                flags: fields.flags,
+                call: pending.id,
+            });
+            if let Some(count) = update.sample {
+                (self.observations)(Observation::SessionBarrier(SessionBarrier {
+                    count,
+                    call_epoch: pending.id.epoch().get(),
+                    call: pending.id.serial(),
+                    endpoint,
+                    caller_process: caller.process.diagnostic_id(),
+                    caller_thread: caller.thread.diagnostic_id(),
+                    callee_process: callee.process.diagnostic_id(),
+                    callee_thread: callee.thread.diagnostic_id(),
+                    frame: fields.frame,
+                    sequence: fields.sequence,
+                    flags: fields.flags,
+                    buttons: fields.buttons,
+                    request,
+                    reply: value,
+                    tick: crate::timer::now(),
+                }));
+            }
+        }
+        if pending.wire == Channel::ShellWindow.index()
+            && pending.caller == Child::Shell.index() + 1
+            && pending.callee == Child::Display.index() + 1
+            && let Some(fields) = session_ui::cursor(request, value)
+            && let Some(count) = session_ui::sample(&mut self.session_ui[1])
+        {
+            (self.observations)(Observation::SessionCursor(SessionCursor {
+                count,
+                call_epoch: pending.id.epoch().get(),
+                call: pending.id.serial(),
+                endpoint,
+                caller_process: caller.process.diagnostic_id(),
+                caller_thread: caller.thread.diagnostic_id(),
+                callee_process: callee.process.diagnostic_id(),
+                callee_thread: callee.thread.diagnostic_id(),
+                x: fields.x,
+                y: fields.y,
+                sequence: fields.sequence,
+                request,
+                reply: value,
+                tick: crate::timer::now(),
+            }));
+        }
+    }
+    fn session_current_app(&self) -> Option<Metadata> {
+        let app = self.actors[Child::App.index()].as_ref()?;
+        (!app.retired
+            && app.running.is_some()
+            && self
+                .s
+                .state(app.meta.thread)
+                .is_ok_and(|state| state != State::Exited))
+        .then_some(app.meta)
+    }
+    fn accepted_session_note(
+        &mut self,
+        index: usize,
+        wire: usize,
+        value: u64,
+        ticket: Ticket,
+        tick: u64,
+    ) {
+        if index != 0 || wire != Channel::AppControl.index() {
+            return;
+        }
+        let Some(app) = self.session_current_app() else {
+            return;
+        };
+        if self.wires[wire].as_ref().unwrap().receiver != app.domain {
+            return;
+        }
+        self.session_note_observation(
+            SessionNotePhase::Accepted,
+            self.root.meta,
+            app,
+            (wire, ticket, value, tick),
+        );
+    }
+    fn received_session_note(
+        &mut self,
+        receiver: usize,
+        wire: usize,
+        process: ProcessId,
+        thread: ThreadId,
+        value: u64,
+        delivery: (Ticket, u64),
+    ) {
+        let (ticket, tick) = delivery;
+        #[cfg(feature = "test-m6-network-negative")]
+        self.negative_work_delivery(receiver, wire, process, thread, value, ticket, tick);
+        let Some(app) = self.session_current_app() else {
+            return;
+        };
+        if receiver == 0 && wire == 15 && (process, thread) == (app.process, app.thread) {
+            self.session_note_observation(
+                SessionNotePhase::Request,
+                app,
+                self.root.meta,
+                (wire, ticket, value, tick),
+            );
+        } else if receiver == Child::App.index() + 1
+            && wire == Channel::AppControl.index()
+            && (process, thread) == (self.root.meta.process, self.root.meta.thread)
+        {
+            self.session_note_observation(
+                SessionNotePhase::Delivered,
+                self.root.meta,
+                app,
+                (wire, ticket, value, tick),
+            );
+        }
+    }
+    fn session_note_observation(
+        &mut self,
+        phase: SessionNotePhase,
+        sender: Metadata,
+        receiver: Metadata,
+        delivery: (usize, Ticket, u64, u64),
+    ) {
+        use ev_userspace_contract::session_note;
+        let (wire, ticket, value, tick) = delivery;
+        #[cfg(feature = "test-m6-network")]
+        if matches!(phase, SessionNotePhase::Delivered) {
+            self.startup_note_delivered(sender, receiver, delivery);
+        }
+        let bytes = value.to_le_bytes();
+        let (counter, nonce) = match phase {
+            SessionNotePhase::Request => match session_note::Request::decode(&bytes, 0) {
+                Ok(request) => (2, request.nonce()),
+                Err(_) => return,
+            },
+            SessionNotePhase::Accepted | SessionNotePhase::Delivered => {
+                let Ok(reply) = session_note::Response::decode(&bytes, 0) else {
+                    return;
+                };
+                (
+                    if matches!(phase, SessionNotePhase::Accepted) {
+                        3
+                    } else {
+                        4
+                    },
+                    reply.nonce(),
+                )
+            }
+        };
+        let Some(count) = session_ui::sample(&mut self.session_ui[counter]) else {
+            return;
+        };
+        (self.observations)(Observation::SessionNote(SessionNote {
+            phase,
+            count,
+            endpoint: self.wires[wire].as_ref().unwrap().object,
+            ticket: ticket.0,
+            sender_process: sender.process.diagnostic_id(),
+            sender_thread: sender.thread.diagnostic_id(),
+            receiver_process: receiver.process.diagnostic_id(),
+            receiver_thread: receiver.thread.diagnostic_id(),
+            nonce,
+            opcode: bytes[3],
+            message: value,
+            tick,
+        }));
+    }
+    pub(super) fn emit_session_ui_counts(&mut self, phase: &'static str) {
+        assert!(matches!(phase, "finished" | "bound"));
+        (self.observations)(Observation::SessionUiCounts(SessionUiCounts {
+            phase,
+            barriers: self.session_ui[0],
+            cursors: self.session_ui[1],
+            note_requests: self.session_ui[2],
+            note_accepted: self.session_ui[3],
+            note_delivered: self.session_ui[4],
+        }));
     }
 }

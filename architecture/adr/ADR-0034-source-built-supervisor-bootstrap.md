@@ -96,7 +96,7 @@ missing startup metadata. Strict protocol tests reject duplicate, malformed and
 out-of-order supervisor records. Repeated one/two-CPU QEMU boots must execute both
 actual Rust artifacts, observe Ready twice, deny four excess/invalid inspections,
 capture the real read-only write fault and return all charged private frames.
-Executed evidence is linked from [M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+Executed evidence is linked from M2 progress.
 
 This is BSP execution with the AP parked and PCID off. Scheduler/object descriptors
 remain retained. Sealed singleton custody, production epoch/bundle authentication,

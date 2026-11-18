@@ -3,6 +3,11 @@
 //! and one sector per command. No automatic replay follows an ambiguous failure.
 use crate::{CONTROL_PORT, DISK_SECTORS, PORT_BASE, SECTOR_BYTES, SERIAL};
 
+#[cfg(feature = "native-session")]
+mod session;
+#[cfg(feature = "native-session")]
+pub use session::{Quarantine, SessionDisk, SessionOutcome, SessionWindow};
+
 const DATA: u16 = PORT_BASE;
 const ERROR: u16 = PORT_BASE + 1;
 const COUNT: u16 = PORT_BASE + 2;
@@ -30,6 +35,53 @@ pub trait Ports {
     fn output(&mut self, port: u16, width: u8, value: u32) -> Result<(), u64>;
     fn now(&mut self) -> Result<u64, u64>;
     fn yield_now(&mut self) -> Result<(), u64>;
+    /// Selected workspace profile only. The native adapter negotiates the
+    /// fixed trap and supplies its own private byte buffer. Model defaults
+    /// preserve input publication until all256 modeled words complete.
+    #[cfg(feature = "pio-words256")]
+    fn input_words256(
+        &mut self,
+        port: u16,
+        _deadline: u64,
+        bytes: &mut [u8; 512],
+    ) -> Result<(), u64> {
+        let mut scratch = [0; 512];
+        for pair in scratch.as_chunks_mut::<2>().0 {
+            pair.copy_from_slice(
+                &u16::try_from(self.input(port, 2)?)
+                    .map_err(|_| u64::MAX)?
+                    .to_le_bytes(),
+            );
+        }
+        *bytes = scratch;
+        Ok(())
+    }
+    #[cfg(feature = "pio-words256")]
+    fn output_words256(&mut self, port: u16, _deadline: u64, bytes: &[u8; 512]) -> Result<(), u64> {
+        for pair in bytes.as_chunks::<2>().0 {
+            self.output(port, 2, u32::from(u16::from_le_bytes(*pair)))?;
+        }
+        Ok(())
+    }
+    /// Fixed four Word operations. Production batch adapters negotiate and
+    /// use one bounded Kernel trap; the default keeps model/scalar adapters
+    /// usable and may fail after a prefix, which is always uncertain progress.
+    #[cfg(feature = "pio-word4")]
+    fn input_words4(&mut self, port: u16, _deadline: u64) -> Result<u64, u64> {
+        let mut packed = 0;
+        for word in 0..4 {
+            let value = u16::try_from(self.input(port, 2)?).map_err(|_| u64::MAX)?;
+            packed |= u64::from(value) << (word * 16);
+        }
+        Ok(packed)
+    }
+    #[cfg(feature = "pio-word4")]
+    fn output_words4(&mut self, port: u16, value: u64, _deadline: u64) -> Result<(), u64> {
+        for word in 0..4 {
+            self.output(port, 2, u32::from((value >> (word * 16)) as u16))?;
+        }
+        Ok(())
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -86,10 +138,13 @@ impl Budget {
         })
     }
     fn step<P: Ports>(&mut self, io: &mut P) -> Result<u64, Error> {
-        if self.polls == 0 {
+        self.step_units(io, 1)
+    }
+    fn step_units<P: Ports>(&mut self, io: &mut P, units: u32) -> Result<u64, Error> {
+        if self.polls < units {
             return Err(Error::PollBudget);
         }
-        self.polls -= 1;
+        self.polls -= units;
         let now = io.now().map_err(Error::Io)?;
         if now < self.last {
             return Err(Error::ClockReversed);
@@ -100,8 +155,29 @@ impl Budget {
         }
         Ok(now)
     }
+    /// Each new fixed four-instruction trap gets its own bounded authorization
+    /// cut. This neither changes the retained ATA/RPC deadline nor retries an
+    /// accepted trap. Reserve the same four scalar poll units before any PIO.
+    #[cfg(feature = "pio-word4")]
+    fn words4_cut<P: Ports>(&mut self, io: &mut P) -> Result<u64, Error> {
+        let now = self.step_units(io, 4)?;
+        let cut = now
+            .checked_add(ev_userspace_contract::syscall::PORT_BATCH_MAX_TICKS)
+            .filter(|&cut| cut != u64::MAX)
+            .ok_or(Error::Deadline)?;
+        Ok(self.deadline.min(cut))
+    }
+    #[cfg(feature = "pio-words256")]
+    fn words256_cut<P: Ports>(&mut self, io: &mut P) -> Result<u64, Error> {
+        let now = self.step_units(io, 256)?;
+        let cut = now
+            .checked_add(ev_userspace_contract::syscall::PORT_WORDS256_MAX_TICKS)
+            .filter(|&cut| cut != u64::MAX)
+            .ok_or(Error::Deadline)?;
+        Ok(self.deadline.min(cut))
+    }
 }
-pub struct AtaPio<P> {
+pub struct AtaPio<P, const PROFILE: u8 = 0> {
     io: P,
     state: State,
 }
@@ -112,6 +188,18 @@ impl<P: Ports> AtaPio<P> {
             state: State::Unidentified,
         }
     }
+    /// Explicitly compiled profile1 device identity. The original constructor
+    /// and parser still require the exact4MiB legacy device. Const selection
+    /// adds no mutable policy flag to an existing physical driver owner.
+    #[cfg(feature = "workspace-storage")]
+    pub fn new_workspace(io: P) -> AtaPio<P, 1> {
+        AtaPio {
+            io,
+            state: State::Unidentified,
+        }
+    }
+}
+impl<P: Ports, const PROFILE: u8> AtaPio<P, PROFILE> {
     pub fn into_ports(self) -> P {
         self.io
     }
@@ -225,7 +313,15 @@ impl<P: Ports> AtaPio<P> {
             let mut bytes = [0u8; SECTOR_BYTES];
             self.read_data(&mut budget, &mut bytes)?;
             self.wait(&mut budget, false)?;
-            parse_identify(&bytes)
+            if PROFILE == 0 {
+                parse_identify(&bytes)
+            } else {
+                #[cfg(feature = "workspace-storage")]
+                if PROFILE == 1 {
+                    return parse_workspace_identify(&bytes);
+                }
+                Err(Error::Unsupported)
+            }
         })();
         let info = self.finish(result, issued)?;
         self.state = State::Ready(info);
@@ -243,6 +339,18 @@ impl<P: Ports> AtaPio<P> {
         budget: &mut Budget,
         bytes: &mut [u8; SECTOR_BYTES],
     ) -> Result<(), Error> {
+        #[cfg(feature = "pio-words256")]
+        if PROFILE == 1 {
+            let cut = budget.words256_cut(&mut self.io)?;
+            return self.io.input_words256(DATA, cut, bytes).map_err(Error::Io);
+        }
+        #[cfg(feature = "pio-word4")]
+        for group in bytes.as_chunks_mut::<8>().0 {
+            let cut = budget.words4_cut(&mut self.io)?;
+            let value = self.io.input_words4(DATA, cut).map_err(Error::Io)?;
+            group.copy_from_slice(&value.to_le_bytes());
+        }
+        #[cfg(not(feature = "pio-word4"))]
         for pair in bytes.as_chunks_mut::<2>().0 {
             budget.step(&mut self.io)?;
             let word = self.io.input(DATA, 2).map_err(Error::Io)?;
@@ -292,15 +400,32 @@ impl<P: Ports> AtaPio<P> {
             self.out(COMMAND, WRITE)?;
             self.settle(&mut budget)?;
             self.wait(&mut budget, true)?;
-            for pair in bytes.as_chunks::<2>().0 {
-                budget.step(&mut self.io)?;
-                self.io
-                    .output(DATA, 2, u32::from(u16::from_le_bytes([pair[0], pair[1]])))
-                    .map_err(Error::Io)?;
-            }
+            self.write_data(&mut budget, bytes)?;
             self.wait(&mut budget, false)
         })();
         self.finish(result, issued)
+    }
+    fn write_data(&mut self, budget: &mut Budget, bytes: &[u8; SECTOR_BYTES]) -> Result<(), Error> {
+        #[cfg(feature = "pio-words256")]
+        if PROFILE == 1 {
+            let cut = budget.words256_cut(&mut self.io)?;
+            return self.io.output_words256(DATA, cut, bytes).map_err(Error::Io);
+        }
+        #[cfg(feature = "pio-word4")]
+        for group in bytes.as_chunks::<8>().0 {
+            let cut = budget.words4_cut(&mut self.io)?;
+            self.io
+                .output_words4(DATA, u64::from_le_bytes(*group), cut)
+                .map_err(Error::Io)?;
+        }
+        #[cfg(not(feature = "pio-word4"))]
+        for pair in bytes.as_chunks::<2>().0 {
+            budget.step(&mut self.io)?;
+            self.io
+                .output(DATA, 2, u32::from(u16::from_le_bytes([pair[0], pair[1]])))
+                .map_err(Error::Io)?;
+        }
+        Ok(())
     }
     /// Success means the device completed FLUSH CACHE without BSY/DRQ/ERR/DF;
     /// readback alone and command acceptance alone are never durable completion.
@@ -328,6 +453,21 @@ fn word(bytes: &[u8; SECTOR_BYTES], index: usize) -> u16 {
     u16::from_le_bytes([bytes[index * 2], bytes[index * 2 + 1]])
 }
 pub fn parse_identify(bytes: &[u8; SECTOR_BYTES]) -> Result<Info, Error> {
+    parse_identify_for(bytes, SERIAL, DISK_SECTORS)
+}
+#[cfg(feature = "workspace-storage")]
+pub fn parse_workspace_identify(bytes: &[u8; SECTOR_BYTES]) -> Result<Info, Error> {
+    parse_identify_for(
+        bytes,
+        crate::workspace::SERIAL,
+        crate::workspace::DISK_SECTORS,
+    )
+}
+fn parse_identify_for(
+    bytes: &[u8; SECTOR_BYTES],
+    expected_serial: [u8; 20],
+    expected_sectors: u32,
+) -> Result<Info, Error> {
     if word(bytes, 0) & 0x8000 != 0 {
         return Err(Error::Unsupported);
     }
@@ -335,7 +475,7 @@ pub fn parse_identify(bytes: &[u8; SECTOR_BYTES]) -> Result<Info, Error> {
     for (i, byte) in serial.iter_mut().enumerate() {
         *byte = bytes[20 + (i ^ 1)];
     }
-    if serial != SERIAL {
+    if serial != expected_serial {
         return Err(Error::Identity);
     }
     if word(bytes, 49) & (1 << 9) == 0 {
@@ -346,7 +486,7 @@ pub fn parse_identify(bytes: &[u8; SECTOR_BYTES]) -> Result<Info, Error> {
         return Err(Error::Unsupported);
     }
     let sectors = u32::from(word(bytes, 60)) | (u32::from(word(bytes, 61)) << 16);
-    if sectors != DISK_SECTORS {
+    if sectors != expected_sectors {
         return Err(Error::Geometry);
     }
     if word(bytes, 106) & 0xd000 == 0x5000 {
@@ -367,6 +507,12 @@ mod tests {
     use super::*;
     use crate::{RECORD, SEED};
     use std::vec::Vec;
+    #[cfg(feature = "native-session")]
+    #[path = "session_tests.rs"]
+    mod session_tests;
+    #[cfg(feature = "workspace-storage")]
+    #[path = "workspace_tests.rs"]
+    mod workspace_tests;
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
     enum Op {
         Input(u16, u8),
@@ -398,6 +544,7 @@ mod tests {
         position: usize,
         writing: bool,
         lba: u32,
+        lba_base: u32,
         now: u64,
         advance: bool,
         backward: bool,
@@ -421,6 +568,7 @@ mod tests {
                 position: 0,
                 writing: false,
                 lba: 0,
+                lba_base: 0,
                 now: 0,
                 advance: true,
                 backward: false,
@@ -451,10 +599,13 @@ mod tests {
                     if self.regs[2] != 1 {
                         return Err(80);
                     }
-                    self.lba = u32::from(self.regs[3])
+                    let physical = u32::from(self.regs[3])
                         | (u32::from(self.regs[4]) << 8)
                         | (u32::from(self.regs[5]) << 16)
                         | (u32::from(self.regs[6] & 15) << 24);
+                    // Two sparse model sectors may stand at a real physical
+                    // region boundary without allocating an8192-sector array.
+                    self.lba = physical.checked_sub(self.lba_base).ok_or(81u64)?;
                     if self.lba >= 2 {
                         return Err(81);
                     }
@@ -559,6 +710,199 @@ mod tests {
                 self.now += 1;
             }
             Ok(())
+        }
+    }
+    #[cfg(feature = "pio-word4")]
+    struct BatchBus {
+        bus: Bus,
+        batches: Vec<(bool, u16, u64, u64)>,
+        fail_batch: Option<usize>,
+        clocks: usize,
+    }
+    #[cfg(feature = "pio-word4")]
+    impl BatchBus {
+        fn new() -> Self {
+            Self {
+                bus: Bus::new(),
+                batches: Vec::new(),
+                fail_batch: None,
+                clocks: 0,
+            }
+        }
+        fn batch(&mut self, output: bool, port: u16, cut: u64) -> Result<bool, u64> {
+            let ordinal = self.batches.len();
+            self.batches.push((output, port, cut, self.bus.now));
+            if port != DATA || cut <= self.bus.now || cut - self.bus.now > 1024 {
+                return Err(169);
+            }
+            Ok(self.fail_batch == Some(ordinal))
+        }
+    }
+    #[cfg(feature = "pio-word4")]
+    impl Ports for BatchBus {
+        fn input(&mut self, port: u16, width: u8) -> Result<u32, u64> {
+            self.bus.input(port, width)
+        }
+        fn output(&mut self, port: u16, width: u8, value: u32) -> Result<(), u64> {
+            self.bus.output(port, width, value)
+        }
+        fn now(&mut self) -> Result<u64, u64> {
+            self.clocks += 1;
+            self.bus.now()
+        }
+        fn yield_now(&mut self) -> Result<(), u64> {
+            self.bus.yield_now()
+        }
+        fn input_words4(&mut self, port: u16, cut: u64) -> Result<u64, u64> {
+            let fail = self.batch(false, port, cut)?;
+            let mut value = 0;
+            for word in 0..4 {
+                if fail && word == 2 {
+                    return Err(170);
+                }
+                value |= u64::from(self.bus.input(port, 2)?) << (16 * word);
+            }
+            Ok(value)
+        }
+        fn output_words4(&mut self, port: u16, value: u64, cut: u64) -> Result<(), u64> {
+            let fail = self.batch(true, port, cut)?;
+            for word in 0..4 {
+                if fail && word == 2 {
+                    return Err(170);
+                }
+                self.bus
+                    .output(port, 2, u32::from((value >> (16 * word)) as u16))?;
+            }
+            Ok(())
+        }
+    }
+    #[cfg(feature = "pio-word4")]
+    #[test]
+    fn each_word4_cut_clamps_the_original_horizon_and_reserves_four_units() {
+        let mut io = BatchBus::new();
+        let mut budget = Budget::new(&mut io, 100_000).unwrap();
+        for now in [1, 100, 5000, 99_800, 99_999] {
+            io.bus.now = now;
+            let clocks = io.clocks;
+            let polls = budget.polls;
+            assert_eq!(budget.words4_cut(&mut io), Ok(100_000.min(now + 1024)));
+            assert_eq!((budget.deadline, budget.polls), (100_000, polls - 4));
+            assert_eq!(io.clocks, clocks + 1);
+            assert!(io.bus.trace.is_empty());
+        }
+        budget.polls = 3;
+        let clocks = io.clocks;
+        assert_eq!(budget.words4_cut(&mut io), Err(Error::PollBudget));
+        assert_eq!((budget.polls, io.clocks), (3, clocks));
+        assert!(io.batches.is_empty());
+        budget.step(&mut io).unwrap();
+        assert_eq!(budget.polls, 2); // The scalar path still reserves exactly one.
+        for (last, now, deadline, error) in [
+            (5, 4, 100, Error::ClockReversed),
+            (5, 100, 100, Error::Deadline),
+            (
+                u64::MAX - 100,
+                u64::MAX - 100,
+                u64::MAX - 1,
+                Error::Deadline,
+            ),
+            (
+                u64::MAX - 1024,
+                u64::MAX - 1024,
+                u64::MAX - 1,
+                Error::Deadline,
+            ),
+        ] {
+            let mut budget = Budget {
+                deadline,
+                last,
+                polls: 4,
+            };
+            io.bus.now = now;
+            assert_eq!(budget.words4_cut(&mut io), Err(error));
+            assert_eq!((budget.deadline, budget.polls), (deadline, 0));
+            assert!(io.batches.is_empty());
+        }
+    }
+    #[cfg(feature = "pio-word4")]
+    #[test]
+    fn word4_sectors_keep_exact_words_endianness_and_ata_command_sequence() {
+        let mut disk = AtaPio::new(BatchBus::new());
+        disk.reset(100_000).unwrap();
+        disk.identify(100_000).unwrap();
+        let mut bytes = [0; 512];
+        disk.read_sector(0, &mut bytes, 100_000).unwrap();
+        assert_eq!(bytes, SEED);
+        disk.write_sector(1, &RECORD, 100_000).unwrap();
+        disk.flush(100_000).unwrap();
+        disk.read_sector(1, &mut bytes, 100_000).unwrap();
+        assert_eq!(bytes, RECORD);
+        let io = disk.into_ports();
+        assert_eq!(io.bus.commands, [IDENTIFY, READ, WRITE, FLUSH, READ]);
+        assert_eq!(io.bus.completed_flushes, 1);
+        assert_eq!(io.batches.iter().filter(|b| !b.0).count(), 3 * 64);
+        assert_eq!(io.batches.iter().filter(|b| b.0).count(), 64);
+        assert!(io.batches.iter().all(|&(_, port, cut, now)| port == DATA
+            && cut > now
+            && cut - now <= 1024
+            && cut <= 100_000));
+        assert_eq!(
+            io.bus
+                .trace
+                .iter()
+                .filter(|op| matches!(op, Op::Input(DATA, 2)))
+                .count(),
+            3 * 256
+        );
+        assert_eq!(
+            io.bus
+                .trace
+                .iter()
+                .filter(|op| matches!(op, Op::Output(DATA, 2, _)))
+                .count(),
+            256
+        );
+    }
+    #[cfg(feature = "pio-word4")]
+    #[test]
+    fn partial_word4_error_is_uncertain_without_retry_or_partial_reply_copy() {
+        for write in [false, true] {
+            let mut disk = AtaPio::new(BatchBus::new());
+            disk.identify(100_000).unwrap();
+            disk.io.batches.clear();
+            disk.io.fail_batch = Some(1);
+            let mut read = [0xa5; 512];
+            let outcome = if write {
+                disk.write_sector(1, &RECORD, 100_000)
+            } else {
+                disk.read_sector(0, &mut read, 100_000)
+            };
+            assert_eq!(
+                outcome,
+                Err(Failure {
+                    error: Error::Io(170),
+                    progress: Progress::MayHaveExecuted,
+                })
+            );
+            assert_eq!(disk.io.bus.position, 12); // Four accepted words + two-word prefix.
+            assert_eq!(disk.io.batches.len(), 2);
+            if !write {
+                assert_eq!(&read[..8], &SEED[..8]);
+                assert_eq!(&read[8..], &[0xa5; 504]); // The failed packed reply was not copied.
+            }
+            let trace = disk.io.bus.trace.len();
+            assert_eq!(
+                disk.read_sector(0, &mut read, 100_000),
+                Err(Failure {
+                    error: Error::NeedsReset,
+                    progress: Progress::NotIssued,
+                })
+            );
+            assert_eq!((disk.io.bus.trace.len(), disk.io.batches.len()), (trace, 2));
+            assert_eq!(
+                disk.io.bus.commands,
+                [IDENTIFY, if write { WRITE } else { READ }]
+            );
         }
     }
     #[test]

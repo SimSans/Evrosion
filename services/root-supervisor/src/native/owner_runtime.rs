@@ -9,6 +9,8 @@ use sha2::{Digest as _, Sha256};
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Step {
     Terminal,
+    #[cfg(feature = "native-session")]
+    DeliveryRefused,
     Abandon,
     Idle,
     WaitUi,
@@ -128,16 +130,16 @@ impl FreshReadHandoff for ManagedRead {
         self.enqueue()
     }
 }
-struct RememberRead<'s, 'p, 'a> {
+struct RememberRead<'s, 'p, 'a, P: Sources> {
     state: &'s mut State<ev_block_service::store_io::DesktopEndpoint, storage::RootWindow<'a>>,
-    packages: &'p Packages<'a>,
+    packages: &'p P,
     owner: UserId,
     expected: Expected,
     deadline: u64,
     route: ManagedRead,
     published: bool,
 }
-impl Handoff for RememberRead<'_, '_, '_> {
+impl<P: Sources> Handoff for RememberRead<'_, '_, '_, P> {
     type Delivered = u64;
     type Error = u64;
     fn revalidate_and_deliver_read(&mut self, delivery: ReadDelivery<'_>) -> Delivery<u64, u64> {
@@ -169,6 +171,12 @@ fn file(record: ev_picker::intent::Record) -> Option<FileChoice> {
     }
 }
 impl Root<'_> {
+    #[cfg(feature = "native-owner-ui")]
+    pub(super) fn native_connection_owner_idle(&self) -> bool {
+        self.native
+            .as_ref()
+            .is_some_and(|n| n.owner_flow.step == Step::Idle)
+    }
     fn owner_result(&self, success: bool) -> &'static str {
         if success {
             "ok"
@@ -189,10 +197,10 @@ impl Root<'_> {
         file: FileChoice,
         request: u32,
         revision: u64,
-    ) -> ManagedRead {
+    ) -> Option<ManagedRead> {
         let mut current = self.requester(app);
         current.policy_revision = revision;
-        ManagedRead {
+        Some(ManagedRead {
             process: app.control,
             identity: app.identity,
             parent: self.channels[if file == FileChoice::Notes {
@@ -204,8 +212,8 @@ impl Root<'_> {
             inbox: self.channels[Channel::GrantInbox.index()],
             request,
             current,
-            object: self.metadata(file),
-        }
+            object: self.metadata(file)?,
+        })
     }
     pub(in crate::desktop) fn native_owner_settled(&mut self, message: RootControl) {
         let owner = &mut self.native.as_mut().unwrap().owner_flow;
@@ -248,9 +256,12 @@ impl Root<'_> {
         if self.native.as_ref().unwrap().owner_flow.step != Step::Idle {
             return false;
         }
-        let deadline = self.deadline();
+        let deadline = self.storage_deadline();
         let n = self.native.as_mut().unwrap();
-        let snapshot = match n.state.grant_snapshot(&n.packages, self.owner, deadline) {
+        let snapshot = match n
+            .with_sources(|state, sources| state.grant_snapshot(sources, self.owner, deadline))
+            .and_then(|r| r)
+        {
             Ok(s) => s,
             Err(_) => return false,
         };
@@ -261,12 +272,14 @@ impl Root<'_> {
             return false;
         };
         let pending = self.pending.unwrap();
-        let route = self.owner_route(
+        let Some(route) = self.owner_route(
             pending.app,
             file,
             pending.request,
             snapshot.requester_revision(),
-        );
+        ) else {
+            return false;
+        };
         if record
             .validate_activation(record.head(), route.current, route.object)
             .is_err()
@@ -289,21 +302,25 @@ impl Root<'_> {
             return;
         }
         if command == Command::InitializeGrants {
-            let deadline = self.deadline();
+            let deadline = self.storage_deadline();
             let n = self.native.as_mut().unwrap();
             let ok = n
-                .state
-                .grant_initialize(&n.packages, self.owner, deadline)
-                .is_ok();
+                .with_sources(|state, sources| {
+                    state.grant_initialize(sources, self.owner, deadline)
+                })
+                .is_ok_and(|r| r.is_ok());
             self.native_report("initialize-grants", self.owner_result(ok));
             return;
         }
-        let deadline = self.deadline();
+        let deadline = self.storage_deadline();
         let n = self.native.as_mut().unwrap();
         let snapshot = if command == Command::RecoverGood {
             None
         } else {
-            match n.state.grant_snapshot(&n.packages, self.owner, deadline) {
+            match n
+                .with_sources(|state, sources| state.grant_snapshot(sources, self.owner, deadline))
+                .and_then(|r| r)
+            {
                 Ok(s) => Some(s),
                 Err(_) => {
                     self.native_report(
@@ -435,18 +452,21 @@ impl Root<'_> {
             };
             chosen = Some(file);
             app = Some(pending.app);
-            let route = self.owner_route(
+            let Some(route) = self.owner_route(
                 pending.app,
                 file,
                 pending.request,
                 snapshot.unwrap().requester_revision(),
-            );
+            ) else {
+                self.native_report("remember", "refused");
+                return;
+            };
             let a = match self.picker.prepare(
                 route.current,
                 route.object,
                 Persistence::RememberPerUser,
                 now(),
-                self.deadline(),
+                self.storage_deadline(),
             ) {
                 Ok(a) => a,
                 Err(_) => {
@@ -522,13 +542,17 @@ impl Root<'_> {
             return None;
         }
         let n = self.native.as_mut().unwrap();
-        require(n.input_bytes < 4096, 999);
+        let next_input = ev_root_supervisor::native_diagnostics::session::next_input_count(
+            n.input_bytes,
+            cfg!(feature = "native-session"),
+        )
+        .unwrap_or_else(|| fail(999));
         let r = rt::call4(syscall::PORT_INPUT, uart, 0x3f8, 1, 0);
         require(
             r.status == 0 && r.value <= 255 && r.capability == 0 && r.serial == 0,
             1000,
         );
-        n.input_bytes += 1;
+        n.input_bytes = next_input;
         Some(r.value as u8)
     }
     fn owner_drain(&mut self) {
@@ -559,6 +583,32 @@ impl Root<'_> {
         o.report = 0;
         o.step = Step::Terminal;
     }
+    #[cfg(feature = "native-session")]
+    pub(in crate::desktop) fn native_owner_delivery_failed(&mut self, message: RootControl) {
+        let Some(n) = self.native.as_mut() else {
+            return;
+        };
+        let owner = &mut n.owner_flow;
+        let matches = match message {
+            RootControl::OwnerFilePending(id) | RootControl::OwnerActionPending(id) => {
+                id == owner.ui
+            }
+            RootControl::ManagedFilePending(id) => id == owner.request,
+            _ => false,
+        };
+        if !matches || !matches!(owner.step, Step::WaitUi | Step::RemintUi) {
+            return;
+        }
+        owner.success = false;
+        owner.ui_ready = false;
+        owner.report = 0;
+        if let Some(prompt) = owner.prompt.as_mut() {
+            prompt.phase = Phase::Expired;
+            owner.step = Step::Terminal;
+        } else {
+            owner.step = Step::DeliveryRefused;
+        }
+    }
     pub(super) fn native_owner_tick(&mut self) -> bool {
         let step = self.native.as_ref().unwrap().owner_flow.step;
         if step == Step::Idle {
@@ -572,6 +622,14 @@ impl Root<'_> {
             return true;
         }
         match step {
+            #[cfg(feature = "native-session")]
+            Step::DeliveryRefused => {
+                if let Some(p) = self.pending.take() {
+                    self.control_app(RootControl::FileRefused(p.request));
+                    self.control_shell(RootControl::ManagedFileRefused(p.request));
+                }
+                self.native.as_mut().unwrap().owner_flow.clear();
+            }
             Step::Terminal => {
                 let phase = self
                     .native
@@ -601,7 +659,10 @@ impl Root<'_> {
                     .prompt
                     .unwrap()
                     .response_budget_ticks;
-                if at.checked_add(budget).is_none_or(|end| end >= self.bound) {
+                if at
+                    .checked_add(budget)
+                    .is_none_or(|end| self.bound != 0 && end >= self.bound)
+                {
                     self.owner_output(Phase::Expired, Step::Finish);
                 } else {
                     let o = &mut self.native.as_mut().unwrap().owner_flow;
@@ -667,11 +728,13 @@ impl Root<'_> {
                 }
             }
             Step::Publish => {
-                let deadline = self.deadline();
+                let deadline = self.storage_deadline();
                 let n = self.native.as_mut().unwrap();
                 let result = n
-                    .state
-                    .grant_commit_revoke(&n.packages, self.owner, deadline);
+                    .with_sources(|state, sources| {
+                        state.grant_commit_revoke(sources, self.owner, deadline)
+                    })
+                    .and_then(|r| r);
                 self.owner_finish(result.is_ok());
             }
             Step::RetryRead | Step::Remint => self.owner_remint(),
@@ -734,13 +797,14 @@ impl Root<'_> {
                 self.owner_finish(false);
                 return;
             }
-            let deadline = self.deadline();
+            let deadline = self.storage_deadline();
             let n = self.native.as_mut().unwrap();
             let expected = n.owner_flow.expected.unwrap();
             let ok = n
-                .state
-                .grant_prepare_revoke(&n.packages, self.owner, expected, deadline)
-                .is_ok();
+                .with_sources(|state, sources| {
+                    state.grant_prepare_revoke(sources, self.owner, expected, deadline)
+                })
+                .is_ok_and(|r| r.is_ok());
             if ok {
                 self.native.as_mut().unwrap().owner_flow.step = Step::Hold;
             } else {
@@ -764,32 +828,42 @@ impl Root<'_> {
                 o.approval.take().unwrap(),
             )
         };
-        let route = self.owner_route(
+        let Some(route) = self.owner_route(
             pending.app,
             chosen,
             pending.request,
             expected.revision.max(1),
-        );
-        let deadline = self.deadline();
-        let n = self.native.as_mut().unwrap();
-        let mut handoff = RememberRead {
-            state: &mut n.state,
-            packages: &n.packages,
-            owner: self.owner,
-            expected,
-            deadline,
-            route,
-            published: false,
+        ) else {
+            self.owner_finish(false);
+            return;
         };
-        let result = self.picker.commit(
-            approval,
-            consent,
-            route.current,
-            route.object,
-            now(),
-            &mut handoff,
-        );
-        let published = handoff.published;
+        let deadline = self.storage_deadline();
+        let picker = &mut self.picker;
+        let n = self.native.as_mut().unwrap();
+        let result = n.with_sources(|state, sources| {
+            let mut handoff = RememberRead {
+                state,
+                packages: sources,
+                owner: self.owner,
+                expected,
+                deadline,
+                route,
+                published: false,
+            };
+            let result = picker.commit(
+                approval,
+                consent,
+                route.current,
+                route.object,
+                now(),
+                &mut handoff,
+            );
+            (result, handoff.published)
+        });
+        let Ok((result, published)) = result else {
+            self.owner_finish(false);
+            return;
+        };
         match result {
             Ok(Delivery::Delivered(_)) => {
                 let p = self.pending.as_mut().unwrap();
@@ -809,30 +883,40 @@ impl Root<'_> {
             return;
         };
         let chosen = self.native.as_ref().unwrap().owner_flow.file.unwrap();
-        let deadline = self.deadline();
+        let deadline = self.storage_deadline();
         let n = self.native.as_mut().unwrap();
-        let snapshot = match n.state.grant_snapshot(&n.packages, self.owner, deadline) {
+        let snapshot = match n
+            .with_sources(|state, sources| state.grant_snapshot(sources, self.owner, deadline))
+            .and_then(|r| r)
+        {
             Ok(s) => s,
             Err(_) => {
                 self.owner_read_refused();
                 return;
             }
         };
-        let mut route = self.owner_route(
+        let Some(mut route) = self.owner_route(
             pending.app,
             chosen,
             pending.request,
             snapshot.requester_revision(),
-        );
+        ) else {
+            self.owner_read_refused();
+            return;
+        };
         let n = self.native.as_mut().unwrap();
-        let result = n.state.grant_remint(
-            &n.packages,
-            self.owner,
-            route.current,
-            route.object,
-            deadline,
-            &mut route,
-        );
+        let result = n
+            .with_sources(|state, sources| {
+                state.grant_remint(
+                    sources,
+                    self.owner,
+                    route.current,
+                    route.object,
+                    deadline,
+                    &mut route,
+                )
+            })
+            .and_then(|r| r);
         match result {
             Ok(Delivery::Delivered(_)) => {
                 let p = self.pending.as_mut().unwrap();

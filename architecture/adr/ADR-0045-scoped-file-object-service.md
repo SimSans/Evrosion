@@ -88,7 +88,7 @@ mapping transition; the File codec or a completion boolean cannot supply it.
 
 ## Verification and measured limits
 
-The [two-VM File/Object execution](../../docs/release/0.1-preview.md#validation-and-provenance)
+The two-VM File/Object execution (local engineering archive)
 is PASS for this bounded BSP/AP-parked Q35/TCG/OVMF profile. One retained kernel,
 boot image and measured server/app/driver cohort serve two fresh VMs. The write
 phase records 11 outer calls and 41 backend calls, including 18 calls nested
@@ -112,7 +112,7 @@ KnownGood or failure capsule invented for this interface proof. Every disk byte
 is unchanged during cold Verify after its control sector is set. Resources,
 leases, mappings, inactive images and metadata all retire successfully.
 
-The [first cleanup failure](../../docs/release/0.1-preview.md#validation-and-provenance)
+The first cleanup failure (local engineering archive)
 remains immutable evidence. It validated an actor mapping using revoked
 authority after stopping the actor. Corrected teardown still requires exact
 wrong-object refusal and actual Revoked authorization denial, then releases the
@@ -138,4 +138,4 @@ This decision supplies the first scoped File/Object interface required by
 E-025.36–37. It is not a general filesystem, arbitrary multi-client service,
 consumer desktop, production disk power-loss certification or whole-M3 PASS.
 Owner-operated recovery and the combined current-source acceptance gate remain
-separate obligations recorded in [M3 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+separate obligations recorded in M3 progress.

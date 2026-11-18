@@ -244,7 +244,12 @@ fn stopped(s: &Scheduler, m: Metadata) -> bool {
 pub(crate) enum DesktopMappings {
     PrivateOnly,
     DualBuffers,
+    #[cfg(not(feature = "test-m6-network"))]
     SurfaceBuffer,
+    #[cfg(feature = "test-m6-network")]
+    SurfaceDualBuffers,
+    #[cfg(feature = "test-m6-network")]
+    ScalarOnly,
     SurfaceOnly,
     Compositor,
 }
@@ -677,16 +682,29 @@ impl GraphicsImage {
         if root == 0 {
             return Err(Error::Phase);
         }
+        #[cfg(not(feature = "test-m6-network"))]
         let primary = matches!(
             profile,
             DesktopMappings::SurfaceBuffer
                 | DesktopMappings::SurfaceOnly
                 | DesktopMappings::Compositor
         );
+        #[cfg(feature = "test-m6-network")]
+        let primary = matches!(
+            profile,
+            DesktopMappings::SurfaceOnly | DesktopMappings::Compositor
+        );
+        #[cfg(feature = "test-m6-network")]
+        let primary = primary || matches!(profile, DesktopMappings::SurfaceDualBuffers);
         let device = matches!(profile, DesktopMappings::Compositor);
         let scalars = match profile {
             DesktopMappings::DualBuffers => 3,
+            #[cfg(not(feature = "test-m6-network"))]
             DesktopMappings::SurfaceBuffer => 1,
+            #[cfg(feature = "test-m6-network")]
+            DesktopMappings::SurfaceDualBuffers => 3,
+            #[cfg(feature = "test-m6-network")]
+            DesktopMappings::ScalarOnly => 1,
             _ => 0,
         };
         if self.scalar_claims != scalars {

@@ -62,6 +62,7 @@ fn cohort(root: &Path, parent: &Path, fixture: &str) -> Result<Cohort> {
     let path = directory.join("manifest.json");
     storage::immutable_new(&path, &bytes)?;
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+    manifest.validate_policy_rows()?;
     if manifest.fixture.as_deref() != Some(fixture) {
         return Err("Native3 retained wrong mode manifest".into());
     }

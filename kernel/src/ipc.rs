@@ -55,6 +55,15 @@ pub enum Reclaimed {
     Capability(Handle),
     Invalidated,
 }
+/// Receipt for a never-delivered, expired eight-byte message with no attached
+/// authority. It is neither a delivery receipt nor physical-memory quiescence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ExpiredScalar {
+    pub ticket: Ticket,
+    pub sender: SpaceId,
+    pub deadline: Deadline,
+    pub bytes: [u8; 8],
+}
 pub struct Outgoing<'a> {
     pub bytes: &'a [u8],
     pub capability: Option<Handle>,
@@ -570,6 +579,35 @@ impl Mailbox {
         self.closed = false;
         Ok(())
     }
+    /// Typed stopped-selected receipt only. Ordinary reopen/rebind deliberately
+    /// remain forbidden for this immutable delivery policy.
+    #[cfg(feature = "workspace-authority")]
+    pub(crate) fn reopen_selected_empty(
+        &mut self,
+        authority: &Authority,
+        controller: SpaceId,
+        control: Handle,
+        destination: SpaceId,
+        receive: Handle,
+    ) -> Result<(), Error> {
+        if !self.managed || self.delivery_policy != DeliveryPolicy::SelectedFileSend {
+            return Err(Error::RestrictedBinding);
+        }
+        if !self.closed || self.pending() != 0 {
+            return Err(Error::NotReclaimable);
+        }
+        authority.require_empty_space(self.escrow)?;
+        self.endpoint(authority, controller, control, Rights::CONTROL)?;
+        self.endpoint(
+            authority,
+            destination,
+            receive,
+            Rights::RECEIVE | Rights::CONTROL,
+        )?;
+        self.receiver = destination;
+        self.closed = false;
+        Ok(())
+    }
     /// Trusted lifecycle maintenance. Accepted sends from dead senders remain
     /// deliverable to a live receiver until expiry. Once neither delivery nor
     /// sender reclamation is possible, close escrow and discard the message.
@@ -612,22 +650,31 @@ impl Mailbox {
         self,
         authority: &mut Authority,
     ) -> Result<RetiredMailbox, RejectedMailbox> {
-        let retired = (|| -> Result<_, Error> {
-            if !self.managed {
-                return Err(Error::NotManaged);
-            }
-            if !self.closed || self.pending() != 0 {
-                return Err(Error::NotReclaimable);
-            }
-            let mut staged = authority.staged_copy();
+        if !self.managed {
+            return Err(RejectedMailbox {
+                mailbox: self,
+                error: Error::NotManaged,
+            });
+        }
+        if !self.closed || self.pending() != 0 {
+            return Err(RejectedMailbox {
+                mailbox: self,
+                error: Error::NotReclaimable,
+            });
+        }
+        // One complete private metadata transaction. Return only its status:
+        // returning Authority inside Result duplicates a large staged owner
+        // slot above this frame. No live table changes until every check passes.
+        let mut staged = authority.staged_copy();
+        let retired = (|| -> Result<(), Error> {
             staged.close_space(self.escrow)?;
             staged.collect_lineage()?;
             staged.retire_unreferenced_object(self.endpoint, Kind::Endpoint)?;
             staged.collect_dead_objects()?;
-            Ok(staged)
+            Ok(())
         })();
         match retired {
-            Ok(staged) => {
+            Ok(()) => {
                 *authority = staged;
                 Ok(RetiredMailbox {
                     escrow: self.escrow,
@@ -642,6 +689,7 @@ impl Mailbox {
             }),
         }
     }
+
     /// Timeout/death rollback: a full sender table leaves the message in escrow
     /// for retry after the sender closes a slot. No authority is duplicated/lost.
     /// Expiry does not imply the receiver never acted on an earlier delivery.
@@ -660,6 +708,65 @@ impl Mailbox {
         }
         self.finish_reclaim(authority, sender, slot)
     }
+    /// Pure bounded preflight for an owned cap-free expiry transaction. Unlike
+    /// general capability reclamation, an actually dead sender needs no return
+    /// handle slot. A matching original queued sender/Ticket remains mandatory.
+    pub fn expired_scalar(
+        &self,
+        sender: SpaceId,
+        ticket: Ticket,
+        now: u64,
+    ) -> Result<Option<ExpiredScalar>, Error> {
+        if now < self.now {
+            return Err(Error::ClockReversed);
+        }
+        let message = self
+            .messages
+            .iter()
+            .flatten()
+            .find(|message| message.ticket == ticket)
+            .ok_or(Error::InvalidTicket)?;
+        if message.sender != sender {
+            return Err(Error::WrongOwner);
+        }
+        if message.length != 8 || message.cap.is_some() {
+            return Err(Error::RestrictedBinding);
+        }
+        if !message.deadline.reached(now) {
+            return Ok(None);
+        }
+        Ok(Some(ExpiredScalar {
+            ticket,
+            sender,
+            deadline: message.deadline,
+            bytes: message.bytes[..8].try_into().unwrap(),
+        }))
+    }
+    /// Expire only this actual queued scalar. Capability-bearing escrow stays
+    /// with the ordinary reclaim/death owner; it is never discarded here.
+    /// Delivered/stale Tickets cannot release any later queue credit.
+    pub fn expire_scalar(
+        &mut self,
+        authority: &mut Authority,
+        sender: SpaceId,
+        ticket: Ticket,
+        now: u64,
+    ) -> Result<Option<ExpiredScalar>, Error> {
+        let Some(receipt) = self.expired_scalar(sender, ticket, now)? else {
+            return Ok(None);
+        };
+        self.observe(now)?;
+        let slot = self
+            .messages
+            .iter()
+            .position(|message| message.is_some_and(|message| message.ticket == ticket))
+            .unwrap();
+        // Shape/sender/Ticket were checked without mutation. The sole &mut
+        // owner excludes interleaving; this branch cannot transfer a grant.
+        let reclaimed = self.finish_reclaim(authority, sender, slot)?;
+        debug_assert_eq!(reclaimed, Reclaimed::NoCapability);
+        Ok(Some(receipt))
+    }
     /// Only a trusted protected-call transport may withdraw its exact queued
     /// request after independently observing actual Rpc cancellation/death.
     /// A delivered request has no message/Ticket and cannot be refunded here.
@@ -673,6 +780,25 @@ impl Mailbox {
         self.observe(now)?;
         let slot = self.reclaim_slot(authority, sender, ticket)?;
         self.finish_reclaim(authority, sender, slot)
+    }
+    /// Pure preflight for Rpc's strict scalar completion transaction. Preserve
+    /// attachments for their capability-bearing owner; never reinterpret them.
+    pub(crate) fn check_scalar_request(
+        &self,
+        authority: &Authority,
+        sender: SpaceId,
+        endpoint: usize,
+        ticket: Ticket,
+    ) -> Result<(), Error> {
+        if self.endpoint != endpoint {
+            return Err(Error::WrongEndpoint);
+        }
+        let slot = self.reclaim_slot(authority, sender, ticket)?;
+        let message = self.messages[slot].unwrap();
+        if message.length != 8 || message.cap.is_some() {
+            return Err(Error::RestrictedBinding);
+        }
+        Ok(())
     }
     fn reclaim_slot(
         &self,
@@ -725,6 +851,183 @@ impl Mailbox {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scalar_expiry_reclaims_only_the_exact_undelivered_credit_and_reports_its_payload() {
+        let mut f = restart_fixture();
+        let ticket = f
+            .mailbox
+            .send(
+                &mut f.authority,
+                f.sender,
+                f.send,
+                Outgoing {
+                    bytes: b"expire01",
+                    capability: None,
+                    deadline: deadline(5),
+                },
+                0,
+            )
+            .unwrap();
+        assert_eq!(
+            f.mailbox
+                .expire_scalar(&mut f.authority, f.sender, ticket, 4),
+            Ok(None)
+        );
+        assert_eq!(f.mailbox.pending(), 1);
+        let receipt = f
+            .mailbox
+            .expire_scalar(&mut f.authority, f.sender, ticket, 5)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (
+                receipt.ticket,
+                receipt.sender,
+                receipt.deadline,
+                receipt.bytes
+            ),
+            (ticket, f.sender, deadline(5), *b"expire01")
+        );
+        assert_eq!(f.mailbox.pending(), 0);
+        let next = f
+            .mailbox
+            .send(
+                &mut f.authority,
+                f.sender,
+                f.send,
+                Outgoing {
+                    bytes: b"later001",
+                    capability: None,
+                    deadline: deadline(10),
+                },
+                5,
+            )
+            .unwrap();
+        assert_ne!(ticket, next);
+        assert_eq!(
+            f.mailbox
+                .expire_scalar(&mut f.authority, f.sender, ticket, 5),
+            Err(Error::InvalidTicket)
+        );
+        assert_eq!(
+            f.mailbox.expire_scalar(&mut f.authority, f.sender, next, 4),
+            Err(Error::ClockReversed)
+        );
+        assert_eq!(f.mailbox.pending(), 1);
+        assert_eq!(
+            f.mailbox
+                .receive(&mut f.authority, f.receiver, f.receive, 5)
+                .unwrap()
+                .ticket,
+            next
+        );
+        assert_eq!(
+            f.mailbox
+                .expire_scalar(&mut f.authority, f.sender, next, 10),
+            Err(Error::InvalidTicket)
+        );
+    }
+
+    #[test]
+    fn scalar_expiry_never_steals_capability_escrow_or_masks_sender_capacity_pressure() {
+        let mut f = restart_fixture();
+        let cap = f
+            .authority
+            .create_root(f.sender, Kind::Memory, Rights::READ | Rights::TRANSFER)
+            .unwrap();
+        let ticket = f
+            .mailbox
+            .send(
+                &mut f.authority,
+                f.sender,
+                f.send,
+                Outgoing {
+                    bytes: b"withcap1",
+                    capability: Some(cap),
+                    deadline: deadline(5),
+                },
+                0,
+            )
+            .unwrap();
+        assert_eq!(
+            f.mailbox
+                .expire_scalar(&mut f.authority, f.sender, ticket, 5),
+            Err(Error::RestrictedBinding)
+        );
+        let mut filled = None;
+        for _ in 1..crate::capability::MAX_CAPS {
+            filled = Some(
+                f.authority
+                    .derive(f.owner, f.control, f.sender, Rights::SEND)
+                    .unwrap(),
+            );
+        }
+        assert_eq!(
+            f.mailbox.reclaim(&mut f.authority, f.sender, ticket, 5),
+            Err(Error::Authority(CapError::Capacity))
+        );
+        assert_eq!(f.mailbox.pending(), 1);
+        f.authority.close(f.sender, filled.unwrap()).unwrap();
+        let Reclaimed::Capability(back) = f
+            .mailbox
+            .reclaim(&mut f.authority, f.sender, ticket, 5)
+            .unwrap()
+        else {
+            panic!("actual escrowed capability must be returned")
+        };
+        assert_ne!(back, cap);
+        assert!(
+            f.authority
+                .authorize(f.sender, back, Kind::Memory, Rights::READ)
+                .is_ok()
+        );
+        assert!(
+            f.authority
+                .authorize(f.sender, cap, Kind::Memory, Rights::READ)
+                .is_err()
+        );
+        assert_eq!(f.mailbox.pending(), 0);
+    }
+
+    #[test]
+    fn scalar_expiry_retains_dead_sender_bytes_until_expiry_and_rejects_new_generation() {
+        let mut f = restart_fixture();
+        let ticket = f
+            .mailbox
+            .send(
+                &mut f.authority,
+                f.sender,
+                f.send,
+                Outgoing {
+                    bytes: b"dead0001",
+                    capability: None,
+                    deadline: deadline(5),
+                },
+                0,
+            )
+            .unwrap();
+        f.authority.close_space(f.sender).unwrap();
+        let replacement = f.authority.recycle_space(f.sender).unwrap();
+        assert_ne!(replacement, f.sender);
+        assert_eq!(
+            f.mailbox
+                .expire_scalar(&mut f.authority, replacement, ticket, 5),
+            Err(Error::WrongOwner)
+        );
+        assert_eq!(
+            f.mailbox
+                .expire_scalar(&mut f.authority, f.sender, ticket, 4),
+            Ok(None)
+        );
+        assert_eq!(f.mailbox.pending(), 1);
+        assert!(
+            f.mailbox
+                .expire_scalar(&mut f.authority, f.sender, ticket, 5)
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(f.mailbox.pending(), 0);
+    }
     struct RestartFixture {
         authority: Authority,
         mailbox: Mailbox,
@@ -956,6 +1259,7 @@ mod tests {
     }
     fn retire_rejected(a: &mut Authority, mailbox: Mailbox, expected: Error) -> Mailbox {
         let before = snapshot(&mailbox);
+        let authority_before = a.staged_copy();
         let usage = a.metadata_usage();
         let escrow = mailbox.escrow;
         let live = a.is_live_space(escrow);
@@ -967,6 +1271,7 @@ mod tests {
         let rejected = mailbox.retire_managed(a).err().unwrap();
         assert_eq!(rejected.error, expected);
         assert_eq!(snapshot(&rejected.mailbox), before);
+        crate::capability::tests::unchanged(a, &authority_before);
         assert_eq!(a.metadata_usage(), usage);
         assert_eq!(a.is_live_space(escrow), live);
         let mut staged = a.staged_copy();

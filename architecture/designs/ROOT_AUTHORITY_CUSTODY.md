@@ -1,8 +1,7 @@
 # Root Authority Custody & Reconstitution
 
 Extracted from the [Pre-M0 implementation package](../plans/roadmap/PRE-M0-implementation-package-v1.md) on 2026-09-20.
-This is a public technical edition of the canonical record. Published source
-hashes and original lineage are recorded in the architecture source map.
+This is the working canonical file; the imported package remains unchanged.
 
 Status: Verified for the bounded Internal M2 profile: AF-007A–H pass the
 [accepted cumulative gate](../M2_ACCEPTANCE.md). Userspace runs on the BSP with
@@ -294,7 +293,7 @@ This does not authorize replacement of Root or complete service/BAC recovery.
 generation-safe service metadata reclamation. An ordinary replacement retains its
 Job, logical endpoints and accumulated CPU usage. A physical 64-replacement proof
 now preserves Root and a responsive unrelated peer; evidence is linked from
-[M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance). This exercises AF-007H's service
+M2 progress. This exercises AF-007H's service
 boundary, while whole Root catastrophe has separate requirements above.
 
 [ADR-0038](../adr/ADR-0038-sealed-custodian-lifecycle.md) implements the portable

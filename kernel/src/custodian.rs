@@ -100,6 +100,22 @@ pub struct Custodian<'a> {
     recovery: Option<Recovery>,
 }
 impl<'a> Custodian<'a> {
+    /// Independent typed V5 selection through this same retained attempt,
+    /// incarnation, restart budget and teardown machine. No legacy cast/reset.
+    #[cfg(feature = "workspace-authority")]
+    pub fn new_root_v5(
+        epoch: NonZeroU64,
+        manifest: &'a crate::root_manifest_v5::CurrentRoot<'a>,
+        custody: SpaceId,
+        catalog: &'a [CatalogEntry],
+    ) -> Self {
+        Self::new_selected(
+            epoch,
+            crate::root_selection::Selection::V5(manifest),
+            custody,
+            catalog,
+        )
+    }
     /// Trusted once-per-boot construction over verified immutable boot selection.
     /// Epoch uniqueness/authentication belongs to that producer, not this core.
     /// Keep custody private: never export its domain or grant a BAC mutation cap.
@@ -143,6 +159,21 @@ impl<'a> Custodian<'a> {
         Self::new_selected(
             epoch,
             crate::root_selection::Selection::Native(manifest),
+            custody,
+            catalog,
+        )
+    }
+    /// The new record shares this exact custody/budget/phase machine. It is
+    /// neither a second active Root nor a reset of incarnation/recovery state.
+    pub fn new_root_v4(
+        epoch: NonZeroU64,
+        manifest: &'a crate::root_manifest_v4::CurrentRoot<'a>,
+        custody: SpaceId,
+        catalog: &'a [CatalogEntry],
+    ) -> Self {
+        Self::new_selected(
+            epoch,
+            crate::root_selection::Selection::V4(manifest),
             custody,
             catalog,
         )

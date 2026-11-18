@@ -1,0 +1,54 @@
+{
+  "author_dates_are_not_utc_acceptance": true,
+  "authority": "DEVELOPMENT ONLY; not Official Evrosion",
+  "binding": {
+    "channel": "5f5b8350a76bae830cdd8359a61d86b5b2c14d18d31ef62a56d05db89dc2b4d0",
+    "namespace": "7234b8d6654b285d35a70eb42a51b746d1521759f125cf7b49ee1a481d68d7b3",
+    "platform": "47f8d18b55ed018c38a81086eed8dd117a92a9cb4fc4c1c9050276d540eb7796"
+  },
+  "bootstrap": "independently provisioned first-party public fixture; server cannot replace it",
+  "expires": 1825977600,
+  "keys": [
+    {
+      "id": "dbaf54a3a1eaaf660e432e3eb443c1dc771334c8b0c5260e9e62f8609cfa5c67",
+      "public": "ba1d965fa0496ba0e73200992284f4c95b4b3c407d49cc48f1940c4b73952eb0",
+      "role": "root"
+    },
+    {
+      "id": "4f2d54b6901c6dd9ed5fd871c568972acfc87dc982003cf25431c56d85d7274c",
+      "public": "8dedfdb03f7735f1355f339fdbf13bcaeb5538720f86c305a87351d81de5359e",
+      "role": "root"
+    },
+    {
+      "id": "d261e9a49d09b71acf5fa13a5ea3b24943ac0b101c0e201addbf22331a69d087",
+      "public": "5764d3bc11cf1650eec19473892f91b494b0e86243feecfc02717e8228695fa8",
+      "role": "targets"
+    },
+    {
+      "id": "954f696bacacf46122e5c7b86e5b8b67fd55338e04a54a0c65a206c5780d16f3",
+      "public": "089c8304a7ddc94b564bc9fa3b3d69f14afdf4679af29de5f42bfa2f3d6481af",
+      "role": "snapshot"
+    },
+    {
+      "id": "f6eac7806848168c7cb08a95441bc8e73cca05487cf959df4f24f0afbb1cf08a",
+      "public": "87e037cea2b389cd0b9b219351d0a6adb28d51e92a71acaf8f0ec379ba6106ca",
+      "role": "timestamp"
+    }
+  ],
+  "max_validity_seconds": [
+    31536000,
+    86400,
+    3600,
+    600
+  ],
+  "not_before": 1794441600,
+  "root_sha256": "3d41b2402fcde61e047585759d3bfa489033100d7bd2fe2661d7653c15ef5ed8",
+  "root_version": 1,
+  "schema": 1,
+  "thresholds": [
+    2,
+    1,
+    1,
+    1
+  ]
+}

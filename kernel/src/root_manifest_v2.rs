@@ -46,7 +46,7 @@ pub struct Manifest<'a> {
 fn word(b: &[u8], o: usize) -> u64 {
     u64::from_le_bytes(b[o..o + 8].try_into().unwrap())
 }
-fn kind(tag: u8) -> Option<Kind> {
+pub(crate) fn kind(tag: u8) -> Option<Kind> {
     Some(match tag {
         1 => Kind::Memory,
         2 => Kind::Endpoint,
@@ -89,6 +89,20 @@ impl<'a> Manifest<'a> {
     }
     pub fn profile(&self) -> u16 {
         u16::from_le_bytes(self.bytes[172..174].try_into().unwrap())
+    }
+    pub(crate) fn startup_bytes(&self) -> usize {
+        usize::from(u16::from_le_bytes(self.bytes[170..172].try_into().unwrap()))
+    }
+    pub(crate) fn authority_domain(&self) -> &'static [u8] {
+        #[cfg(feature = "workspace-authority")]
+        if self.profile() == ev_userspace_contract::root_v5::PROFILE {
+            return crate::root_manifest_v5::AUTHORITY_DOMAIN;
+        }
+        if self.profile() == ev_userspace_contract::root_v4::PROFILE {
+            crate::root_manifest_v4::AUTHORITY_DOMAIN
+        } else {
+            b"evrosion.bootstrap.authority.root.v2\0"
+        }
     }
     pub fn limits(&self) -> scheduler::Limits {
         self.limits
@@ -179,13 +193,57 @@ pub fn verify<'a>(
     expected: [u8; 32],
     image: &'a [u8],
 ) -> Result<Manifest<'a>, Error> {
-    if !(HEADER..=MAX_BYTES).contains(&bytes.len()) {
+    verify_format(bytes, expected, image, Format::Legacy)
+}
+pub(crate) fn verify_v4<'a>(
+    bytes: &'a [u8],
+    expected: [u8; 32],
+    image: &'a [u8],
+) -> Result<Manifest<'a>, Error> {
+    verify_format(bytes, expected, image, Format::SessionNetwork)
+}
+#[cfg(feature = "workspace-authority")]
+pub(crate) fn verify_v5<'a>(
+    bytes: &'a [u8],
+    expected: [u8; 32],
+    image: &'a [u8],
+) -> Result<Manifest<'a>, Error> {
+    verify_format(bytes, expected, image, Format::Workspace)
+}
+#[derive(Clone, Copy)]
+enum Format {
+    Legacy,
+    SessionNetwork,
+    #[cfg(feature = "workspace-authority")]
+    Workspace,
+}
+fn verify_format<'a>(
+    bytes: &'a [u8],
+    expected: [u8; 32],
+    image: &'a [u8],
+    format: Format,
+) -> Result<Manifest<'a>, Error> {
+    let (magic, max_grants, startup_bytes) = match format {
+        Format::Legacy => (MAGIC, root_v2::MAX_GRANTS, root_v2::SIZE),
+        Format::SessionNetwork => (
+            b"EVBM0004",
+            ev_userspace_contract::root_v4::MAX_GRANTS,
+            ev_userspace_contract::root_v4::SIZE,
+        ),
+        #[cfg(feature = "workspace-authority")]
+        Format::Workspace => (
+            b"EVBM0005",
+            ev_userspace_contract::root_v5::MAX_GRANTS,
+            ev_userspace_contract::root_v5::SIZE,
+        ),
+    };
+    if !(HEADER..=HEADER + max_grants * GRANT_BYTES).contains(&bytes.len()) {
         return Err(Error::Length);
     }
     if <[u8; 32]>::from(Sha256::digest(bytes)) != expected {
         return Err(Error::Measurement);
     }
-    if &bytes[..8] != MAGIC {
+    if &bytes[..8] != magic {
         return Err(Error::Version);
     }
     if bytes[113..120]
@@ -196,27 +254,42 @@ pub fn verify<'a>(
     {
         return Err(Error::Reserved);
     }
-    if bytes[48..80] != root_v2::ABI && bytes[48..80] != root_v2::native::ABI {
+    let abi_allowed = match format {
+        Format::Legacy => bytes[48..80] == root_v2::ABI || bytes[48..80] == root_v2::native::ABI,
+        Format::SessionNetwork => bytes[48..80] == ev_userspace_contract::root_v4::ABI,
+        #[cfg(feature = "workspace-authority")]
+        Format::Workspace => bytes[48..80] == ev_userspace_contract::root_v5::ABI,
+    };
+    if !abi_allowed {
         return Err(Error::Abi);
     }
-    let startup_version = if bytes[48..80] == root_v2::native::ABI {
-        root_v2::native::VERSION
-    } else {
-        root_v2::VERSION
+    let startup_version = match format {
+        Format::SessionNetwork => ev_userspace_contract::root_v4::VERSION,
+        #[cfg(feature = "workspace-authority")]
+        Format::Workspace => ev_userspace_contract::root_v5::VERSION,
+        Format::Legacy if bytes[48..80] == root_v2::native::ABI => root_v2::native::VERSION,
+        Format::Legacy => root_v2::VERSION,
     };
     if u16::from_le_bytes(bytes[168..170].try_into().unwrap()) != startup_version
-        || usize::from(u16::from_le_bytes(bytes[170..172].try_into().unwrap())) != root_v2::SIZE
+        || usize::from(u16::from_le_bytes(bytes[170..172].try_into().unwrap())) != startup_bytes
     {
         return Err(Error::Startup);
     }
     let profile = u16::from_le_bytes(bytes[172..174].try_into().unwrap());
-    if !((profile == root_v2::PROFILE && bytes[48..80] == root_v2::ABI)
-        || (profile == root_v2::native::PROFILE && bytes[48..80] == root_v2::native::ABI))
-    {
+    let profile_allowed = match format {
+        Format::Legacy => {
+            (profile == root_v2::PROFILE && bytes[48..80] == root_v2::ABI)
+                || (profile == root_v2::native::PROFILE && bytes[48..80] == root_v2::native::ABI)
+        }
+        Format::SessionNetwork => profile == ev_userspace_contract::root_v4::PROFILE,
+        #[cfg(feature = "workspace-authority")]
+        Format::Workspace => profile == ev_userspace_contract::root_v5::PROFILE,
+    };
+    if !profile_allowed {
         return Err(Error::Profile);
     }
     let count = usize::from(bytes[160]);
-    if !(1..=root_v2::MAX_GRANTS).contains(&count) {
+    if !(1..=max_grants).contains(&count) {
         return Err(Error::Count);
     }
     if bytes.len() != HEADER + count * GRANT_BYTES {

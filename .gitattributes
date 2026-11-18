@@ -9,3 +9,8 @@
 /LICENSES/** -text
 /tests/fixtures/** -text
 /third_party/bootloader-uefi.Cargo.lock -text
+
+# Exact upstream notices, protocol captures and unified patch context retain whitespace.
+/LICENSES/** -whitespace
+/tests/fixtures/** -whitespace
+/development/experimental/*.patch -text -whitespace

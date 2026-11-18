@@ -39,7 +39,7 @@ See the [identity taxonomy](../../architecture/designs/IDENTITY_TAXONOMY.md),
 Jobs attribute resources to the actual hierarchy. Crashes and Stop/Reap retire
 live authority; replacement must not duplicate it. Durable permission policy is
 separate from runtime handles and from installation metadata. The grant-policy
-library has a [four-cold-VM execution proof](../release/0.1-preview.md#validation-and-provenance)
+library has a four-cold-VM execution proof (local engineering archive)
 for explicit remember, fresh cold remint, live revocation and cold denial. Its
 fixed local owner route is separate from future production Trusted Control.
 

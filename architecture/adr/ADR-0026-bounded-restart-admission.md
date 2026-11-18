@@ -14,7 +14,7 @@ semantics unspecified. A fixed window admits two bursts across its boundary;
 counting successful spawns alone permits an unbounded failed-creation loop.
 
 This is a Level B mechanism clarification under the
-[engineering direction](../plans/amendments/engineering-direction-2026-10-16.md).
+founder mandate.
 The existing custody design and its recovery guarantees remain in force.
 
 ## Decision
@@ -75,7 +75,7 @@ Host tests exercise failed attempts, exact expiry, cross-boundary bursts, zero a
 maximum capacity, malformed policy, clock rollback/overflow and 36,864 exhaustive
 small traces against an independent timestamp-history oracle. The cumulative M1
 runner checks for regression. See the
-[execution record](../../docs/release/0.1-preview.md#validation-and-provenance).
+execution record (local engineering archive).
 
 **Not AF-007G acceptance:** no Root Supervisor exists or enters independent
 recovery yet. Before BAC integration, verify one budget per boot epoch, immutable

@@ -52,6 +52,7 @@ pub enum SystemChange {
     BeginBoot(GenerationId),
     Admission(AdmissionReport),
     Health(HealthReport),
+    ComponentFault(ev_store::CriticalFaultReport),
     Probe([u8; 256]),
     SelectKnownGood,
 }
@@ -63,6 +64,7 @@ impl SystemChange {
             Self::BeginBoot(g) => Request::BeginBoot(*g),
             Self::Admission(a) => Request::Admission(*a),
             Self::Health(h) => Request::Health(*h),
+            Self::ComponentFault(h) => Request::CriticalFault(*h),
             Self::Probe(bytes) => Request::WriteMutable {
                 object: ObjectId::user_data(),
                 bytes,
@@ -109,7 +111,7 @@ impl<T: Wire, W: Window> State<T, W> {
         self.usable()?;
         let result = {
             let device = self.backend.device(Region::System, false);
-            match Store::open(
+            match self.system_profile.open(
                 crate::native_diagnostics::system::ReadOnly(device),
                 deadline,
             ) {
@@ -132,7 +134,7 @@ impl<T: Wire, W: Window> State<T, W> {
         self.usable()?;
         let result = {
             let device = self.backend.device(Region::System, true);
-            match Store::open(device, deadline) {
+            match self.system_profile.open(device, deadline) {
                 Ok(mut store) => view(&mut store, deadline).map(Some).map_err(|_| false),
                 Err(r) => Err(matches!(r.error, ev_store::Error::Unformatted)),
             }
@@ -162,15 +164,16 @@ impl<T: Wire, W: Window> State<T, W> {
                 .map_err(|_| Error::Package)?;
         let result = {
             let device = self.backend.device(Region::System, true);
-            Store::format_new(
-                device,
-                manifest,
-                super::super::system::INITIAL_PAYLOAD,
-                BootPolicy::new(3).unwrap(),
-                deadline,
-            )
-            .map(|mut store| view(&mut store, deadline))
-            .map_err(|_| ())
+            self.system_profile
+                .format(
+                    device,
+                    manifest,
+                    super::super::system::INITIAL_PAYLOAD,
+                    BootPolicy::new(3).unwrap(),
+                    deadline,
+                )
+                .map(|mut store| view(&mut store, deadline))
+                .map_err(|_| ())
         };
         match result {
             Ok(Ok(v)) => Ok(v),
@@ -189,7 +192,10 @@ impl<T: Wire, W: Window> State<T, W> {
         let pending = &mut self.system_pending;
         let result = (|| {
             let device = self.backend.device(Region::System, true);
-            let mut store = Store::open(device, deadline).map_err(|_| true)?;
+            let mut store = self
+                .system_profile
+                .open(device, deadline)
+                .map_err(|_| true)?;
             let operation = store.next_operation().map_err(|_| true)?;
             *pending = Some(SystemIntent { operation, change });
             let intent = pending.as_ref().unwrap();
@@ -234,7 +240,7 @@ impl<T: Wire, W: Window> State<T, W> {
         self.usable()?;
         let result = (|| {
             let device = self.backend.device(Region::System, true);
-            let mut store = Store::open(device, deadline).map_err(|_| ())?;
+            let mut store = self.system_profile.open(device, deadline).map_err(|_| ())?;
             let mut bytes = [0; 256];
             let len = store
                 .read_mutable(ObjectId::user_data(), &mut bytes, deadline)
@@ -243,5 +249,167 @@ impl<T: Wire, W: Window> State<T, W> {
             Ok::<_, ()>(Sha256::digest(&bytes[..len]).into())
         })();
         result.map_err(|_| self.fail())
+    }
+}
+
+#[cfg(feature = "native-network")]
+impl<T: Wire, W: Window> State<T, W> {
+    pub(crate) fn initialize_downloaded_manifest(
+        &mut self,
+        manifest: GenerationManifest,
+        deadline: u64,
+    ) -> Result<(), Error> {
+        self.usable()?;
+        if self.system_snapshot(deadline)?.is_some() {
+            return Err(Error::State);
+        }
+        let result = self.system_profile.format(
+            self.backend.device(Region::System, true),
+            manifest,
+            super::super::system::INITIAL_PAYLOAD,
+            BootPolicy::new(3).unwrap(),
+            deadline,
+        );
+        match result {
+            Ok(_) => Ok(()),
+            Err(_) => Err(self.fail()),
+        }
+    }
+    pub(crate) fn apply_component_fault(
+        &mut self,
+        report: ev_store::CriticalFaultReport,
+        deadline: u64,
+    ) -> Result<(), Error> {
+        self.system_apply(SystemChange::ComponentFault(report), deadline)
+            .map(|_| ())
+    }
+}
+
+#[cfg(feature = "native-network")]
+impl<T: Wire, W: Window> State<T, W> {
+    fn health_receipt(
+        &self,
+        cohort: &crate::downloaded_health::Cohort,
+        sources: &impl Sources,
+    ) -> Result<crate::downloaded_health::HealthReceipt, Error> {
+        self.usable()?;
+        let selected = self.registry_selection(sources)?.ok_or(Error::Package)?;
+        if selected.package() != cohort.content().package
+            || selected.version() != cohort.content().version
+        {
+            return Err(Error::Package);
+        }
+        Ok(crate::downloaded_health::HealthReceipt {
+            selected,
+            cohort: cohort.manifest().cohort,
+            generation: cohort.manifest().generation.get(),
+            mutations: self.mutations(),
+        })
+    }
+    pub(crate) fn commit_downloaded_health_receipt(
+        &mut self,
+        cohort: &crate::downloaded_health::Cohort,
+        report: HealthReport,
+        sources: &impl Sources,
+        deadline: u64,
+    ) -> Result<crate::downloaded_health::HealthReceipt, Error> {
+        if report.admitted.cohort != cohort.manifest().cohort
+            || report.outcome != ev_store::HealthOutcome::CriticalPassed
+        {
+            return Err(Error::State);
+        }
+        let view = self.system_apply(SystemChange::Health(report), deadline)?;
+        if view.known_good != Some(cohort.manifest().generation.get())
+            || view.selected != Some(cohort.manifest())
+        {
+            return Err(self.fail());
+        }
+        self.health_receipt(cohort, sources)
+    }
+    /// Recover only an actually committed protected System manifest. A current
+    /// GUI Ready, detached Snapshot or caller-known generation is insufficient.
+    pub fn retained_downloaded_health(
+        &mut self,
+        cohort: &crate::downloaded_health::Cohort,
+        sources: &impl Sources,
+        deadline: u64,
+    ) -> Result<crate::downloaded_health::HealthReceipt, Error> {
+        self.usable()?;
+        if self
+            .system_snapshot(deadline)?
+            .and_then(|v| v.known_good)
+            .is_none()
+        {
+            return Err(Error::State);
+        }
+        let result = {
+            let device = self.backend.device(Region::System, true);
+            match self.system_profile.open(device, deadline) {
+                Ok(mut store) => store.known_good_manifest(deadline).map_err(|_| ()),
+                Err(_) => Err(()),
+            }
+        };
+        match result {
+            Ok(Some(manifest)) if cohort.matches(&manifest) => self.health_receipt(cohort, sources),
+            Ok(_) => Err(Error::State),
+            Err(_) => Err(self.fail()),
+        }
+    }
+    pub(crate) fn matches_downloaded_health(
+        &self,
+        receipt: &crate::downloaded_health::HealthReceipt,
+    ) -> bool {
+        self.matches_registry_selection(&receipt.selected) && self.mutations() == receipt.mutations
+    }
+}
+
+#[cfg(feature = "native-network")]
+impl<T: Wire, W: Window> State<T, W> {
+    /// Actual controller uses this for the required subject only. Ordinary
+    /// writes and Note namespace creation are refused until durable health.
+    pub fn admit_health_subject(
+        &mut self,
+        sources: &impl Sources,
+        source: Source,
+        identity: Identity,
+        reads: HealthReads,
+    ) -> Result<(), Error> {
+        if !matches!(source, Source::Downloaded(_)) {
+            self.invalidate_health_reads();
+            return Err(Error::Package);
+        }
+        if !self.matches_health_reads(&reads, sources)
+            || sources.source_digest(source) != Some(reads.package())
+        {
+            self.invalidate_health_reads();
+            return Err(Error::State);
+        }
+        if let Err(error) = self.admit_source_inner(sources, source, identity) {
+            self.invalidate_health_reads();
+            return Err(error);
+        }
+        let session = self.session.as_mut().unwrap();
+        session.health_probation = true;
+        session.health_reads = Some(reads);
+        Ok(())
+    }
+    pub fn release_health_subject(
+        &mut self,
+        cohort: &crate::downloaded_health::Cohort,
+        sources: &impl Sources,
+        deadline: u64,
+    ) -> Result<(), Error> {
+        let _actual = self.retained_downloaded_health(cohort, sources, deadline)?;
+        // A post-promotion child may already have stopped while the durable
+        // content join completes. An absent fenced session grants nothing.
+        let Some(session) = self.session.as_mut() else {
+            return Ok(());
+        };
+        if session.package != cohort.content().package {
+            return Err(Error::Package);
+        }
+        session.health_probation = false;
+        self.invalidate_health_reads();
+        Ok(())
     }
 }

@@ -20,17 +20,26 @@ use ev_kernel::{
     time::Deadline,
     user_context::{Call, FxState, UserContext, decode},
 };
-use ev_userspace_contract::root_v2::{
-    self,
-    graph::{CHILDREN, Channel, Child},
-};
+use ev_userspace_contract::root_v2;
+pub(crate) mod profile;
+use profile::{self as graph, *};
 use sha2::{Digest, Sha256};
 mod backing;
+#[cfg(feature = "test-m6-session")]
+mod cancellation;
 mod checks;
 #[cfg(feature = "test-m5-native")]
 mod diagnostic;
 mod dispatch;
 mod executor;
+#[cfg(feature = "test-m6-network")]
+mod network_fault;
+#[cfg(feature = "test-m6-network-negative")]
+mod network_negative;
+#[cfg(feature = "test-m6-network")]
+mod network_retirement;
+#[cfg(feature = "test-m6-network")]
+mod startup_observation;
 mod world;
 #[cfg(not(feature = "test-m5-native"))]
 pub use world::prove;
@@ -40,6 +49,8 @@ mod grant;
 mod lifecycle;
 mod observation;
 mod retirement;
+#[cfg(feature = "test-m6-session")]
+mod session_ui;
 mod transport;
 use backing::Backing;
 #[cfg(feature = "test-m5-native")]
@@ -52,18 +63,26 @@ const RECEIVE: Rights = Rights::from_bits(272).unwrap();
 #[cfg(not(feature = "test-m5-native"))]
 const WORLD_TICKS: u64 = 16_384;
 const TRANSITIONS: u64 = 8_000_000;
+#[cfg(feature = "test-m6-session")]
+const SESSION_CPU_PERIOD: u64 = 256;
 #[derive(Clone, Copy)]
 pub(super) enum Scalar {
     System,
     File,
     Application,
     Catalogue,
+    #[cfg(feature = "test-m6-network")]
+    Nic,
+    #[cfg(feature = "test-m6-network")]
+    NetClient,
+    #[cfg(feature = "test-m6-network")]
+    Note,
 }
 #[derive(Clone, Copy)]
-struct Hardware {
-    offset: u64,
-    bits: u8,
-    original: u64,
+pub(crate) struct Hardware {
+    pub(crate) offset: u64,
+    pub(crate) bits: u8,
+    pub(crate) original: u64,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Producer {
@@ -110,10 +129,132 @@ pub struct VoluntaryExit {
     pub calls: u64,
     pub replies: u64,
 }
+#[cfg(feature = "test-m6-network")]
+pub struct SessionNetworkExit {
+    pub actor: usize,
+    pub process: u64,
+    pub thread: u64,
+    pub code: u64,
+    pub instruction: u64,
+    pub tick: u64,
+    pub calls: u64,
+    pub replies: u64,
+}
+#[cfg(feature = "test-m6-network")]
+pub struct SessionNetworkProgress {
+    pub root_process: u64,
+    pub root_thread: u64,
+    pub endpoint: usize,
+    pub ticket: u64,
+    pub tick: u64,
+    pub stage: u8,
+    pub result: u8,
+    pub argument: u32,
+}
+/// An actually accepted current Root event; not a power or cleanup permit.
+#[cfg(feature = "test-m6-network")]
+pub struct SessionRestart {
+    pub root_process: u64,
+    pub root_thread: u64,
+    pub endpoint: usize,
+    pub ticket: u64,
+    pub tick: u64,
+    pub mode: u8,
+    pub generation: u32,
+}
+#[cfg(feature = "test-m6-network")]
+pub struct SessionNetworkError {
+    pub actor: u8,
+    pub process: u64,
+    pub thread: u64,
+    pub endpoint: usize,
+    pub ticket: u64,
+    pub tick: u64,
+    pub layer: u8,
+    pub operation: u8,
+    pub class: u8,
+    pub detail: u8,
+    pub subdetail: u8,
+    pub progress: u8,
+}
+#[cfg(feature = "test-m6-network")]
+pub struct SessionRpcRejection {
+    pub actor: usize,
+    pub process: u64,
+    pub thread: u64,
+    pub capability: u64,
+    pub wire: usize,
+    pub endpoint: usize,
+    pub deadline: u64,
+    pub tick: u64,
+    pub branch: u8,
+    pub reason: u8,
+    pub detail: u8,
+    pub parent_call: u64,
+    pub parent_deadline: u64,
+    pub parent_delivered: u8,
+}
+#[cfg(feature = "test-m6-network")]
+pub struct SessionTimeExchange {
+    pub root_process: u64,
+    pub root_thread: u64,
+    pub endpoint: usize,
+    pub ticket: u64,
+    pub tick: u64,
+    pub phase: u8,
+    pub tcp: u8,
+    pub calls: u8,
+    pub error: u8,
+    pub detail: u8,
+}
 pub enum Observation {
+    #[cfg(feature = "test-m7-document-observe")]
+    Document(DocumentObservation),
+    #[cfg(feature = "test-m6-network")]
+    SessionTimeExchange(SessionTimeExchange),
+    #[cfg(feature = "test-m6-network")]
+    SessionDynamicImage(SessionDynamicImage),
+    #[cfg(feature = "test-m6-network")]
+    SessionDownloadedAction(SessionDownloadedAction),
     Step(Step),
     Lifecycle(Lifecycle),
     VoluntaryExit(VoluntaryExit),
+    #[cfg(feature = "test-m6-network")]
+    SessionNetworkExit(SessionNetworkExit),
+    #[cfg(feature = "test-m6-network")]
+    SessionNetworkProgress(SessionNetworkProgress),
+    /// Actual Root elapsed-source diagnostic; argument is relative seconds.
+    /// This does not assert authenticated UTC or a qualified rate bound.
+    #[cfg(feature = "test-m6-network")]
+    SessionTimeProgress(SessionNetworkProgress),
+    /// Actual private proof outcome; even success leaves UTC unqualified.
+    #[cfg(feature = "test-m6-network")]
+    SessionTimeProof(SessionNetworkProgress),
+    #[cfg(feature = "test-m6-network")]
+    SessionTimeCheck(SessionNetworkProgress),
+    #[cfg(feature = "test-m6-network")]
+    SessionRestart(SessionRestart),
+    /// Actual local content preparation progress; no remote trust or health.
+    #[cfg(feature = "test-m6-network")]
+    SessionUpdateProgress(SessionNetworkProgress),
+    #[cfg(feature = "test-m6-network")]
+    SessionNetworkError(SessionNetworkError),
+    #[cfg(feature = "test-m6-network")]
+    SessionRpcRejection(SessionRpcRejection),
+    #[cfg(feature = "test-m6-session")]
+    SessionRpc(SessionRpc),
+    #[cfg(feature = "test-m6-session")]
+    SessionAsyncExpiry(SessionAsyncExpiry),
+    #[cfg(feature = "test-m6-session")]
+    SessionBarrier(SessionBarrier),
+    #[cfg(feature = "test-m6-session")]
+    SessionCursor(SessionCursor),
+    #[cfg(feature = "test-m6-session")]
+    SessionNote(SessionNote),
+    #[cfg(feature = "test-m6-session")]
+    SessionUiCounts(SessionUiCounts),
+    #[cfg(feature = "test-m6-session")]
+    SessionWindowPadding(SessionWindowPadding),
     #[cfg(feature = "test-m5-native")]
     NativeAction(NativeAction),
     #[cfg(feature = "test-m5-native")]
@@ -138,10 +279,152 @@ pub enum Observation {
     NativeJob(NativeDiagnostic<192>),
     #[cfg(feature = "test-m5-native")]
     NativeSystem(NativeDiagnostic<384>),
+    #[cfg(feature = "test-m6-network")]
+    StartupPhase(ev_kernel::startup_trace::Row),
+    #[cfg(feature = "test-m6-network")]
+    StartupPhaseCounts {
+        observed: u64,
+        retained: usize,
+        overflow: u64,
+    },
+    #[cfg(feature = "test-m6-network")]
+    StartupCpu(ev_kernel::startup_trace::CpuPoint),
+    #[cfg(feature = "test-m6-network")]
+    StartupCpuCounts {
+        observed: u64,
+        retained: usize,
+        duplicates: u64,
+        overflow: u64,
+    },
     #[cfg(feature = "test-m5-native")]
     NativeFault(NativeFault),
     #[cfg(feature = "test-m5-native")]
     NativeJobField(NativeJobField),
+}
+#[cfg(feature = "test-m6-session")]
+#[derive(Clone, Copy)]
+pub enum SessionRpcPhase {
+    Accepted,
+    Completed,
+    Terminal,
+    Quiescent,
+}
+#[cfg(feature = "test-m6-session")]
+pub struct SessionRpc {
+    pub phase: SessionRpcPhase,
+    pub call_epoch: u64,
+    pub call: u64,
+    pub caller_process: u64,
+    pub caller_thread: u64,
+    pub callee_process: u64,
+    pub callee_thread: u64,
+    pub endpoint: usize,
+    pub request: u64,
+    pub started: u64,
+    pub tick: u64,
+    pub deadline: u64,
+    pub status: u64,
+    pub callee_cpu: u64,
+    pub scheduler_tick: u64,
+    pub budget: ev_kernel::scheduler::CpuBudget,
+}
+#[cfg(feature = "test-m6-session")]
+pub struct SessionAsyncExpiry {
+    pub sequence: u64,
+    pub endpoint: usize,
+    pub ticket: u64,
+    pub sender_process: u64,
+    pub sender_thread: u64,
+    pub receiver_process: u64,
+    pub receiver_thread: u64,
+    pub deadline: u64,
+    pub tick: u64,
+    pub value: u64,
+}
+#[cfg(feature = "test-m6-session")]
+pub struct SessionBarrier {
+    pub count: u64,
+    pub call_epoch: u64,
+    pub call: u64,
+    pub endpoint: usize,
+    pub caller_process: u64,
+    pub caller_thread: u64,
+    pub callee_process: u64,
+    pub callee_thread: u64,
+    pub frame: u32,
+    pub sequence: u32,
+    pub flags: u8,
+    pub buttons: u8,
+    pub request: u64,
+    pub reply: u64,
+    pub tick: u64,
+}
+#[cfg(feature = "test-m6-session")]
+pub struct SessionCursor {
+    pub count: u64,
+    pub call_epoch: u64,
+    pub call: u64,
+    pub endpoint: usize,
+    pub caller_process: u64,
+    pub caller_thread: u64,
+    pub callee_process: u64,
+    pub callee_thread: u64,
+    pub x: u16,
+    pub y: u8,
+    pub sequence: u32,
+    pub request: u64,
+    pub reply: u64,
+    pub tick: u64,
+}
+#[cfg(feature = "test-m7-document-observe")]
+pub struct DocumentObservation {
+    pub process: u64,
+    pub thread: u64,
+    pub endpoint: usize,
+    pub ticket: u64,
+    pub nonce: u32,
+    pub tick: u64,
+    pub frame: u64,
+    pub bytes: [u8; 256],
+}
+#[cfg(feature = "test-m6-session")]
+#[derive(Clone, Copy)]
+pub enum SessionNotePhase {
+    Request,
+    Accepted,
+    Delivered,
+}
+#[cfg(feature = "test-m6-session")]
+pub struct SessionNote {
+    pub phase: SessionNotePhase,
+    pub count: u64,
+    pub endpoint: usize,
+    pub ticket: u64,
+    pub sender_process: u64,
+    pub sender_thread: u64,
+    pub receiver_process: u64,
+    pub receiver_thread: u64,
+    pub nonce: u32,
+    pub opcode: u8,
+    pub message: u64,
+    pub tick: u64,
+}
+#[cfg(feature = "test-m6-session")]
+pub struct SessionUiCounts {
+    pub phase: &'static str,
+    pub barriers: u64,
+    pub cursors: u64,
+    pub note_requests: u64,
+    pub note_accepted: u64,
+    pub note_delivered: u64,
+}
+/// Final bytes in the writable App File window are untrusted protocol padding,
+/// not unmapped hardware guards. Record content without attributing its writer
+/// or interpreting zero bytes as authority or successful client validation.
+#[cfg(feature = "test-m6-session")]
+pub struct SessionWindowPadding {
+    pub nonzero: u64,
+    pub first: u64,
 }
 /// Three allocator snapshots, not a peak or a whole-machine RAM census.
 #[cfg(feature = "test-m5-native")]
@@ -157,6 +440,31 @@ pub struct NativeMemory {
     pub phase: NativeMemoryPhase,
     pub total_frames: u64,
     pub remaining_frames: u64,
+}
+#[cfg(feature = "test-m6-network")]
+pub struct SessionDynamicImage {
+    /// User operation+1;0 is Kernel-only final physical cleanup.
+    pub op: u8,
+    pub slot: u8,
+    pub phase: u8,
+    pub status: u64,
+    pub reason: u64,
+    pub process: u64,
+    pub thread: u64,
+    pub job: u64,
+    pub tick: u64,
+    pub original_cut: u64,
+    pub external_frames: u64,
+    pub root_cr3: u64,
+    pub table: u64,
+    pub control: u64,
+    pub declared_bytes: u64,
+    pub pages: u64,
+    pub verified_bytes: u64,
+    pub elf_sha256: [u8; 32],
+    pub content_sha256: [u8; 32],
+    pub declared_package_id: [u8; 32],
+    pub returned_memory_capability: u64,
 }
 #[cfg(feature = "test-m5-native")]
 pub struct NativeDiagnostic<const N: usize> {
@@ -198,6 +506,18 @@ pub struct NativeAction {
     pub image_sha256: [u8; 32],
     pub process: u64,
     pub thread: u64,
+}
+#[cfg(feature = "test-m6-network")]
+pub struct SessionDownloadedAction {
+    pub kind: NativeActionKind,
+    /// Actual retained dynamic owner, not a compiled package-bank selector.
+    pub slot: u8,
+    pub process: u64,
+    pub thread: u64,
+    pub job: u64,
+    pub elf_sha256: [u8; 32],
+    pub content_sha256: [u8; 32],
+    pub declared_package_id: [u8; 32],
 }
 #[cfg(feature = "test-m5-native")]
 pub struct NativeSelfIdentity {
@@ -309,8 +629,10 @@ enum RootImage<'a> {
 }
 #[cfg(not(feature = "test-m5-native"))]
 type RootLoadedImage = LoadedImage;
-#[cfg(feature = "test-m5-native")]
+#[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
 type RootLoadedImage = crate::executable_runtime::NativeLoadedImage;
+#[cfg(feature = "test-m6-network")]
+type RootLoadedImage = crate::executable_runtime::NetworkLoadedImage;
 impl RootImage<'_> {
     fn loaded(&self) -> &RootLoadedImage {
         match self {
@@ -342,6 +664,14 @@ unsafe impl ev_kernel::loaded_image::LoadedExecutable for RootImage<'_> {
     }
 }
 struct Runtime<'image, 'state> {
+    #[cfg(feature = "test-m6-network")]
+    dynamic: &'state mut crate::native_runtime::dynamic::State,
+    #[cfg(feature = "test-m6-network")]
+    network_fault: network_fault::Latch,
+    #[cfg(feature = "test-m6-network-negative")]
+    network_negative: network_negative::Probe,
+    #[cfg(feature = "test-m6-network")]
+    startup_trace: ev_kernel::startup_trace::Retained,
     a: &'state mut Authority,
     s: &'state mut Scheduler,
     registry: &'state mut Registry<'static>,
@@ -350,21 +680,35 @@ struct Runtime<'image, 'state> {
     token: Token,
     backing: &'state mut Backing,
     hw: Hardware,
-    actors: [Option<Actor<'image>>; 6],
-    slots: [Option<&'image mut GraphicsImage>; 6],
-    wires: [Option<Wire>; 16],
+    actors: [Option<Actor<'image>>; ACTORS],
+    slots: [Option<&'image mut GraphicsImage>; ACTORS],
+    wires: [Option<Wire>; WIRES],
     pending: [Option<Pending>; 8],
+    #[cfg(feature = "test-m6-session")]
+    rpc_trace: [u8; 2],
+    #[cfg(feature = "test-m6-network")]
+    rpc_rejection_seen: [bool; ACTORS + 1],
+    #[cfg(feature = "test-m6-session")]
+    async_expired: u64,
+    #[cfg(feature = "test-m6-session")]
+    async_swept_at: Option<u64>,
+    #[cfg(feature = "test-m6-session")]
+    session_ui: [u64; 5],
     stop: Deadline,
     facts: Facts,
     dimensions: (u32, u32),
     observations: &'state mut dyn FnMut(Observation),
     last_present: [Option<Step>; 2],
     picker: Option<(Step, u64)>,
-    old: [Option<Metadata>; 6],
+    old: [Option<Metadata>; ACTORS],
     barrier: Option<observation::Barrier>,
     request: u32,
     open: Option<(Metadata, u32)>,
     awaiting_open: Option<Metadata>,
+    #[cfg(feature = "test-m7-document")]
+    document_request: Option<(Metadata, ev_userspace_contract::document_control::Request)>,
+    #[cfg(feature = "test-m7-document-observe")]
+    document_samples: u32,
     selection: Option<observation::Selection>,
     snapshots: [observation::Snapshot; 2],
     grants: grant::Grants,
@@ -377,7 +721,7 @@ struct Runtime<'image, 'state> {
     settled: Option<u64>,
     display_original: Option<ProcessId>,
     #[cfg(feature = "test-m5-native")]
-    image_shas: [[u8; 32]; 6],
+    image_shas: [[u8; 32]; ACTORS],
     #[cfg(feature = "test-m5-native")]
     native: Option<crate::native_runtime::State<'state>>,
 }
@@ -404,18 +748,39 @@ fn kind(tag: u8) -> Kind {
     }
 }
 impl Runtime<'_, '_> {
+    fn source_handle(&self, index: usize) -> Handle {
+        if index < 18 {
+            return self.backing.sources[index];
+        }
+        #[cfg(feature = "test-m5-native")]
+        let native = self.native.as_ref().expect("native extra source owner");
+        #[cfg(feature = "test-m5-native")]
+        if index < 22 {
+            return native.backing.sources()[index - 18];
+        }
+        #[cfg(feature = "test-m6-network")]
+        {
+            self.backing
+                .network
+                .as_ref()
+                .expect("V4 network owner")
+                .sources[index - 22]
+        }
+        #[cfg(not(feature = "test-m6-network"))]
+        panic!("source outside native profile");
+    }
     fn source_identity(&self, index: usize, kind: Kind) -> usize {
         self.a
             .authorize(
                 self.backing.custody,
-                self.backing.sources[index],
+                self.source_handle(index),
                 kind,
                 Rights::READ,
             )
             .or_else(|_| {
                 self.a.authorize(
                     self.backing.custody,
-                    self.backing.sources[index],
+                    self.source_handle(index),
                     kind,
                     Rights::CONTROL,
                 )
@@ -438,7 +803,7 @@ impl Runtime<'_, '_> {
         m
     }
     fn index_thread(&self, thread: ThreadId) -> Option<usize> {
-        (0..7).find(|&i| self.metadata(i).is_some_and(|m| m.thread == thread))
+        (0..SLOTS).find(|&i| self.metadata(i).is_some_and(|m| m.thread == thread))
     }
     fn context_mut(&mut self, index: usize) -> &mut UserContext {
         if index == 0 {
@@ -501,6 +866,8 @@ impl Runtime<'_, '_> {
             return None;
         }
         let caller = self.metadata(p.caller).unwrap();
+        #[cfg(feature = "test-m6-network")]
+        let startup_digest = self.startup_present_row(p, 6);
         let actor = self.actors[p.caller - 1].as_ref().unwrap();
         let image = actor.image().unwrap();
         let extent = if producer == Producer::App {
@@ -513,6 +880,11 @@ impl Runtime<'_, '_> {
         let mut hash = Sha256::new();
         let mut header = [0u8; 64];
         let mut at = 0usize;
+        #[cfg(feature = "test-m6-network")]
+        if let Some(mut row) = startup_digest {
+            row.tick = crate::timer::now();
+            self.startup_trace.push(row);
+        }
         for physical in extent.physical_pages(lease).unwrap() {
             let address = direct_address(self.hw.offset, physical, self.hw.bits).unwrap();
             for byte in 0..FRAME_SIZE as usize {
@@ -568,6 +940,12 @@ impl Runtime<'_, '_> {
             surface_sha256: hash.finalize().into(),
             held_ticks: 0,
         };
+        #[cfg(feature = "test-m6-network")]
+        if let Some(mut row) = startup_digest {
+            row.phase = 7;
+            row.tick = crate::timer::now();
+            self.startup_trace.push(row);
+        }
         assert_eq!(
             caller.process.diagnostic_id(),
             if producer == Producer::App {

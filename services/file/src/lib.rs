@@ -2,6 +2,7 @@
 #![no_std]
 #![forbid(unsafe_code)]
 use ev_userspace_contract::Bootstrap;
+pub mod desktop_frame;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ServerCaps {
     pub io: u64,

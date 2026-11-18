@@ -34,16 +34,189 @@ pub fn check_panic(serial: &[u8], build: &str, status: Option<i32>) -> Result<()
 
 /// PASS requires the complete ordered protocol AND the QEMU exit device status.
 pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> Result<(), String> {
+    check_profile(
+        serial,
+        expected_build,
+        exit_status,
+        false,
+        false,
+        false,
+        None,
+    )
+}
+pub(crate) fn check_session(
+    serial: &[u8],
+    expected_build: &str,
+    exit_status: Option<i32>,
+) -> Result<(), String> {
+    check_profile(
+        serial,
+        expected_build,
+        exit_status,
+        true,
+        false,
+        false,
+        None,
+    )
+}
+/// Exact typed Document(Crash) proof, with the same machine/footer grammar.
+/// All ordinary check/state entrypoints keep their strict identity behavior.
+pub(crate) fn check_document_crash(
+    serial: &[u8],
+    expected_build: &str,
+    exit_status: Option<i32>,
+    proof: &crate::document_crash::Proof,
+) -> Result<(), String> {
+    if !proof.matches(serial, expected_build) {
+        return Err("document crash boot proof belongs to different raw serial/build".into());
+    }
+    check_checked_profile(
+        serial,
+        expected_build,
+        exit_status,
+        true,
+        false,
+        false,
+        None,
+        Some(proof),
+    )
+}
+pub(crate) fn check_network(
+    serial: &[u8],
+    expected_build: &str,
+    exit_status: Option<i32>,
+) -> Result<(), String> {
+    check_profile(serial, expected_build, exit_status, true, true, false, None)
+}
+pub(crate) fn check_network_recovery(
+    serial: &[u8],
+    expected_build: &str,
+    exit_status: Option<i32>,
+) -> Result<(), String> {
+    check_profile(serial, expected_build, exit_status, true, true, true, None)
+}
+pub(crate) fn check_network_negative(
+    serial: &[u8],
+    expected_build: &str,
+    exit_status: Option<i32>,
+    cancelled: &crate::network_negative::records::Cancelled,
+) -> Result<(), String> {
+    if !cancelled.matches(serial) {
+        return Err("negative boot proof belongs to another raw serial".into());
+    }
+    let observed = crate::network_negative::records::records(serial, expected_build, None)?;
+    crate::network_negative::retirement::complete(
+        serial,
+        expected_build,
+        observed.rows(),
+        cancelled.count() != 0,
+    )?;
+    check_profile(
+        serial,
+        expected_build,
+        exit_status,
+        true,
+        true,
+        false,
+        Some(cancelled),
+    )
+}
+fn check_profile(
+    serial: &[u8],
+    expected_build: &str,
+    exit_status: Option<i32>,
+    session: bool,
+    network: bool,
+    network_recovery: bool,
+    negative: Option<&crate::network_negative::records::Cancelled>,
+) -> Result<(), String> {
+    check_checked_profile(
+        serial,
+        expected_build,
+        exit_status,
+        session,
+        network,
+        network_recovery,
+        negative,
+        None,
+    )
+}
+#[allow(clippy::too_many_arguments)] // Explicit separate typed document experiment.
+fn check_checked_profile(
+    serial: &[u8],
+    expected_build: &str,
+    exit_status: Option<i32>,
+    session: bool,
+    network: bool,
+    network_recovery: bool,
+    negative: Option<&crate::network_negative::records::Cancelled>,
+    document_crash: Option<&crate::document_crash::Proof>,
+) -> Result<(), String> {
+    if document_crash.is_some_and(|p| !p.matches(serial, expected_build))
+        || document_crash.is_some()
+            && (!session || network || network_recovery || negative.is_some())
+    {
+        return Err("document crash proof outside its exact offline boot profile".into());
+    }
     if serial.len() > 1024 * 1024 {
         return Err("serial output exceeded 1 MiB".into());
     }
+    if negative.is_some_and(|proof| !proof.matches(serial)) {
+        return Err("negative network proof belongs to different actual serial".into());
+    }
+    let startup = if network {
+        crate::startup_protocol::record(serial, expected_build)?
+    } else {
+        None
+    };
+    if startup.is_some() && (negative.is_some() || network_recovery) {
+        return Err("startup diagnostic outside ordinary Managed Network profile".into());
+    }
+    if network {
+        crate::network_protocol::records(serial, expected_build)?;
+        crate::network_error_protocol::records(serial, expected_build)?;
+        crate::time_protocol::records(serial, expected_build)?;
+        crate::time_proof_protocol::records(serial, expected_build)?;
+        crate::tc_protocol::records(serial, expected_build)?;
+        crate::te_protocol::records(serial, expected_build)?;
+        crate::image_protocol::records(serial, expected_build)?;
+        crate::downloaded_protocol::records(serial, expected_build, false)?;
+        crate::update_protocol::records(serial, expected_build)?;
+        crate::rpc_rejection_protocol::records(serial, expected_build)?;
+    }
+    let omitted = if session {
+        let retention = if network_recovery {
+            crate::session_protocol::retention_network_recovery(serial, expected_build)?
+        } else {
+            crate::session_protocol::retention(serial, expected_build)?
+        };
+        retention.omitted != 0
+    } else {
+        false
+    };
     if exit_status != Some(protocol::QEMU_PASS_STATUS) {
         return Err(format!(
             "QEMU status {exit_status:?}; expected {}",
             protocol::QEMU_PASS_STATUS
         ));
     }
-    let text = String::from_utf8_lossy(serial);
+    let negative_protocol = negative
+        .map(|proof| {
+            crate::session_protocol::without_network_negative_diagnostics(
+                serial,
+                expected_build,
+                proof,
+            )
+        })
+        .transpose()?;
+    let text = String::from_utf8_lossy(negative_protocol.as_deref().unwrap_or(serial));
+    // This independent, complete-capture join admits only the current Managed
+    // downloaded C UD2 fault. Legacy lifecycle syntax remains unchanged.
+    let downloaded_fault = if network && !network_recovery && negative.is_none() {
+        crate::startup_protocol::downloaded_fault_line(serial, expected_build)?
+    } else {
+        None
+    };
     if text.contains("EVROSION_PANIC")
         || text.contains("EVROSION_BOOT_ERROR")
         || text.contains("status=FAIL")
@@ -131,9 +304,34 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
     let mut topology_cpus = 0;
     let mut topology_bsp = 0;
     let mut usable_bytes = 0;
-    for line in text.lines().filter(|line| !line.is_empty()) {
+    let mut session_restart_seen = false;
+    let mut session_prefix_closed = false;
+    let mut session_log_seen = false;
+    let mut session_padding_count = 0;
+    let mut session_memory_before = false;
+    let mut session_memory_held = false;
+    let mut session_profile_count = 0;
+    let mut session_image_cleanup = false;
+    for (at, line) in text
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| !line.is_empty())
+    {
         if stage == 4 {
             return Err("output follows the final PASS record".into());
+        }
+        if session_prefix_closed
+            && (line.starts_with("EVROSION_M4_DESKTOP_STEP")
+                || line.starts_with("EVROSION_M4_DESKTOP_LIFECYCLE")
+                || line.starts_with("EVROSION_M5_NATIVE_ACTION")
+                || line.starts_with("EVROSION_M5_NATIVE_CRITICAL_READY")
+                || line.starts_with("EVROSION_M5_NATIVE_SELF_IDENTITY")
+                || line.starts_with("EVROSION_M5_NATIVE_MANAGED_READ")
+                || line.starts_with("EVROSION_M5_NATIVE_INHIBIT")
+                || (line.starts_with("EVROSION_NATIVE_")
+                    && !line.starts_with("EVROSION_NATIVE_STATE ")))
+        {
+            return Err("ordinary session detail follows its retention boundary".into());
         }
         if ipc_started
             && !line.starts_with("EVROSION_M5_IPC")
@@ -577,7 +775,152 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
                 return Err("mixed/out-of-order actual Native memory snapshot".into());
             }
             crate::native_baselines::line(line, expected_build)?;
+            if session && line.starts_with("EVROSION_M5_NATIVE_MEMORY ") {
+                match line.split(' ').nth(3) {
+                    Some("phase=before")
+                        if !session_memory_before
+                            && session_padding_count == 0
+                            && !native_started =>
+                    {
+                        session_memory_before = true;
+                    }
+                    Some("phase=held") if session_padding_count == 2 && !session_memory_held => {
+                        session_memory_held = true;
+                    }
+                    Some("phase=after") if session_memory_held => {}
+                    _ => return Err("session padding/memory boundary order differs".into()),
+                }
+            }
             native_memory_started = true;
+        } else if startup.as_ref().is_some_and(|r| r.contains_line(at)) {
+            if !network
+                || negative.is_some()
+                || network_recovery
+                || stage != 3
+                || !native_started
+                || native_done
+                || session_prefix_closed
+                || session_log_seen
+            {
+                return Err(
+                    "startup diagnostic outside selected live Managed Network profile".into(),
+                );
+            }
+        } else if line.starts_with("EVROSION_M6_NEGATIVE") {
+            if negative.is_none()
+                || !network
+                || stage != 3
+                || !native_started
+                || native_done
+                || session_log_seen
+            {
+                return Err("negative observation outside selected live qualification".into());
+            }
+            crate::network_negative::records::line(line, expected_build)?;
+        } else if line.starts_with("EVROSION_M6_DOWNLOADED_ACTION") {
+            crate::downloaded_protocol::line(line, expected_build)?;
+            if !network
+                || stage != 3
+                || !native_started
+                || native_done
+                || session_prefix_closed
+                || session_image_cleanup
+                || session_log_seen
+            {
+                return Err("downloaded action outside selected live Network profile".into());
+            }
+        } else if line.starts_with("EVROSION_M6_RESTART") {
+            crate::restart_protocol::line(line, expected_build)?;
+            if !network
+                || stage != 3
+                || !native_started
+                || native_done
+                || session_prefix_closed
+                || session_image_cleanup
+                || session_log_seen
+                || session_restart_seen
+            {
+                return Err("restart intent outside selected live Network profile/replayed".into());
+            }
+            session_restart_seen = true;
+        } else if line.starts_with("EVROSION_M6_IMAGE ") {
+            let image = crate::image_protocol::line(line, expected_build)?;
+            if !network
+                || stage != 3
+                || !native_started
+                || native_done
+                || session_log_seen
+                || session_image_cleanup
+                || ((image.op == 0) != session_memory_held)
+                || (session_prefix_closed && image.op != 0)
+            {
+                return Err("dynamic image outside selected live/final profile".into());
+            }
+            session_image_cleanup = image.op == 0;
+        } else if line.starts_with("EVROSION_M6_NETWORK_PROGRESS ")
+            || line.starts_with("EVROSION_M6_TIME_PROGRESS ")
+            || line.starts_with("EVROSION_M6_TIME_PROOF ")
+            || line.starts_with("EVROSION_M6_TIME_CHECK ")
+            || line.starts_with("EVROSION_M6_TIME_EXCHANGE ")
+            || line.starts_with("EVROSION_M6_NETWORK_ERROR ")
+            || line.starts_with("EVROSION_M6_UPDATE_PROGRESS ")
+            || line.starts_with("EVROSION_M6_RPC_REJECTION ")
+        {
+            if !network
+                || stage != 3
+                || !native_started
+                || native_done
+                || session_prefix_closed
+                || session_log_seen
+            {
+                return Err("network diagnostic outside selected live profile".into());
+            }
+            if line.starts_with("EVROSION_M6_NETWORK_PROGRESS ") {
+                crate::network_protocol::line(line, expected_build)?;
+            } else if line.starts_with("EVROSION_M6_TIME_PROGRESS ") {
+                crate::time_protocol::line(line, expected_build)?;
+            } else if line.starts_with("EVROSION_M6_TIME_PROOF ") {
+                crate::time_proof_protocol::line(line, expected_build)?;
+            } else if line.starts_with("EVROSION_M6_TIME_CHECK ") {
+                crate::tc_protocol::line(line, expected_build)?;
+            } else if line.starts_with("EVROSION_M6_TIME_EXCHANGE ") {
+                crate::te_protocol::line(line, expected_build)?;
+            } else if line.starts_with("EVROSION_M6_UPDATE_PROGRESS ") {
+                crate::update_protocol::line(line, expected_build)?;
+            } else if line.starts_with("EVROSION_M6_RPC_REJECTION ") {
+                crate::rpc_rejection_protocol::line(line, expected_build)?;
+            } else {
+                crate::network_error_protocol::line(line, expected_build)?;
+            }
+        } else if line.starts_with("EVROSION_M6_WINDOW_PADDING ") {
+            if !session || stage != 3 || !discipline_seen || native_done || session_log_seen {
+                return Err("out-of-order App window padding observation".into());
+            }
+            crate::session_protocol::window_padding(line, expected_build)?;
+            match session_padding_count {
+                0 if session_memory_before && !native_started && native_common_mode.is_none() => {}
+                1 if native_started
+                    && native_common_mode.is_some()
+                    && !session_memory_held
+                    && session_profile_count == if network { 9 } else { 7 } => {}
+                _ => return Err("App padding lacks exact startup/final profile boundary".into()),
+            }
+            session_padding_count += 1;
+        } else if line.starts_with("EVROSION_M6_LOG_BOUND ") {
+            if !session
+                || stage != 3
+                || !native_started
+                || session_prefix_closed
+                || session_log_seen
+            {
+                return Err("out-of-order session retention boundary".into());
+            }
+            session_prefix_closed = true;
+        } else if line.starts_with("EVROSION_M6_LOG ") {
+            if !session || stage != 3 || !native_started || session_log_seen || native_done {
+                return Err("out-of-order session retention summary".into());
+            }
+            session_log_seen = true;
         } else if line.starts_with("EVROSION_M5_NATIVE_COMMON_PREFIX ") {
             if stage != 3
                 || !discipline_seen
@@ -593,7 +936,14 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
             {
                 return Err("mixed/duplicate/out-of-order Native common prefix".into());
             }
-            crate::native3_protocol::line(line, expected_build)?;
+            if session && session_padding_count != 1 {
+                return Err("session CommonPrefix lacks startup padding observation".into());
+            }
+            if network {
+                crate::native3_protocol::line_network(line, expected_build)?;
+            } else {
+                crate::native3_protocol::line(line, expected_build)?;
+            }
             let fields: Vec<_> = line.split(' ').collect();
             native_common_mode = Some(canonical_number(fields[3], "mode")?);
             native_started = true;
@@ -615,7 +965,11 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
             {
                 return Err("mixed/out-of-order Native mechanism receipt".into());
             }
-            crate::native3_protocol::line(line, expected_build)?;
+            if session {
+                crate::native3_protocol::line_session(line, expected_build)?;
+            } else {
+                crate::native3_protocol::line(line, expected_build)?;
+            }
         } else if line.starts_with("EVROSION_NATIVE_OWNER_TEXT ") {
             if stage != 3
                 || native_common_mode.is_none()
@@ -656,7 +1010,7 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
             let fields: Vec<_> = line.split(' ').collect();
             if line.starts_with("EVROSION_NATIVE_FAULT ") {
                 native_raw_faults += 1;
-                if native_raw_faults > 2 {
+                if !session && native_raw_faults > 2 {
                     return Err("Native raw fault archive bound exceeded".into());
                 }
             } else {
@@ -670,14 +1024,14 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
                 native_diagnostic_origin = Some(origin);
                 if line.starts_with("EVROSION_NATIVE_JOB_FIELD ") {
                     native_job_query += 1;
-                    if native_job_query > 512
+                    if (!session && native_job_query > 512)
                         || canonical_number(fields[3], "sequence")? != native_job_query
                     {
                         return Err("Native query sequence replay/gap/overflow".into());
                     }
                 } else {
                     native_diagnostic_report += 1;
-                    if native_diagnostic_report > 64
+                    if (!session && native_diagnostic_report > 64)
                         || canonical_number(fields[3], "report")? != native_diagnostic_report
                     {
                         return Err("Native diagnostic sequence replay/gap/overflow".into());
@@ -694,7 +1048,16 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
             if stage != 3 || !discipline_seen || native_done || desktop_done || runtime_seen {
                 return Err("out-of-order Native state diagnostic".into());
             }
-            crate::native_protocol::state_line(line, expected_build)?;
+            let state = if let Some(proof) = document_crash {
+                proof.state_line(line, expected_build)?
+            } else if network {
+                crate::native_protocol::state_line_network(line, expected_build)?
+            } else {
+                crate::native_protocol::state_line(line, expected_build)?
+            };
+            if session_prefix_closed && !state.is("finish") {
+                return Err("ordinary state follows session retention boundary".into());
+            }
             native_started = true;
         } else if line.starts_with("EVROSION_M5_NATIVE_ACTION") {
             if stage != 3
@@ -730,9 +1093,22 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
             {
                 return Err("mixed/out-of-order Native scheduling profile".into());
             }
-            crate::native_profile::line(line, expected_build)?;
+            let profile = if network {
+                crate::native_profile::line_network(line, expected_build)?
+            } else {
+                crate::native_profile::line(line, expected_build)?
+            };
+            if session {
+                if session_padding_count != 1 || profile.counts["index"] != session_profile_count {
+                    return Err(
+                        "session profile batch replayed or outside padding boundaries".into(),
+                    );
+                }
+                session_profile_count += 1;
+            }
         } else if line.starts_with("EVROSION_M5_NATIVE_RECOVERY ") {
             if stage != 3
+                || network && !network_recovery
                 || !discipline_seen
                 || native_common_mode != Some(2)
                 || desktop_started
@@ -744,16 +1120,29 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
                     "mixed/duplicate/out-of-order independent Native recovery completion".into(),
                 );
             }
-            let record = crate::native3_protocol::record(serial, expected_build, true)?;
+            let record = if network {
+                crate::native3_protocol::record_network_recovery(serial, expected_build)?
+            } else {
+                crate::native3_protocol::record(serial, expected_build, true)?
+            };
             if native_memory_started {
                 crate::native_baselines::memory(serial, expected_build)?;
             }
-            let profile = crate::native_profile::finished(
-                serial,
-                expected_build,
-                record.counts["faults"],
-                native_common_mode,
-            )?;
+            let profile = if network {
+                crate::native_profile::finished_network(
+                    serial,
+                    expected_build,
+                    record.counts["faults"],
+                    native_common_mode,
+                )?
+            } else {
+                crate::native_profile::finished(
+                    serial,
+                    expected_build,
+                    record.counts["faults"],
+                    native_common_mode,
+                )?
+            };
             if native_raw_faults != 0
                 || native_crashes != 0
                 || native_diagnostic_origin.is_some_and(|origin| {
@@ -770,6 +1159,7 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
             desktop_done = true;
         } else if line.starts_with("EVROSION_M5_NATIVE ") {
             if stage != 3
+                || network_recovery
                 || !discipline_seen
                 || (!desktop_started && native_common_mode != Some(1))
                 || native_done
@@ -778,7 +1168,28 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
             {
                 return Err("duplicate/out-of-order Native completion".into());
             }
-            let record = crate::native_protocol::record(serial, expected_build)?;
+            let record = if session {
+                if !session_log_seen || session_padding_count != 2 {
+                    return Err("session completion lacks final retention accounting".into());
+                }
+                if network {
+                    if let Some(proof) = negative {
+                        crate::native_protocol::record_network_negative(
+                            serial,
+                            expected_build,
+                            proof,
+                        )?
+                    } else {
+                        crate::native_protocol::record_network(serial, expected_build)?
+                    }
+                } else if let Some(proof) = document_crash {
+                    crate::native_protocol::record_document_crash(serial, expected_build, proof)?
+                } else {
+                    crate::native_protocol::record_session(serial, expected_build)?
+                }
+            } else {
+                crate::native_protocol::record(serial, expected_build)?
+            };
             if native_pre_gui_shell_fault {
                 if desktop_started
                     || desktop_lifecycles != 1
@@ -803,12 +1214,28 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
             if native_memory_started {
                 crate::native_baselines::memory(serial, expected_build)?;
             }
-            let profile = crate::native_profile::finished(
-                serial,
-                expected_build,
-                record.counts["faults"],
-                native_common_mode,
-            )?;
+            let profile = if network {
+                crate::native_profile::finished_network(
+                    serial,
+                    expected_build,
+                    record.counts["faults"],
+                    native_common_mode,
+                )?
+            } else if session {
+                crate::native_profile::finished_session(
+                    serial,
+                    expected_build,
+                    record.counts["faults"],
+                    native_common_mode,
+                )?
+            } else {
+                crate::native_profile::finished(
+                    serial,
+                    expected_build,
+                    record.counts["faults"],
+                    native_common_mode,
+                )?
+            };
             if native_pre_gui_shell_fault
                 && (profile[1].counts["incarnations"] != 1
                     || profile[1].counts["faults"] != 1
@@ -817,7 +1244,7 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
             {
                 return Err("Native pre-GUI profile mixed another Shell or App incarnation".into());
             }
-            if native_raw_faults != native_crashes
+            if (!omitted && native_raw_faults != native_crashes)
                 || native_diagnostic_origin.is_some_and(|origin| {
                     origin
                         != (
@@ -847,19 +1274,36 @@ pub fn check(serial: &[u8], expected_build: &str, exit_status: Option<i32>) -> R
                 return Err("mixed/out-of-order desktop step".into());
             }
             let step = crate::desktop_protocol::step_line(line, expected_build)?;
-            desktop_timeline.observe(&step)?;
+            if session {
+                desktop_timeline.observe_session(&step)?;
+            } else {
+                desktop_timeline.observe(&step)?;
+            }
             desktop_started = true;
         } else if line.starts_with("EVROSION_M4_DESKTOP_LIFECYCLE ") {
             if stage != 3
                 || desktop_done
                 || runtime_seen
                 || native_pre_gui_shell_fault
-                || desktop_lifecycles >= 4
+                || (!session && desktop_lifecycles >= 4)
             {
                 return Err("out-of-order desktop lifecycle".into());
             }
-            if desktop_started {
-                crate::desktop_protocol::lifecycle_line(line, expected_build)?;
+            if downloaded_fault == Some(at) {
+                if !discipline_seen
+                    || native_common_mode != Some(1)
+                    || desktop_started
+                    || desktop_lifecycles != 0
+                    || native_raw_faults != 1
+                {
+                    return Err("out-of-order Managed downloaded fault".into());
+                }
+            } else if desktop_started {
+                if session {
+                    crate::desktop_protocol::lifecycle_syntax(line, expected_build)?;
+                } else {
+                    crate::desktop_protocol::lifecycle_line(line, expected_build)?;
+                }
             } else {
                 if !discipline_seen
                     || native_common_mode != Some(1)

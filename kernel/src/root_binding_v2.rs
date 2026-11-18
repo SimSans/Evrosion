@@ -26,8 +26,8 @@ impl From<capability::Error> for Error {
         Self::Authority(e)
     }
 }
-struct Resolved {
-    requests: [Derivation; root_v2::MAX_GRANTS],
+struct Resolved<const N: usize> {
+    requests: [Derivation; N],
     count: usize,
     digest: [u8; 32],
 }
@@ -37,18 +37,18 @@ pub(crate) struct Installed {
 }
 /// Full generation identities, rooted lineage and exact measured roles are
 /// hashed while actual Authority is borrowed. Catalog integers cannot authorize.
-fn resolve(
+fn resolve<const N: usize>(
     a: &Authority,
     custody: SpaceId,
     sources: &[Source],
     manifest: &Manifest<'_>,
-) -> Result<Resolved, Error> {
+) -> Result<Resolved<N>, Error> {
     let count = manifest.grants().count();
-    if sources.len() != count || count > root_v2::MAX_GRANTS {
+    if sources.len() != count || count > N {
         return Err(Error::Sources);
     }
     let mut previous = 0;
-    let mut identities = [0; root_v2::MAX_GRANTS];
+    let mut identities = [0; N];
     for (i, s) in sources.iter().enumerate() {
         if s.selector <= previous {
             return Err(Error::Sources);
@@ -67,11 +67,11 @@ fn resolve(
         source: Handle(0),
         kind: Kind::Memory,
         rights: Rights::READ,
-    }; root_v2::MAX_GRANTS];
+    }; N];
     let mut hash = Sha256::new();
-    hash.update(b"evrosion.bootstrap.authority.root.v2\0");
+    hash.update(manifest.authority_domain());
     hash.update(manifest.abi_fingerprint());
-    hash.update((root_v2::SIZE as u64).to_le_bytes());
+    hash.update((manifest.startup_bytes() as u64).to_le_bytes());
     hash.update(manifest.profile().to_le_bytes());
     hash.update((count as u64).to_le_bytes());
     for (i, (grant, source)) in manifest.grants().zip(sources).enumerate() {
@@ -120,7 +120,7 @@ pub(crate) fn install(
     sources: &[Source],
     manifest: &CurrentRoot<'_>,
 ) -> Result<Installed, Error> {
-    install_manifest(
+    install_manifest::<{ root_v2::MAX_GRANTS }>(
         a,
         custody,
         branches,
@@ -137,7 +137,7 @@ pub(crate) fn install_native(
     sources: &[Source],
     manifest: &NativeRoot<'_>,
 ) -> Result<Installed, Error> {
-    install_manifest(
+    install_manifest::<{ root_v2::MAX_GRANTS }>(
         a,
         custody,
         branches,
@@ -146,7 +146,24 @@ pub(crate) fn install_native(
         manifest.manifest(),
     )
 }
-fn install_manifest(
+pub(crate) fn install_v4(
+    a: &mut Authority,
+    custody: SpaceId,
+    branches: SpaceId,
+    destination: SpaceId,
+    sources: &[Source],
+    manifest: &crate::root_manifest_v4::CurrentRoot<'_>,
+) -> Result<Installed, Error> {
+    install_manifest::<{ ev_userspace_contract::root_v4::MAX_GRANTS }>(
+        a,
+        custody,
+        branches,
+        destination,
+        sources,
+        manifest.manifest(),
+    )
+}
+fn install_manifest<const N: usize>(
     a: &mut Authority,
     custody: SpaceId,
     branches: SpaceId,
@@ -158,13 +175,60 @@ fn install_manifest(
     if count > a.slot_capacity(branches)? || count > a.slot_capacity(destination)? {
         return Err(Error::Capacity);
     }
-    let p = resolve(a, custody, sources, manifest)?;
+    let p = resolve::<N>(a, custody, sources, manifest)?;
     let grants =
         a.derive_scoped_into_empty(custody, branches, destination, &p.requests[..p.count])?;
     Ok(Installed {
         digest: p.digest,
         grants,
     })
+}
+/// The selected typed graph requires real96-slot custody/branch/Root banks.
+/// Compiled array headroom or a legacy64-slot control bank cannot enable it.
+#[cfg(feature = "workspace-authority")]
+fn workspace_banks(a: &Authority, spaces: &[SpaceId]) -> Result<(), Error> {
+    for &space in spaces {
+        if a.slot_capacity(space)? != ev_userspace_contract::root_v5::resources::ROOT_HANDLES {
+            return Err(Error::Capacity);
+        }
+    }
+    Ok(())
+}
+#[cfg(feature = "workspace-authority")]
+pub(crate) fn install_v5(
+    a: &mut Authority,
+    custody: SpaceId,
+    branches: SpaceId,
+    destination: SpaceId,
+    sources: &[Source],
+    manifest: &crate::root_manifest_v5::CurrentRoot<'_>,
+) -> Result<Installed, Error> {
+    workspace_banks(a, &[custody, branches, destination])?;
+    install_manifest::<{ ev_userspace_contract::root_v5::MAX_GRANTS }>(
+        a,
+        custody,
+        branches,
+        destination,
+        sources,
+        manifest.manifest(),
+    )
+}
+#[cfg(feature = "workspace-authority")]
+pub(crate) fn revalidate_v5(
+    a: &Authority,
+    custody: SpaceId,
+    sources: &[Source],
+    manifest: &crate::root_manifest_v5::CurrentRoot<'_>,
+    view: crate::bootstrap_binding::InstalledView<'_>,
+) -> Result<(), Error> {
+    workspace_banks(a, &[custody, view.branches, view.destination])?;
+    revalidate_manifest::<{ ev_userspace_contract::root_v5::MAX_GRANTS }>(
+        a,
+        custody,
+        sources,
+        manifest.manifest(),
+        view,
+    )
 }
 /// Check both actual branch relations immediately before the SAME lifecycle
 /// admission gate. Revocation/stale handles/extra table grants all fail closed.
@@ -175,7 +239,7 @@ pub(crate) fn revalidate(
     manifest: &CurrentRoot<'_>,
     view: crate::bootstrap_binding::InstalledView<'_>,
 ) -> Result<(), Error> {
-    revalidate_manifest(a, custody, sources, manifest.manifest(), view)
+    revalidate_manifest::<{ root_v2::MAX_GRANTS }>(a, custody, sources, manifest.manifest(), view)
 }
 pub(crate) fn revalidate_native(
     a: &Authority,
@@ -184,16 +248,31 @@ pub(crate) fn revalidate_native(
     manifest: &NativeRoot<'_>,
     view: crate::bootstrap_binding::InstalledView<'_>,
 ) -> Result<(), Error> {
-    revalidate_manifest(a, custody, sources, manifest.manifest(), view)
+    revalidate_manifest::<{ root_v2::MAX_GRANTS }>(a, custody, sources, manifest.manifest(), view)
 }
-fn revalidate_manifest(
+pub(crate) fn revalidate_v4(
+    a: &Authority,
+    custody: SpaceId,
+    sources: &[Source],
+    manifest: &crate::root_manifest_v4::CurrentRoot<'_>,
+    view: crate::bootstrap_binding::InstalledView<'_>,
+) -> Result<(), Error> {
+    revalidate_manifest::<{ ev_userspace_contract::root_v4::MAX_GRANTS }>(
+        a,
+        custody,
+        sources,
+        manifest.manifest(),
+        view,
+    )
+}
+fn revalidate_manifest<const N: usize>(
     a: &Authority,
     custody: SpaceId,
     sources: &[Source],
     manifest: &Manifest<'_>,
     view: crate::bootstrap_binding::InstalledView<'_>,
 ) -> Result<(), Error> {
-    let plan = resolve(a, custody, sources, manifest)?;
+    let plan = resolve::<N>(a, custody, sources, manifest)?;
     if view.private.len() != plan.count || view.grants.len() != plan.count {
         return Err(Error::Record);
     }
@@ -272,7 +351,7 @@ mod tests {
         let m =
             crate::root_manifest_v2::verify(encoded.bytes(), encoded.digest(), b"image").unwrap();
         let before = a.metadata_usage();
-        let p = resolve(&a, c, &sources, &m).unwrap();
+        let p = resolve::<{ root_v2::MAX_GRANTS }>(&a, c, &sources, &m).unwrap();
         assert_eq!(a.metadata_usage(), before);
         let installed = a
             .derive_scoped_into_empty(c, branch, d, &p.requests[..p.count])
@@ -281,17 +360,20 @@ mod tests {
         let before = a.metadata_usage();
         let mut forged = sources;
         forged[0].handle = Handle(u64::MAX);
-        assert!(resolve(&a, c, &forged, &m).is_err());
+        assert!(resolve::<{ root_v2::MAX_GRANTS }>(&a, c, &forged, &m).is_err());
         assert_eq!(a.metadata_usage(), before);
         let mut alias = sources;
         alias[1].handle = sources[0].handle;
         alias[1].kind = Kind::Memory;
-        assert!(matches!(resolve(&a, c, &alias, &m), Err(Error::Alias)));
+        assert!(matches!(
+            resolve::<{ root_v2::MAX_GRANTS }>(&a, c, &alias, &m),
+            Err(Error::Alias)
+        ));
         let mut wrong = sources;
         wrong.swap(0, 1);
-        assert!(resolve(&a, c, &wrong, &m).is_err());
+        assert!(resolve::<{ root_v2::MAX_GRANTS }>(&a, c, &wrong, &m).is_err());
         a.revoke(c, sources[0].handle).unwrap();
-        assert!(resolve(&a, c, &sources, &m).is_err());
+        assert!(resolve::<{ root_v2::MAX_GRANTS }>(&a, c, &sources, &m).is_err());
     }
     #[test]
     fn root_v2_source_without_revoke_or_nonroot_is_not_sealed_custody() {
@@ -313,7 +395,7 @@ mod tests {
         let desc = description(&a, c, &s);
         let e = encode(b"image", &desc).unwrap();
         let m = crate::root_manifest_v2::verify(e.bytes(), e.digest(), b"image").unwrap();
-        assert!(resolve(&a, c, &s, &m).is_err());
+        assert!(resolve::<{ root_v2::MAX_GRANTS }>(&a, c, &s, &m).is_err());
         let child = a
             .derive(
                 c,
@@ -327,7 +409,10 @@ mod tests {
             kind: Kind::Memory,
             handle: child,
         }];
-        assert!(matches!(resolve(&a, other, &s, &m), Err(Error::NotRoot)));
+        assert!(matches!(
+            resolve::<{ root_v2::MAX_GRANTS }>(&a, other, &s, &m),
+            Err(Error::NotRoot)
+        ));
     }
     #[test]
     fn root_v2_recycled_same_kind_source_cannot_satisfy_old_generation_digest() {
@@ -359,12 +444,15 @@ mod tests {
         assert_ne!(old_id, id);
         assert_eq!(old_id & 255, id & 255);
         let before = a.metadata_usage();
-        assert!(matches!(resolve(&a, c, &new, &m), Err(Error::Measurement)));
+        assert!(matches!(
+            resolve::<{ root_v2::MAX_GRANTS }>(&a, c, &new, &m),
+            Err(Error::Measurement)
+        ));
         assert_eq!(a.metadata_usage(), before);
         let d = description(&a, c, &new);
         let e = encode(b"image", &d).unwrap();
         let m = crate::root_manifest_v2::verify(e.bytes(), e.digest(), b"image").unwrap();
-        assert!(resolve(&a, c, &new, &m).is_ok());
+        assert!(resolve::<{ root_v2::MAX_GRANTS }>(&a, c, &new, &m).is_ok());
     }
     #[test]
     fn root_v2_control_domains_install18_through_same_custodian_and_check_loaded_record() {
@@ -536,7 +624,7 @@ mod tests {
         let desc = description(&a, c, &sources);
         let e = encode(b"image", &desc).unwrap();
         let m = crate::root_manifest_v2::verify(e.bytes(), e.digest(), b"image").unwrap();
-        let p = resolve(&a, c, &sources, &m).unwrap();
+        let p = resolve::<{ root_v2::MAX_GRANTS }>(&a, c, &sources, &m).unwrap();
         let grants = a
             .derive_scoped_into_empty(c, b, d, &p.requests[..p.count])
             .unwrap();

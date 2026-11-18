@@ -1,0 +1,156 @@
+{
+  "schema": 1,
+  "date": "2026-11-16",
+  "status": "PASS actual bare executable link, focused host integration, strict lint and canonical ELF/stack preflight; actual VM/broker integration pending",
+  "scope": "No actual Kernel grant/window custody, accepted view/input correspondence, target timing, device retirement, physical or complete M8 PASS claim",
+  "app_tests": 5,
+  "sdk_tests": 13,
+  "new_namespace_sdk_tests": 3,
+  "source_files": [
+    {
+      "path": "apps/files/Cargo.toml",
+      "bytes": 791,
+      "sha256": "361b566e0f87ac9d7380592c2337ac6617fa5a6e69230c264f84f66ce0b73c64"
+    },
+    {
+      "path": "apps/files/README.md",
+      "bytes": 5537,
+      "sha256": "d13b300026f5e52b62c4a7f1aba7bf9993ca79414478b7fd40cf74e0453fcde3"
+    },
+    {
+      "path": "apps/files/build.rs",
+      "bytes": 368,
+      "sha256": "9e368441725ab9487717ece80160f24998195fa4a603d45e94c2324efef2befb"
+    },
+    {
+      "path": "apps/files/linker.ld",
+      "bytes": 785,
+      "sha256": "2c98cfa82a06a48b212fad82ccb5c2f8ab6921cab5cb8c45a1e1da68ed8ecf1b"
+    },
+    {
+      "path": "apps/files/src/lib.rs",
+      "bytes": 25495,
+      "sha256": "e48d803239c71f6163a43ffbe86e7af99cf67719495f104af85960986f2923be"
+    },
+    {
+      "path": "apps/files/src/main.rs",
+      "bytes": 12168,
+      "sha256": "4646c5165441f2b4ca893e104f9cfdea78bb3041287bced94b9bf107d0a3eb3e"
+    },
+    {
+      "path": "apps/files/src/tests.rs",
+      "bytes": 14844,
+      "sha256": "035480ad324a62603869b9452217bfb8b3efdd3c56252598ccf9dc2b5ca13942"
+    },
+    {
+      "path": "libs/workspace-client/src/namespace.rs",
+      "bytes": 14291,
+      "sha256": "9c18d87269bfde6d45a0ed598d8283c73b9cc20b7bcaa59e5cd25fd18afa75b5"
+    }
+  ],
+  "command_receipts": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/files-app-host-final-01.json",
+      "sha256": "19836d2e15770cf7585cca83a54bd16c554c57cfd5ff915ca5bd9c9663c79bf8",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/files-app-host-lint-final-01.json",
+      "sha256": "ec2280ffd1437d3a8c92de7340635bc810e3eea82940db0a55a4278c53e7a78d",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/files-app-native-lint-04.json",
+      "sha256": "0bec3c8925b9a35019f64c94abebfd456e799f179946e03a2760437c509f2924",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/files-app-native-build-04.json",
+      "sha256": "b31b69ac22313c80f315066c8564e9960de15653e182e2bf880d61aea4dc5e96",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/files-app-native-stack-04.json",
+      "sha256": "40e0048b6e927a69c6d1e50ac794ad12a19f804e23750ee80db3a8647a5da237",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/files-app-native-strip-04.json",
+      "sha256": "35ff678c2b81913b9ee2101d12082703579498c2995c284968c8ad2eb0d69802",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/files-final-format-check-01.json",
+      "sha256": "d8ad235e32fcaafbcc83023fc1f5e5381911920b50d1b4fc239a0433bbc06cc8",
+      "passed": true
+    }
+  ],
+  "artifact": {
+    "canonical": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/files-native-04/ev-native-files.elf",
+      "file_bytes": 77520,
+      "sha256": "e21fe357f20d42340fcfcd82dff0c4c2e17cfa19d956a2e94c4918c76e59f60d",
+      "loaded_pages_including_stack": 24,
+      "stack_pages": 8,
+      "nonstack_loaded_pages": 16,
+      "image_page_bound": 96,
+      "page_bound_passed": true,
+      "loaded_page_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        480,
+        481,
+        482,
+        483,
+        484,
+        485,
+        486,
+        487
+      ]
+    },
+    "elf_report": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/files-native-04/elf.json",
+    "stack_report": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/files-native-04/stack.json",
+    "loaded_bytes_compared_bytewise": true,
+    "private_pages_preflight": 28,
+    "private_page_bound": 100,
+    "loader_frames_preflight": 30,
+    "loader_frame_bound": 102,
+    "stack_census_bytes": 8304,
+    "stack_margin_bytes": 24464,
+    "stack_unresolved_calls": 0,
+    "stack_cycles": 0
+  },
+  "retained_failed_attempts": [
+    "files-namespace-sdk-lint-01: namespace range iteration corrected; existing FileSDK affine close separately corrected by Root",
+    "files-app-native-lint-01/files-app-host-lint-01: same dependency lint failures retained",
+    "files-app-native-build-01: actual V1 Bootstrap iterator/getter API corrected in narrow Files profile"
+  ],
+  "remaining_gates": [
+    "Actual V5 7-role grants, SelfIdentity facts, sole Namespace window ownership and measured loader accounting",
+    "Root broker focus/accepted-view action correspondence, input delivery, registration and protected picker policy",
+    "Never publish Selection or install File preview into the actively owned Files Namespace window",
+    "Original deadline timing, queue contention, actual RPC and shared-window credit return under death/cancellation",
+    "Namespace/device/service recovery, VM cuts, independent cold actual bytes and repeated retirement",
+    "Dynamic accessibility/semantic publication and complete M8 acceptance"
+  ],
+  "known_ui_limits": [
+    "Bitmap font displays non-ASCII scalars as question marks while preserving exact UTF8 names",
+    "Name field supports scalar entry/backspace and select-all; navigation does not change targets during editing",
+    "Open requests a fresh protected Root picker and never truncates a selected ObjectId into8B"
+  ],
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

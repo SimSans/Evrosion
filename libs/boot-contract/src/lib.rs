@@ -71,12 +71,16 @@ pub struct MemoryMap {
 }
 
 impl MemoryMap {
-    pub fn validate(regions: impl IntoIterator<Item = MemoryRegion>) -> Result<Self, BootError> {
-        let mut map = Self {
+    fn empty() -> Self {
+        Self {
             regions: [EMPTY_REGION; MAX_MEMORY_REGIONS],
             count: 0,
             usable_bytes: 0,
-        };
+        }
+    }
+
+    pub fn validate(regions: impl IntoIterator<Item = MemoryRegion>) -> Result<Self, BootError> {
+        let mut map = Self::empty();
         for region in regions {
             if map.count == MAX_MEMORY_REGIONS {
                 return Err(BootError::TooManyRegions);
@@ -105,6 +109,16 @@ impl MemoryMap {
             return Err(BootError::OverlappingMemory);
         }
         Ok(map)
+    }
+
+    /// Transfer the validated map once to its allocator owner. The borrowed
+    /// handoff retains an empty placeholder, which conveys no RAM and cannot
+    /// produce another owned map. Other boot metadata remains available.
+    pub fn take(&mut self) -> Result<Self, BootError> {
+        if self.count == 0 {
+            return Err(BootError::EmptyMemoryMap);
+        }
+        Ok(core::mem::replace(self, Self::empty()))
     }
 
     pub fn regions(&self) -> &[MemoryRegion] {
@@ -198,6 +212,8 @@ pub fn validate_virtual_range(range: AddressRange) -> Result<(), BootError> {
 }
 
 /// Internal Rust structure, not a stable ABI. Memory is copied and validated once.
+/// The entry handler borrows this structure and transfers `memory` once into the
+/// sole allocator; that consumed field then reports no regions or usable bytes.
 /// Missing generation/command line values are explicit for the temporary loader.
 #[derive(Debug)]
 pub struct BootInfoV0 {
@@ -213,4 +229,60 @@ pub struct BootInfoV0 {
     pub kernel_virtual_range: AddressRange,
     pub command_line: &'static [u8],
     pub bootloader_identity: &'static str,
+}
+
+#[cfg(test)]
+mod transfer_tests {
+    use super::*;
+
+    #[test]
+    fn consumed_handoff_cannot_return_a_second_owned_map() {
+        let reserved = MemoryRegion {
+            start: 0x1000,
+            end: 0x4000,
+            kind: MemoryKind::Reserved,
+        };
+        let usable = MemoryRegion {
+            start: 0x4000,
+            end: 0xa000,
+            kind: MemoryKind::Usable,
+        };
+        let mut handoff = MemoryMap::validate([usable, reserved]).unwrap();
+        let mut owner = handoff.take().unwrap();
+        assert_eq!(owner.regions(), &[reserved, usable]);
+        assert_eq!(owner.usable_bytes(), 0x6000);
+        assert!(owner.contains_reserved(0x1000, 0x3000));
+        assert!(handoff.regions().is_empty());
+        assert_eq!(handoff.usable_bytes(), 0);
+        assert!(!handoff.contains_reserved(0x1000, 1));
+        for _ in 0..3 {
+            assert_eq!(handoff.take().unwrap_err(), BootError::EmptyMemoryMap);
+            assert!(handoff.regions().is_empty());
+            assert_eq!(handoff.usable_bytes(), 0);
+        }
+        // A later explicit transfer moves custody again; it never restores the
+        // previous owner or permits two owned validated maps from one handoff.
+        let next_owner = owner.take().unwrap();
+        assert_eq!(next_owner.regions(), &[reserved, usable]);
+        assert_eq!(owner.take().unwrap_err(), BootError::EmptyMemoryMap);
+    }
+
+    #[test]
+    fn maximum_region_transfer_preserves_every_validated_classification() {
+        let regions = core::array::from_fn::<_, MAX_MEMORY_REGIONS, _>(|index| MemoryRegion {
+            start: (index as u64 + 1) * 4096,
+            end: (index as u64 + 2) * 4096,
+            kind: if index.is_multiple_of(2) {
+                MemoryKind::Reserved
+            } else {
+                MemoryKind::Usable
+            },
+        });
+        let mut handoff = MemoryMap::validate(regions.iter().rev().copied()).unwrap();
+        let owner = handoff.take().unwrap();
+        assert_eq!(owner.regions(), &regions);
+        assert_eq!(owner.usable_bytes(), (MAX_MEMORY_REGIONS as u64 / 2) * 4096);
+        assert!(handoff.regions().is_empty());
+        assert_eq!(handoff.take().unwrap_err(), BootError::EmptyMemoryMap);
+    }
 }

@@ -15,8 +15,7 @@ could alias a new node after ADR-0029 collection.
 This Level B decision refines the single incarnation revocation node described
 in ROOT_AUTHORITY_CUSTODY §9.3/§10.2 into a bounded, atomically revoked group of
 per-object branches. It preserves the same all-descendant invalidation guarantee.
-This is SUP-013; the scoped mechanism refinement preserves the imported technical
-requirements and does not revise historical evidence.
+This is SUP-013; imported source text and historical evidence stay unchanged.
 One ACTIVE incarnation, revocation before replacement, actual quiescence and
 independent recovery remain mandatory. None is satisfied merely by this primitive.
 
@@ -82,6 +81,6 @@ The kernel fixture runs 64 scoped binding/revocation cycles, checks both grants
 fail while custody and an unrelated grant remain live, collects each level only
 after its handles close and rejects stale teardown handles. Strict boot/evidence
 parsers reject missing, duplicate, out-of-order and malformed records. Executed
-results are recorded in [M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+results are recorded in M2 progress.
 The fixture image remains `abc`; it launches no Root Supervisor. Full incarnation
 tokens, scheduler integration and AF-007A–H remain pending.

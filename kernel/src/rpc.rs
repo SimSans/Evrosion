@@ -58,6 +58,35 @@ pub struct Context {
     pub cancellation_token: CancellationToken,
     pub root_incarnation: Option<Token>,
 }
+/// Captured immutable accepted-call identities for the trusted native owner.
+/// Copying this snapshot supplies no authority and releases no reservation.
+#[cfg(feature = "workspace-authority")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AcceptedSnapshot {
+    call: CallId,
+    caller: ThreadId,
+    callee: ThreadId,
+    endpoint: usize,
+    parent: Option<CallId>,
+}
+#[cfg(feature = "workspace-authority")]
+impl AcceptedSnapshot {
+    pub fn call(self) -> CallId {
+        self.call
+    }
+    pub fn caller(self) -> ThreadId {
+        self.caller
+    }
+    pub fn callee(self) -> ThreadId {
+        self.callee
+    }
+    pub fn endpoint(self) -> usize {
+        self.endpoint
+    }
+    pub fn parent(self) -> Option<CallId> {
+        self.parent
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {
@@ -65,6 +94,49 @@ pub enum Status {
     Cancelled,
     DeadlineExceeded,
     PeerDied,
+}
+
+/// Captured actual receiver identity; never construct from userspace PIDs or a
+/// payload's claimed sender. The native transport also proves actual delivery.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ServingReceiver {
+    pub thread: ThreadId,
+    pub space: SpaceId,
+    pub endpoint: Handle,
+    pub nonce: u64,
+}
+/// Read-only provenance of the immediate retained caller. Returned diagnostics
+/// grant no authority and never replace a live capability or lifecycle receipt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ServingOrigin {
+    pub caller_process: u64,
+    pub caller_thread: u64,
+    pub caller_incarnation: u64,
+    pub call_epoch: u64,
+    pub call_serial: u64,
+    pub endpoint_object: u64,
+    pub original_deadline: u64,
+    pub status: Status,
+}
+impl ServingOrigin {
+    pub fn field(self, index: u64) -> Option<u64> {
+        Some(match index {
+            0 => self.caller_process,
+            1 => self.caller_thread,
+            2 => self.caller_incarnation,
+            3 => self.call_epoch,
+            4 => self.call_serial,
+            5 => self.endpoint_object,
+            6 => self.original_deadline,
+            7 => match self.status {
+                Status::Ok => 0,
+                Status::Cancelled => 1,
+                Status::DeadlineExceeded => 2,
+                Status::PeerDied => 3,
+            },
+            _ => return None,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -204,6 +276,21 @@ pub(crate) enum CompleteError<E> {
     Transport(E),
 }
 
+/// Trusted cap-free transport transaction; these borrows carry no userspace
+/// permission. The same serialized owner retains the actual CallId/Ticket join.
+pub struct ScalarWithdrawal<'a> {
+    pub authority: &'a mut Authority,
+    pub mailbox: &'a mut crate::ipc::Mailbox,
+    pub ticket: crate::ipc::Ticket,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScalarError {
+    Rpc(Error),
+    Ipc(crate::ipc::Error),
+    Shape,
+    NotCancelled,
+}
+
 pub struct Rpc {
     epoch: NonZeroU64,
     sequence: u64,
@@ -277,6 +364,149 @@ impl Rpc {
     }
     pub fn serving(&self, thread: ThreadId) -> Option<CallId> {
         self.incoming(thread).map(|c| c.context.call_id)
+    }
+    /// Read-only self facts for the controller's actual captured dispatch.
+    /// No userspace PID/domain/thread is an operand. Registration remains the
+    /// actual admission owner's responsibility and its token may be absent.
+    pub fn self_identity(
+        &self,
+        authority: &Authority,
+        scheduler: &Scheduler,
+        actual_thread: ThreadId,
+        actual_space: SpaceId,
+        field: u64,
+    ) -> Result<u64, Error> {
+        if field > 2 {
+            return Err(Error::MalformedMessage);
+        }
+        let registered = self.thread(actual_thread)?;
+        let process = scheduler
+            .thread_process(actual_thread)
+            .map_err(|_| Error::Identity)?;
+        let State::Running(cpu) = scheduler
+            .state(actual_thread)
+            .map_err(|_| Error::Identity)?
+        else {
+            return Err(Error::Identity);
+        };
+        if registered.space != actual_space
+            || !authority.is_live_space(actual_space)
+            || scheduler.process_terminated(process)
+            || scheduler
+                .process_job(process)
+                .map_err(|_| Error::Identity)?
+                != registered.job
+            || scheduler.running_thread(cpu).map_err(|_| Error::Identity)? != actual_thread
+        {
+            return Err(Error::Identity);
+        }
+        match field {
+            0 => Ok(process.diagnostic_id()),
+            1 => Ok(actual_thread.diagnostic_id()),
+            2 => Ok(registered.incarnation.map_or(0, |token| token.number())),
+            _ => Err(Error::MalformedMessage),
+        }
+    }
+    /// Query the actual receiver's retained execution reservation without
+    /// completing, expiring, waking, revoking or releasing any execution credit.
+    /// Actual delivery is the serialized transport's additional obligation;
+    /// native dispatch must join its delivered row before calling this method.
+    pub fn serving_origin(
+        &self,
+        authority: &Authority,
+        scheduler: &Scheduler,
+        receiver: ServingReceiver,
+        now: u64,
+    ) -> Result<ServingOrigin, Error> {
+        self.time(now)?;
+        let callee = self.thread(receiver.thread)?;
+        let process = scheduler
+            .thread_process(receiver.thread)
+            .map_err(|_| Error::Identity)?;
+        let state = scheduler
+            .state(receiver.thread)
+            .map_err(|_| Error::Identity)?;
+        let State::Running(cpu) = state else {
+            return Err(Error::Identity);
+        };
+        if callee.space != receiver.space
+            || !authority.is_live_space(receiver.space)
+            || scheduler
+                .process_job(process)
+                .map_err(|_| Error::Identity)?
+                != callee.job
+            || scheduler.process_terminated(process)
+            || scheduler.running_thread(cpu).map_err(|_| Error::Identity)? != receiver.thread
+        {
+            return Err(Error::Identity);
+        }
+        let object = authority
+            .authorize(
+                receiver.space,
+                receiver.endpoint,
+                Kind::Endpoint,
+                Rights::RECEIVE,
+            )
+            .map_err(|_| Error::PermissionDenied)?
+            .identity();
+        let call = self.incoming(receiver.thread).ok_or(Error::StaleCall)?;
+        if receiver.nonce == 0
+            || call.context.call_id.serial() != receiver.nonce
+            || call.context.call_id.epoch() != self.epoch
+            || call.callee != receiver.thread
+        {
+            return Err(Error::StaleCall);
+        }
+        if call.endpoint != object {
+            return Err(Error::PermissionDenied);
+        }
+        let route = self
+            .endpoints
+            .iter()
+            .flatten()
+            .find(|e| e.object == object)
+            .ok_or(Error::UnknownEndpoint)?;
+        if route.dead || route.receiver != receiver.space || route.callee != receiver.thread {
+            return Err(Error::Identity);
+        }
+        // A cancelled/expired/peer-dead caller may already be stopped, but its
+        // actual descriptor generation remains pinned until this callee ACKs.
+        // Never substitute a newly reused process/thread or ancestor origin.
+        let caller = self.threads[self.thread_index(call.caller)?].unwrap();
+        let caller_process = scheduler
+            .thread_process(call.caller)
+            .map_err(|_| Error::Identity)?;
+        if scheduler
+            .process_job(caller_process)
+            .map_err(|_| Error::Identity)?
+            != caller.job
+        {
+            return Err(Error::Identity);
+        }
+        let status = call.outcome.unwrap_or_else(|| {
+            if call.context.deadline.reached(now) {
+                Status::DeadlineExceeded
+            } else {
+                Status::Ok
+            }
+        });
+        if status == Status::Ok
+            && (!caller.alive
+                || scheduler.process_terminated(caller_process)
+                || scheduler.state(call.caller).map_err(|_| Error::Identity)? == State::Exited)
+        {
+            return Err(Error::Identity);
+        }
+        Ok(ServingOrigin {
+            caller_process: caller_process.diagnostic_id(),
+            caller_thread: call.caller.diagnostic_id(),
+            caller_incarnation: caller.incarnation.map_or(0, Token::number),
+            call_epoch: call.context.call_id.epoch().get(),
+            call_serial: call.context.call_id.serial(),
+            endpoint_object: object as u64,
+            original_deadline: call.context.deadline.tick(),
+            status,
+        })
     }
     /// Includes cancelled/timed-out execution reservations, not just waits.
     pub fn outstanding(&self) -> usize {
@@ -619,6 +849,17 @@ impl Rpc {
     pub fn context(&self, id: CallId) -> Result<Context, Error> {
         Ok(self.calls[self.call_index(id)?].unwrap().context)
     }
+    #[cfg(feature = "workspace-authority")]
+    pub fn accepted_snapshot(&self, id: CallId) -> Result<AcceptedSnapshot, Error> {
+        let call = self.calls[self.call_index(id)?].unwrap();
+        Ok(AcceptedSnapshot {
+            call: id,
+            caller: call.caller,
+            callee: call.callee,
+            endpoint: call.endpoint,
+            parent: call.context.parent_call_id,
+        })
+    }
     /// Cooperative callee check. A deadline is cancellation even before the
     /// dispatcher runs expire(); that dispatcher still owns actual wakeups.
     pub fn cancellation(
@@ -648,6 +889,75 @@ impl Rpc {
             Ok((completion, ())) => Ok(completion),
             Err(CompleteError::Rpc(error)) => Err(error),
             Err(CompleteError::Transport(never)) => match never {},
+        }
+    }
+    /// Complete an actual eight-byte/zero-capability route, optionally removing
+    /// its still-queued cancelled request in the same acceptance transaction.
+    /// A delivered request must use None only after its actual callee ACK; a
+    /// queued request must supply its original Ticket. This does not certify
+    /// arbitrary mapped-memory quiescence or perform a scheduler wake.
+    pub fn complete_scalar(
+        &mut self,
+        callee: ThreadId,
+        id: CallId,
+        now: u64,
+        withdrawal: Option<ScalarWithdrawal<'_>>,
+    ) -> Result<Completion, ScalarError> {
+        self.time(now).map_err(ScalarError::Rpc)?;
+        let call = self.calls[self.call_index(id).map_err(ScalarError::Rpc)?].unwrap();
+        let route = self
+            .endpoints
+            .iter()
+            .flatten()
+            .find(|route| route.object == call.endpoint)
+            .ok_or(ScalarError::Rpc(Error::UnknownEndpoint))?;
+        if route.policy != Policy::new(8, 0).unwrap() {
+            return Err(ScalarError::Shape);
+        }
+        // Scalar services retain shared windows across their nested calls. A
+        // cancelled descendant still owns execution credit even though its
+        // caller has left Rpc's ordinary wait graph. Do not ACK an ancestor
+        // until every actual child reservation has settled.
+        if self
+            .calls
+            .iter()
+            .flatten()
+            .any(|child| child.caller == callee)
+        {
+            return Err(ScalarError::Rpc(Error::AlreadyWaiting));
+        }
+        if let Some(queued) = &withdrawal {
+            if call.outcome.is_none() {
+                return Err(ScalarError::NotCancelled);
+            }
+            let sender = self.threads[self.thread_index(call.caller).map_err(ScalarError::Rpc)?]
+                .unwrap()
+                .space;
+            queued
+                .mailbox
+                .check_scalar_request(queued.authority, sender, call.endpoint, queued.ticket)
+                .map_err(ScalarError::Ipc)?;
+        }
+        let sender = self.threads[self.thread_index(call.caller).map_err(ScalarError::Rpc)?]
+            .unwrap()
+            .space;
+        match self.complete_with(callee, id, now, |_| {
+            if let Some(queued) = withdrawal {
+                let reclaimed = queued.mailbox.withdraw_undelivered(
+                    queued.authority,
+                    sender,
+                    queued.ticket,
+                    now,
+                )?;
+                // check_scalar_request proved this exact queued message has
+                // no attachment. No grant transfer/refund occurs in this path.
+                debug_assert_eq!(reclaimed, crate::ipc::Reclaimed::NoCapability);
+            }
+            Ok(())
+        }) {
+            Ok((completion, ())) => Ok(completion),
+            Err(CompleteError::Rpc(error)) => Err(ScalarError::Rpc(error)),
+            Err(CompleteError::Transport(error)) => Err(ScalarError::Ipc(error)),
         }
     }
     /// Serialized acceptance transaction. Validate the protected reservation and
@@ -846,6 +1156,14 @@ impl Rpc {
 }
 
 #[cfg(test)]
+#[path = "desktop_runtime/transport/wire_tests.rs"]
+mod scalar_wire_tests;
+
+#[cfg(test)]
+#[path = "rpc/serving_origin_tests.rs"]
+mod serving_origin_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     struct Fixture {
@@ -927,6 +1245,515 @@ mod tests {
         }
         panic!("expected ready test thread was not dispatched");
     }
+
+    fn scalar_exchange(
+        f: &mut Fixture,
+    ) -> (
+        crate::ipc::Mailbox,
+        CallId,
+        crate::ipc::Ticket,
+        crate::scheduler::WaitTicket,
+    ) {
+        let mut mailbox =
+            crate::ipc::Mailbox::new(&mut f.authority, f.space, f.endpoints[0]).unwrap();
+        let id = f
+            .rpc
+            .begin(
+                &f.authority,
+                f.threads[0],
+                f.endpoints[0],
+                deadline(5),
+                MessageShape {
+                    bytes: 8,
+                    capabilities: 0,
+                },
+                0,
+            )
+            .unwrap();
+        let ticket = mailbox
+            .send(
+                &mut f.authority,
+                f.space,
+                f.endpoints[0],
+                crate::ipc::Outgoing {
+                    bytes: b"actual01",
+                    capability: None,
+                    deadline: deadline(5),
+                },
+                0,
+            )
+            .unwrap();
+        dispatch_to(&mut f.scheduler, f.threads[0]);
+        let wait = f.scheduler.block_guarded(0, deadline(5)).unwrap();
+        (mailbox, id, ticket, wait)
+    }
+
+    #[test]
+    fn scalar_queued_expiry_withdraws_before_guarded_buffer_owner_can_run() {
+        let mut f = fixture();
+        let (mut mailbox, id, ticket, wait) = scalar_exchange(&mut f);
+        assert_eq!(
+            f.rpc.complete_scalar(
+                f.threads[1],
+                id,
+                1,
+                Some(ScalarWithdrawal {
+                    authority: &mut f.authority,
+                    mailbox: &mut mailbox,
+                    ticket
+                })
+            ),
+            Err(ScalarError::NotCancelled)
+        );
+        assert_eq!((mailbox.pending(), f.rpc.outstanding()), (1, 1));
+        let events = f.rpc.expire(5).unwrap();
+        assert_eq!(
+            events.iter().next().unwrap().status,
+            Status::DeadlineExceeded
+        );
+        assert_eq!(f.scheduler.advance(5), Ok(0));
+        assert!(f.scheduler.waiting(wait));
+        let completion = f
+            .rpc
+            .complete_scalar(
+                f.threads[1],
+                id,
+                5,
+                Some(ScalarWithdrawal {
+                    authority: &mut f.authority,
+                    mailbox: &mut mailbox,
+                    ticket,
+                }),
+            )
+            .unwrap();
+        assert_eq!(
+            (
+                completion.status,
+                completion.deliver_reply,
+                completion.wake_caller
+            ),
+            (Status::DeadlineExceeded, false, false)
+        );
+        assert_eq!((mailbox.pending(), f.rpc.outstanding()), (0, 0));
+        assert!(f.scheduler.waiting(wait));
+        assert!(f.scheduler.wake(wait));
+        assert!(!f.scheduler.wake(wait));
+        assert_eq!(
+            mailbox.receive(&mut f.authority, f.space, f.endpoints[0], 5),
+            Err(crate::ipc::Error::Empty)
+        );
+        let later = f
+            .rpc
+            .begin(
+                &f.authority,
+                f.threads[0],
+                f.endpoints[0],
+                deadline(10),
+                MessageShape {
+                    bytes: 8,
+                    capabilities: 0,
+                },
+                5,
+            )
+            .unwrap();
+        let new_ticket = mailbox
+            .send(
+                &mut f.authority,
+                f.space,
+                f.endpoints[0],
+                crate::ipc::Outgoing {
+                    bytes: b"actual02",
+                    capability: None,
+                    deadline: deadline(10),
+                },
+                5,
+            )
+            .unwrap();
+        assert_ne!((id, ticket), (later, new_ticket));
+        assert_eq!(
+            f.rpc.complete_scalar(
+                f.threads[1],
+                id,
+                5,
+                Some(ScalarWithdrawal {
+                    authority: &mut f.authority,
+                    mailbox: &mut mailbox,
+                    ticket: new_ticket
+                })
+            ),
+            Err(ScalarError::Rpc(Error::StaleCall))
+        );
+        assert_eq!(mailbox.pending(), 1);
+    }
+
+    #[test]
+    fn scalar_delivered_expiry_requires_real_ack_and_rejects_fake_ticket_refund() {
+        let mut f = fixture();
+        let (mut mailbox, id, ticket, wait) = scalar_exchange(&mut f);
+        let delivered = mailbox
+            .receive(&mut f.authority, f.space, f.endpoints[0], 0)
+            .unwrap();
+        assert_eq!(delivered.ticket, ticket);
+        f.rpc.expire(5).unwrap();
+        f.scheduler.advance(50).unwrap();
+        assert!(f.scheduler.waiting(wait));
+        assert_eq!(
+            f.rpc.complete_scalar(
+                f.threads[1],
+                id,
+                5,
+                Some(ScalarWithdrawal {
+                    authority: &mut f.authority,
+                    mailbox: &mut mailbox,
+                    ticket
+                })
+            ),
+            Err(ScalarError::Ipc(crate::ipc::Error::InvalidTicket))
+        );
+        assert_eq!(f.rpc.outstanding(), 1);
+        // Rpc's ordinary wait graph deliberately permits independent future
+        // work after cancellation; the shared-window guard prevents this
+        // caller from actually executing until its old credit returns.
+        assert_ne!(
+            f.scheduler.dispatch(0).unwrap().unwrap().thread,
+            f.threads[0]
+        );
+        f.scheduler.yield_cpu(0).unwrap();
+        assert_eq!(
+            f.rpc.complete_scalar(f.threads[2], id, 50, None),
+            Err(ScalarError::Rpc(Error::WrongCallee))
+        );
+        assert_eq!(
+            f.rpc.complete_scalar(f.threads[1], id, 4, None),
+            Err(ScalarError::Rpc(Error::ClockReversed))
+        );
+        let completion = f.rpc.complete_scalar(f.threads[1], id, 50, None).unwrap();
+        assert_eq!(
+            (
+                completion.status,
+                completion.deliver_reply,
+                completion.wake_caller
+            ),
+            (Status::DeadlineExceeded, false, false)
+        );
+        assert!(f.scheduler.wake(wait));
+        dispatch_to(&mut f.scheduler, f.threads[0]);
+        let new_wait = f.scheduler.block_guarded(0, deadline(100)).unwrap();
+        assert_eq!(
+            f.rpc.complete_scalar(f.threads[1], id, 50, None),
+            Err(ScalarError::Rpc(Error::StaleCall))
+        );
+        assert!(!f.scheduler.wake(wait));
+        assert!(f.scheduler.waiting(new_wait));
+    }
+
+    #[test]
+    fn scalar_completion_does_not_reinterpret_capability_routes_or_attachments() {
+        let mut f = fixture();
+        let (mut mailbox, id, ticket, _) = scalar_exchange(&mut f);
+        f.rpc.expire(5).unwrap();
+        let object = f
+            .authority
+            .authorize(f.space, f.endpoints[0], Kind::Endpoint, Rights::SEND)
+            .unwrap()
+            .identity();
+        let route = f
+            .rpc
+            .endpoints
+            .iter_mut()
+            .flatten()
+            .find(|route| route.object == object)
+            .unwrap();
+        route.policy = Policy::new(8, 1).unwrap();
+        assert_eq!(
+            f.rpc.complete_scalar(
+                f.threads[1],
+                id,
+                5,
+                Some(ScalarWithdrawal {
+                    authority: &mut f.authority,
+                    mailbox: &mut mailbox,
+                    ticket
+                })
+            ),
+            Err(ScalarError::Shape)
+        );
+        assert_eq!((f.rpc.outstanding(), mailbox.pending()), (1, 1));
+        let mut f = fixture();
+        let memory = f
+            .authority
+            .create_root(f.space, Kind::Memory, Rights::READ | Rights::TRANSFER)
+            .unwrap();
+        let mut mailbox =
+            crate::ipc::Mailbox::new(&mut f.authority, f.space, f.endpoints[0]).unwrap();
+        let id = f
+            .rpc
+            .begin(
+                &f.authority,
+                f.threads[0],
+                f.endpoints[0],
+                deadline(5),
+                MessageShape {
+                    bytes: 8,
+                    capabilities: 0,
+                },
+                0,
+            )
+            .unwrap();
+        // Deliberately inconsistent trusted transport metadata must fail closed.
+        let ticket = mailbox
+            .send(
+                &mut f.authority,
+                f.space,
+                f.endpoints[0],
+                crate::ipc::Outgoing {
+                    bytes: b"actual01",
+                    capability: Some(memory),
+                    deadline: deadline(5),
+                },
+                0,
+            )
+            .unwrap();
+        f.rpc.expire(5).unwrap();
+        assert_eq!(
+            f.rpc.complete_scalar(
+                f.threads[1],
+                id,
+                5,
+                Some(ScalarWithdrawal {
+                    authority: &mut f.authority,
+                    mailbox: &mut mailbox,
+                    ticket
+                })
+            ),
+            Err(ScalarError::Ipc(crate::ipc::Error::RestrictedBinding))
+        );
+        assert_eq!((f.rpc.outstanding(), mailbox.pending()), (1, 1));
+        assert!(
+            f.authority
+                .authorize(f.space, memory, Kind::Memory, Rights::READ)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn scalar_wrong_mailbox_cannot_withdraw_an_unrelated_accepted_request() {
+        let mut f = fixture();
+        let (mailbox, id, _, _) = scalar_exchange(&mut f);
+        let mut other =
+            crate::ipc::Mailbox::new(&mut f.authority, f.space, f.endpoints[1]).unwrap();
+        let ticket = other
+            .send(
+                &mut f.authority,
+                f.space,
+                f.endpoints[1],
+                crate::ipc::Outgoing {
+                    bytes: b"other001",
+                    capability: None,
+                    deadline: deadline(5),
+                },
+                0,
+            )
+            .unwrap();
+        f.rpc.expire(5).unwrap();
+        assert_eq!(
+            f.rpc.complete_scalar(
+                f.threads[1],
+                id,
+                5,
+                Some(ScalarWithdrawal {
+                    authority: &mut f.authority,
+                    mailbox: &mut other,
+                    ticket
+                })
+            ),
+            Err(ScalarError::Ipc(crate::ipc::Error::WrongEndpoint))
+        );
+        assert_eq!(
+            (mailbox.pending(), other.pending(), f.rpc.outstanding()),
+            (1, 1, 1)
+        );
+    }
+
+    #[test]
+    fn scalar_nested_expiry_releases_leaf_credit_before_parent_ack() {
+        let mut f = fixture();
+        let (mut mailbox, parent, _, parent_wait) = scalar_exchange(&mut f);
+        mailbox
+            .receive(&mut f.authority, f.space, f.endpoints[0], 0)
+            .unwrap();
+        dispatch_to(&mut f.scheduler, f.threads[1]);
+        let child = f
+            .rpc
+            .begin(
+                &f.authority,
+                f.threads[1],
+                f.endpoints[1],
+                deadline(5),
+                MessageShape {
+                    bytes: 8,
+                    capabilities: 0,
+                },
+                0,
+            )
+            .unwrap();
+        let mut child_box =
+            crate::ipc::Mailbox::new(&mut f.authority, f.space, f.endpoints[1]).unwrap();
+        let ticket = child_box
+            .send(
+                &mut f.authority,
+                f.space,
+                f.endpoints[1],
+                crate::ipc::Outgoing {
+                    bytes: b"nested01",
+                    capability: None,
+                    deadline: deadline(5),
+                },
+                0,
+            )
+            .unwrap();
+        let child_wait = f.scheduler.block_guarded(0, deadline(5)).unwrap();
+        assert_eq!(f.rpc.expire(5).unwrap().len(), 2);
+        assert_eq!(f.scheduler.advance(5), Ok(0));
+        assert_eq!(
+            f.rpc.complete_scalar(f.threads[1], parent, 5, None),
+            Err(ScalarError::Rpc(Error::AlreadyWaiting))
+        );
+        f.rpc
+            .complete_scalar(
+                f.threads[2],
+                child,
+                5,
+                Some(ScalarWithdrawal {
+                    authority: &mut f.authority,
+                    mailbox: &mut child_box,
+                    ticket,
+                }),
+            )
+            .unwrap();
+        assert!(f.scheduler.waiting(parent_wait));
+        assert!(f.scheduler.wake(child_wait));
+        assert_eq!(f.rpc.outstanding(), 1);
+        let completion = f
+            .rpc
+            .complete_scalar(f.threads[1], parent, 5, None)
+            .unwrap();
+        assert!(!completion.deliver_reply && !completion.wake_caller);
+        assert!(f.scheduler.wake(parent_wait));
+        assert_eq!(f.rpc.outstanding(), 0);
+    }
+
+    #[test]
+    fn scalar_delivered_credit_requires_verified_callee_death_when_no_ack_arrives() {
+        let mut f = fixture();
+        let (mut mailbox, id, _, wait) = scalar_exchange(&mut f);
+        mailbox
+            .receive(&mut f.authority, f.space, f.endpoints[0], 0)
+            .unwrap();
+        assert_eq!(
+            f.rpc.peer_died(&f.scheduler, f.threads[1], 0).err(),
+            Some(Error::PeerStillLive)
+        );
+        assert_eq!(f.rpc.outstanding(), 1);
+        assert!(f.scheduler.waiting(wait));
+        dispatch_to(&mut f.scheduler, f.threads[1]);
+        f.scheduler.exit(0).unwrap();
+        let events = f.rpc.peer_died(&f.scheduler, f.threads[1], 1).unwrap();
+        assert_eq!(events.iter().next().unwrap().status, Status::PeerDied);
+        assert_eq!(f.rpc.outstanding(), 0);
+        assert_eq!(
+            f.rpc.complete_scalar(f.threads[1], id, 1, None),
+            Err(ScalarError::Rpc(Error::StaleCall))
+        );
+        assert!(f.scheduler.waiting(wait));
+        assert!(f.scheduler.wake(wait));
+        assert!(!f.scheduler.wake(wait));
+    }
+    #[test]
+    fn dead_intermediaries_can_leave_live_descendant_credit_while_parent_stays_guarded() {
+        let mut authority = Authority::new();
+        let space = authority.create_space().unwrap();
+        let mut scheduler = Scheduler::new();
+        let job = scheduler.create_job().unwrap();
+        let processes = core::array::from_fn::<_, 4, _>(|_| scheduler.create_process(job).unwrap());
+        let threads = processes.map(|process| scheduler.create_thread(process).unwrap());
+        let endpoints = core::array::from_fn::<_, 3, _>(|_| {
+            authority
+                .create_root(
+                    space,
+                    Kind::Endpoint,
+                    Rights::SEND | Rights::RECEIVE | Rights::CONTROL,
+                )
+                .unwrap()
+        });
+        let mut rpc = Rpc::new(NonZeroU64::new(73).unwrap());
+        for thread in threads {
+            rpc.register_thread(&authority, &scheduler, thread, job, space, None)
+                .unwrap();
+        }
+        for i in 0..3 {
+            rpc.bind_endpoint(
+                &authority,
+                space,
+                endpoints[i],
+                threads[i + 1],
+                Policy::new(8, 0).unwrap(),
+            )
+            .unwrap();
+        }
+        let mut calls = [None; 3];
+        let mut waits = [None; 3];
+        for i in 0..3 {
+            dispatch_to(&mut scheduler, threads[i]);
+            calls[i] = Some(
+                rpc.begin(
+                    &authority,
+                    threads[i],
+                    endpoints[i],
+                    deadline(100),
+                    MessageShape {
+                        bytes: 8,
+                        capabilities: 0,
+                    },
+                    0,
+                )
+                .unwrap(),
+            );
+            waits[i] = Some(scheduler.block_guarded(0, deadline(100)).unwrap());
+        }
+        scheduler.terminate_process(processes[1]).unwrap();
+        rpc.peer_died(&scheduler, threads[1], 1).unwrap();
+        scheduler.terminate_process(processes[2]).unwrap();
+        rpc.peer_died(&scheduler, threads[2], 1).unwrap();
+        assert_eq!(rpc.context(calls[0].unwrap()), Err(Error::StaleCall));
+        assert_eq!(rpc.context(calls[1].unwrap()), Err(Error::StaleCall));
+        assert_eq!(
+            rpc.context(calls[2].unwrap()).unwrap().parent_call_id,
+            calls[1]
+        );
+        assert_eq!(rpc.waiting(threads[1]), None);
+        assert_eq!(rpc.outstanding(), 1);
+        // Metadata removal/death of both intermediaries does not make the
+        // descendant's potentially shared write credit disappear. The runtime
+        // must retain those physical owner joins until this actual leaf ACK.
+        assert_eq!(scheduler.advance(1000), Ok(0));
+        assert!(scheduler.waiting(waits[0].unwrap()));
+        let completion = rpc
+            .complete_scalar(threads[3], calls[2].unwrap(), 1000, None)
+            .unwrap();
+        assert_eq!(
+            (
+                completion.status,
+                completion.deliver_reply,
+                completion.wake_caller
+            ),
+            (Status::PeerDied, false, false)
+        );
+        assert_eq!(rpc.outstanding(), 0);
+        assert!(scheduler.wake(waits[0].unwrap()));
+        assert!(!scheduler.wake(waits[0].unwrap()));
+    }
+
     #[test]
     fn forgetting_requires_verified_death_and_leaves_unrelated_state_unchanged() {
         let mut f = fixture();
@@ -1656,5 +2483,105 @@ mod tests {
         }
         assert_eq!(f.rpc.sequence, 512);
         assert_eq!(f.rpc.outstanding(), 0);
+    }
+
+    #[test]
+    fn captured_self_facts_require_registered_running_generations_and_do_not_mutate() {
+        let mut f = fixture();
+        dispatch_to(&mut f.scheduler, f.threads[0]);
+        let before = (
+            f.authority.metadata_usage(),
+            f.scheduler.metadata_usage(),
+            f.rpc.metadata_usage(),
+        );
+        let process = f.scheduler.thread_process(f.threads[0]).unwrap();
+        for (field, expected) in [
+            (0, process.diagnostic_id()),
+            (1, f.threads[0].diagnostic_id()),
+            (2, 0),
+        ] {
+            assert_eq!(
+                f.rpc
+                    .self_identity(&f.authority, &f.scheduler, f.threads[0], f.space, field),
+                Ok(expected)
+            );
+        }
+        assert_eq!(
+            f.rpc
+                .self_identity(&f.authority, &f.scheduler, f.threads[0], f.space, 3),
+            Err(Error::MalformedMessage)
+        );
+        assert!(
+            f.rpc
+                .self_identity(&f.authority, &f.scheduler, f.threads[1], f.space, 0)
+                .is_err()
+        );
+        assert_eq!(
+            before,
+            (
+                f.authority.metadata_usage(),
+                f.scheduler.metadata_usage(),
+                f.rpc.metadata_usage()
+            )
+        );
+        let foreign = f.authority.create_space().unwrap();
+        assert!(
+            f.rpc
+                .self_identity(&f.authority, &f.scheduler, f.threads[0], foreign, 0)
+                .is_err()
+        );
+        f.authority.close_space(f.space).unwrap();
+        assert!(
+            f.rpc
+                .self_identity(&f.authority, &f.scheduler, f.threads[0], f.space, 0)
+                .is_err()
+        );
+    }
+    #[test]
+    fn stopped_or_reused_self_thread_never_returns_old_registration_facts() {
+        let mut f = fixture();
+        dispatch_to(&mut f.scheduler, f.threads[0]);
+        let process = f.scheduler.thread_process(f.threads[0]).unwrap();
+        f.scheduler.exit(0).unwrap(); // actual runner leaves before stopped teardown
+        f.scheduler.terminate_process(process).unwrap();
+        for field in 0..3 {
+            assert!(
+                f.rpc
+                    .self_identity(&f.authority, &f.scheduler, f.threads[0], f.space, field)
+                    .is_err()
+            );
+        }
+        f.scheduler.reclaim_process(process).unwrap();
+        let next_process = f.scheduler.create_process(f.job).unwrap();
+        let next_thread = f.scheduler.create_thread(next_process).unwrap();
+        dispatch_to(&mut f.scheduler, next_thread);
+        assert_ne!(next_thread, f.threads[0]);
+        for field in 0..3 {
+            assert!(
+                f.rpc
+                    .self_identity(&f.authority, &f.scheduler, f.threads[0], f.space, field)
+                    .is_err()
+            );
+            assert!(
+                f.rpc
+                    .self_identity(&f.authority, &f.scheduler, next_thread, f.space, field)
+                    .is_err()
+            );
+        }
+        f.rpc
+            .register_thread(
+                &f.authority,
+                &f.scheduler,
+                next_thread,
+                f.job,
+                f.space,
+                None,
+            )
+            .unwrap();
+        assert_eq!(
+            f.rpc
+                .self_identity(&f.authority, &f.scheduler, next_thread, f.space, 0),
+            Ok(next_process.diagnostic_id())
+        );
     }
 }

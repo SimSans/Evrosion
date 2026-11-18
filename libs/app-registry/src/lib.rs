@@ -15,6 +15,8 @@ use ev_zion::{
 use sha2::{Digest as _, Sha256};
 
 pub mod app_data;
+mod checked_open;
+pub mod note_data;
 pub mod region;
 #[cfg(test)]
 mod tests;

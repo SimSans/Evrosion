@@ -14,7 +14,7 @@ stale identities or sever revocation ancestry.
 
 This Level B decision **supersedes ADR-0014's permanent retention of closed
 authority-domain slots and unreachable lineage nodes only**. Original M1 evidence
-and technical requirements remain unchanged. Object descriptors, scheduler identities and
+and imported plans remain unchanged. Object descriptors, scheduler identities and
 physical resources remain retained or governed by their existing lifetime rules.
 This decision does not certify full process restart or change any OS guarantee.
 
@@ -78,7 +78,7 @@ The kernel fixture repeats 64 measured binding/retirement cycles, reclaims exact
 128 descendants, preserves the expected custody digest and rejects old identities
 while new grants are live. Strict boot-protocol and M2 evidence parsers check the
 record; the cumulative regression remains required. Evidence is linked from
-[M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+M2 progress.
 
 These are authority-metadata proofs, not repeated executable-process recovery.
 Descriptor reuse, scheduler reuse, sealed custody, incarnation-wide revocation,

@@ -26,6 +26,8 @@ pub enum Error<E> {
     ResendLimit,
     Configuration,
     ScanSet,
+    MouseId,
+    ResponseSource,
     Stream(crate::stream::Error),
     IncompleteSequence,
 }
@@ -39,6 +41,8 @@ pub struct Driver<P> {
     used: bool,
     initialized: bool,
     failed: bool,
+    mouse_used: bool,
+    active: bool,
 }
 impl<P: Ports> Driver<P> {
     pub fn new(ports: P) -> Self {
@@ -48,6 +52,8 @@ impl<P: Ports> Driver<P> {
             used: false,
             initialized: false,
             failed: false,
+            mouse_used: false,
+            active: false,
         }
     }
     pub fn into_ports(self) -> P {
@@ -187,11 +193,77 @@ impl<P: Ports> Driver<P> {
         }
         result
     }
+    fn read_aux(&mut self, b: &mut Budget) -> Result<u8, Error<P::Error>> {
+        loop {
+            let status = self.status(b)?;
+            if status & 1 != 0 {
+                self.step(b)?;
+                let byte = self.ports.input(DATA).map_err(Error::Io)?;
+                if status & 0x20 == 0 {
+                    return Err(Error::ResponseSource);
+                }
+                return Ok(byte);
+            }
+            self.pause(b)?;
+        }
+    }
+    fn mouse_ack(&mut self, b: &mut Budget, byte: u8) -> Result<(), Error<P::Error>> {
+        for _ in 0..3 {
+            self.write(b, STATUS, 0xd4)?;
+            self.write(b, DATA, byte)?;
+            match self.read_aux(b)? {
+                0xfa => return Ok(()),
+                0xfe => (),
+                other => return Err(Error::UnexpectedAck(other)),
+            }
+        }
+        Err(Error::ResendLimit)
+    }
+    /// One cold opt-in before any stream poll/drain. QEMU10.2.1 F6 does NOT
+    /// reset a negotiated wheel type; FF must return actual AUX ACK, AA, ID0.
+    /// IRQ1/12 remain masked and only scoped ports60/64 are accessed. Barriers
+    /// never call this method or erase existing key/button held knowledge.
+    pub fn enable_mouse(&mut self, deadline: u64) -> Result<(), Error<P::Error>> {
+        if !self.initialized || self.failed || self.active || self.mouse_used {
+            return Err(Error::Unavailable);
+        }
+        self.mouse_used = true;
+        let mut b = Budget {
+            deadline,
+            remaining: POLLS,
+        };
+        let result = (|| {
+            self.write(&mut b, STATUS, 0xad)?;
+            self.raw_quiet(&mut b)?;
+            self.write(&mut b, STATUS, 0xa8)?;
+            self.mouse_ack(&mut b, 0xff)?;
+            if self.read_aux(&mut b)? != 0xaa || self.read_aux(&mut b)? != 0 {
+                return Err(Error::MouseId);
+            }
+            self.write(&mut b, STATUS, 0x20)?;
+            let old = self.read_keyboard(&mut b)?;
+            let mode = (old & 0x0c) | 0x10; // polling, raw set1, keyboard paused
+            self.write(&mut b, STATUS, 0x60)?;
+            self.write(&mut b, DATA, mode)?;
+            self.write(&mut b, STATUS, 0x20)?;
+            if self.read_keyboard(&mut b)? != mode {
+                return Err(Error::Configuration);
+            }
+            self.mouse_ack(&mut b, 0xf4)?;
+            self.write(&mut b, STATUS, 0xae)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            self.failed = true;
+        }
+        result
+    }
     /// One actual output-buffer byte, never stale data read without OBF.
     pub fn poll(&mut self, deadline: u64) -> Result<Option<(u8, u8)>, Error<P::Error>> {
         if !self.initialized || self.failed {
             return Err(Error::Unavailable);
         }
+        self.active = true;
         let mut b = Budget {
             deadline,
             remaining: 64,
@@ -217,6 +289,7 @@ impl<P: Ports> Driver<P> {
         if !self.initialized || self.failed {
             return Err(Error::Unavailable);
         }
+        self.active = true;
         let mut b = Budget {
             deadline,
             remaining: POLLS,
@@ -269,6 +342,11 @@ mod tests {
         resends: u8,
         bad_set: bool,
         io_fail: bool,
+        mouse_type: u8,
+        bad_mouse_id: bool,
+        bad_mouse_bat: bool,
+        mouse_primary_reply: bool,
+        mouse_resends: u8,
     }
     impl Ports for Model {
         type Error = ();
@@ -290,8 +368,10 @@ mod tests {
                     0xad => self.mode |= 16,
                     0xae => self.mode &= !16,
                     0xa7 => self.mode |= 32,
+                    0xa8 => self.mode &= !32,
                     0x20 => self.queue.push_back((1, self.mode)),
                     0x60 => self.command = Some(0x60),
+                    0xd4 => self.command = Some(0xd4),
                     _ => panic!("forbidden controller command"),
                 };
                 return Ok(());
@@ -299,6 +379,36 @@ mod tests {
             if self.command == Some(0x60) {
                 self.mode = value;
                 self.command = None;
+                return Ok(());
+            }
+            if self.command == Some(0xd4) {
+                self.command = None;
+                let status = if self.mouse_primary_reply { 1 } else { 0x21 };
+                if self.mouse_resends > 0 {
+                    self.mouse_resends -= 1;
+                    self.queue.push_back((status, 0xfe));
+                } else {
+                    match value {
+                        0xff => {
+                            self.mouse_type = 0;
+                            self.queue.clear();
+                            self.queue.extend([
+                                (status, 0xfa),
+                                (status, if self.bad_mouse_bat { 0xab } else { 0xaa }),
+                                (
+                                    status,
+                                    if self.bad_mouse_id {
+                                        4
+                                    } else {
+                                        self.mouse_type
+                                    },
+                                ),
+                            ]);
+                        }
+                        0xf4 => self.queue.push_back((status, 0xfa)),
+                        _ => panic!("unexpected mouse command"),
+                    }
+                }
                 return Ok(());
             }
             if self.resends > 0 {
@@ -420,5 +530,89 @@ mod tests {
         d.initialize(100).unwrap();
         d.ports.io_fail = true;
         assert_eq!(d.poll(100), Err(Error::Io(())));
+    }
+    #[test]
+    fn mouse_cold_reset_verifies_type_zero_masks_irqs_and_never_runs_from_barrier() {
+        let mut d = Driver::new(Model {
+            mode: 0x47,
+            mouse_type: 4,
+            mouse_resends: 2,
+            ..Model::default()
+        });
+        d.initialize(100).unwrap();
+        d.enable_mouse(100).unwrap();
+        assert_eq!(d.ports.mouse_type, 0);
+        assert_eq!(d.ports.mode & 0x73, 0);
+        assert_eq!(
+            d.ports
+                .outputs
+                .iter()
+                .filter(|p| **p == (DATA, 0xff))
+                .count(),
+            3
+        );
+        assert!(!d.ports.outputs.contains(&(DATA, 0xf6)));
+        let before = d.ports.outputs.clone();
+        let mut s = Stream::with_pointer();
+        d.ports.queue.extend([(0x21, 9), (0x21, 0), (0x21, 0)]);
+        s.begin_barrier();
+        d.drain(&mut s, 100).unwrap();
+        assert_eq!(s.session_barrier_reply().pointer.held, 1);
+        assert_eq!(s.session_barrier_reply().pointer.released, 6);
+        assert_eq!(d.ports.outputs, before);
+        assert_eq!(d.enable_mouse(100), Err(Error::Unavailable));
+        let mut legacy = Driver::new(Model::default());
+        legacy.initialize(100).unwrap();
+        legacy.poll(100).unwrap();
+        assert_eq!(legacy.enable_mouse(100), Err(Error::Unavailable));
+    }
+    #[test]
+    fn mouse_wrong_source_type_bat_resend_stall_and_deadline_fail_closed() {
+        for model in [
+            Model {
+                bad_mouse_id: true,
+                ..Model::default()
+            },
+            Model {
+                bad_mouse_bat: true,
+                ..Model::default()
+            },
+            Model {
+                mouse_primary_reply: true,
+                ..Model::default()
+            },
+            Model {
+                mouse_resends: 3,
+                ..Model::default()
+            },
+        ] {
+            let mut d = Driver::new(model);
+            d.initialize(100).unwrap();
+            assert!(d.enable_mouse(100).is_err());
+            assert_eq!(d.poll(100), Err(Error::Unavailable));
+            assert_eq!(d.enable_mouse(100), Err(Error::Unavailable));
+        }
+        for stalled in [false, true] {
+            let mut d = Driver::new(Model::default());
+            d.initialize(100).unwrap();
+            d.ports.stall = stalled;
+            let deadline = if stalled { 100 } else { d.ports.time + 1 };
+            assert_eq!(
+                d.enable_mouse(deadline),
+                Err(if stalled {
+                    Error::PollBudget
+                } else {
+                    Error::Deadline
+                })
+            );
+            assert_eq!(d.poll(100), Err(Error::Unavailable));
+        }
+        let mut d = Driver::new(Model::default());
+        d.initialize(100).unwrap();
+        d.enable_mouse(100).unwrap();
+        d.ports.queue.extend([(0x21, 8), (0x21, 1)]);
+        let mut s = Stream::with_pointer();
+        s.begin_barrier();
+        assert_eq!(d.drain(&mut s, 100), Err(Error::IncompleteSequence));
     }
 }

@@ -30,7 +30,7 @@ The default requires three fresh Q35/TCG boots and preserves serial, exact argv,
 firmware/artifact hashes, timeout/exit status and JSON results in build/m0.
 Host protocol tests and timeout tests also exercise negative results.
 `cargo ev test m0` runs the full M0 suite; executed results and evidence paths
-are in [M0 readiness](../../docs/release/0.1-preview.md#validation-and-provenance).
+are in M0 readiness.
 
 | Proof | Earliest implementation | Current status |
 |---|---|---|
@@ -38,14 +38,14 @@ are in [M0 readiness](../../docs/release/0.1-preview.md#validation-and-provenanc
 | AF-M0-016: deliberate panic and symbols | M0 Slice 4 | Passed at M0 acceptance: build ID, bounded message and source location; GDB source/backtrace workflow |
 | AF-015: byte-identical unsigned images | M0 Slice 5 | Passed at M0 acceptance: two fresh clones on one prepared host; not hermetic or independent-host (EXC-0002) |
 | AF-M0-017: validated framebuffer | M0 Slices 2 and 5 | Passed at M0 acceptance: validated framebuffer/memory handoff, negative cases and a serial-only fixture; no physical GPU coverage |
-| AF-003/005/009: capability denial, attenuation and Memory Object authority | M1 | [Executed host and CPL3 evidence](../../architecture/M1_ACCEPTANCE.md); [aggregate acceptance PASS](../../docs/release/0.1-preview.md#validation-and-provenance) |
-| M1-01 bootstrap physical frames | M1 | [Host boundary tests and real boot proof PASS](../../docs/release/0.1-preview.md#validation-and-provenance); frame selection only; see the mapping substep below |
-| M1-02a owned scratch roots | M1 | [Host ownership and QEMU map/unmap/remap/root-switch proof PASS](../../docs/release/0.1-preview.md#validation-and-provenance); later isolation, fault and reclamation proofs are linked from the M1 acceptance contract |
+| AF-003/005/009: capability denial, attenuation and Memory Object authority | M1 | [Executed host and CPL3 evidence](../../architecture/M1_ACCEPTANCE.md); aggregate acceptance PASS (local engineering archive) |
+| M1-01 bootstrap physical frames | M1 | Host boundary tests and real boot proof PASS; frame selection only; see the mapping substep below |
+| M1-02a owned scratch roots | M1 | Host ownership and QEMU map/unmap/remap/root-switch proof PASS; later isolation, fault and reclamation proofs are linked from the M1 acceptance contract |
 | AF-007A–H: root reconstitution | M2 | [Bounded executed acceptance](../../architecture/M2_ACCEPTANCE.md) |
 | AF-IPC-001–010: synchronous IPC discipline | M2 | [Bounded executed acceptance](../../architecture/M2_ACCEPTANCE.md) |
 | AF-010/011: generation rollback and interrupted durable subset | M3 | [Bounded executed acceptance](../../architecture/M3_ACCEPTANCE.md); physical cold attempt exhaustion remains model-only |
 | AF-012/013: graphical app isolation and exact picker grant | M4–M5 | [Bounded M5 acceptance](../../architecture/M5_ACCEPTANCE.md): actual crash/restoration, selected-only READ and durable owner-policy regression |
-| AF-014: provider replacement | M5 / 0.1 | [Actual replacement PASS](../../docs/release/0.1-preview.md#validation-and-provenance): unchanged consumer/contract, real A retirement/B binding |
+| AF-014: provider replacement | M5 / 0.1 | Actual replacement PASS (local engineering archive): unchanged consumer/contract, real A retirement/B binding |
 
 The complete matrix and acceptance gates are in the
 [Pre-M0 package](../../architecture/plans/roadmap/PRE-M0-implementation-package-v1.md).

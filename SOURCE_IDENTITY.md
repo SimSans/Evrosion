@@ -1,21 +1,11 @@
 # Source identity
 
-This is the Evrosion 0.1 publication source snapshot. Public technical editions
-and the repository layout differ from the original engineering workspace.
-Historical acceptance identifies its own measured inputs; it does not silently
-certify a different source tree.
+This is the November 18, 2026 development source checkpoint following the published 0.1 preview. It includes the 0.2 and 0.3 implementation and unfinished 0.4 workspace source. The original public history and `v0.1.0` tag are retained.
 
-The actual Git commit and each build manifest's source revision, dirty flag,
-input digest and artifact hashes identify this checkout. Validation results must
-name the exact candidate they exercised. Generated images and raw runs remain
-local build outputs unless deliberately packaged separately.
+The actual Git commit and each build manifest's source revision, dirty flag, input digest and artifact hashes identify this checkout. Public technical editions, licensing metadata and the projected dependency graph differ from the engineering inputs used by historical tests. Those historical results do not automatically certify this edition.
 
-The original bounded 0.1 engineering checkpoint used full source digest
-`b73186a8c6738e62ce0f7fc7e062615dd39926fcc2a58d84d29c54365fe6501b`.
-That digest is a historical reference, not the digest of this public edition.
-Do not substitute it for a current manifest or claim it included later edits.
+The current workspace derives from the source cohort with digest `e83cac11de13b613811170027699fc2e9bb45d60629744902c2f300ec239c62c`, with the separately checked four-file Display checkpoint improvement incorporated. That digest identifies the earlier cohort, not this public tree. Pending source deltas are described in `development/experimental/`; they are not silently part of the default build.
 
-This source publication declares no official signed image release. Exact binary
-hashes remain authoritative; build IDs, source commits and human product versions
-serve different purposes. Two-path local reproduction and cross-context artifact
-identity must be reported separately with actual comparisons and known limits.
+All fourteen full 0.4 acceptance gates remain open. Individual component observations have narrower scope. No signed image, complete 0.4 acceptance, physical-machine qualification or human product acceptance follows from this source checkpoint.
+
+This repository excludes generated outputs and raw historical run archives. Retained compact fixtures are source inputs, not a promise that a new build has executed successfully. Run the relevant checks against the exact commit under review and report actual limits.

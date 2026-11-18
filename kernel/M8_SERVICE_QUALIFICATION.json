@@ -1,0 +1,152 @@
+{
+  "schema": 1,
+  "date": "2026-11-16",
+  "status": "PASS scoped portable selected admission and native bare binary typecheck/lint",
+  "scope": "Metadata admission and host ownership models only; no physical loader/frame ownership, actual V5 runtime graph, VM, linked resource admission, or whole M8 qualification claim.",
+  "source_files": [
+    {
+      "path": "kernel/src/service.rs",
+      "bytes": 156021,
+      "sha256": "77c058db26a6a852d9df897eacce7cdc17bbe8343c670ee9aca559c69b15dd9f"
+    },
+    {
+      "path": "kernel/src/executable.rs",
+      "bytes": 25966,
+      "sha256": "a4e74e5af27eb42cd4d406e6e8df3323c1644fd7553eece4f799e1d4da555b30"
+    },
+    {
+      "path": "kernel/src/executable/m8.rs",
+      "bytes": 4778,
+      "sha256": "73c3705783eb9532e5a11691ce76f45472b4ad6b742379da6e81046a95ac64ea"
+    },
+    {
+      "path": "kernel/src/executable/m8/tests.rs",
+      "bytes": 5308,
+      "sha256": "e4cf92d5873e27636e906a8cf9898ea57674d79e530b8a4091f740edbf1c39cf"
+    },
+    {
+      "path": "kernel/src/service/m8_tests.rs",
+      "bytes": 9895,
+      "sha256": "def99a087d481e7d2760743496c914d5576cd7f4485363f0ee0dc249b9748ff0"
+    },
+    {
+      "path": "kernel/src/startup_record.rs",
+      "bytes": 5515,
+      "sha256": "c358ba609244ed9020648d704c6087e5cc2f8742e65099f3fdc7bb4d0547ac66"
+    }
+  ],
+  "command_receipts": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/m8-service-tests-01.json",
+      "sha256": "144f56e0f61b108bbf5f86bfc6c7620a4cdf3c6995868c9a30df91444948992d",
+      "passed": false
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/m8-service-tests-02.json",
+      "sha256": "060965415f6373da4e34873f7bf7bbfe8523d53decdf1a33458dcfdbaf3d4630",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/m8-service-default-tests-01.json",
+      "sha256": "12dd5cf8ea6c5843694755e7a3665f0a93ee1047006c32f85612a93b48506fa7",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/m8-service-format-01.json",
+      "sha256": "aee29c9dc723c9cfd25a738060281b9d1f03cf7aa250cf99580f67191688d0f7",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/m8-service-clippy-01.json",
+      "sha256": "aca72dfc61684d6b2151b0988f604569f3b24102ec67f88c32175b6c7a72273a",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/m8-service-default-clippy-01.json",
+      "sha256": "c2ebc807d2220ab7bc7f3d275d7d0a36bc59facd11021da56f19f347352fa83d",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/m8-service-native-clippy-01.json",
+      "sha256": "0b499c5d13c3950ae50c4839b986ee804e886769bb17def3e0c950b8f3075887",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/m8-service-capacity-01.json",
+      "sha256": "b6b5c20e58105c8b3452ffceb951a4e9b4eacc6baf5e520dfbf49d1c9edc89f7",
+      "passed": true
+    }
+  ],
+  "test_counts": {
+    "selected_kernel": 498,
+    "default_kernel": 487,
+    "new_selected_profile_tests": 6
+  },
+  "closed_job_templates": [
+    [
+      16384,
+      32,
+      1,
+      1
+    ],
+    [
+      16384,
+      64,
+      1,
+      1
+    ],
+    [
+      16384,
+      128,
+      1,
+      1
+    ],
+    [
+      16384,
+      512,
+      1,
+      1
+    ]
+  ],
+  "selected_image_private_loader_bounds": {
+    "Ui": [
+      96,
+      100,
+      102
+    ],
+    "Workspace": [
+      96,
+      100,
+      102
+    ],
+    "Editor": [
+      384,
+      388,
+      390
+    ],
+    "Display": [
+      80,
+      84,
+      88
+    ]
+  },
+  "host_resident_metadata_bytes": {
+    "Registry": 23128,
+    "ServiceImage": 400,
+    "Process": 904
+  },
+  "legacy_effective_roles": 8,
+  "selected_physical_roles": 16,
+  "hybrid_startup_bytes": {
+    "Workspace": 528,
+    "Display": 528,
+    "other_selected_children": 336
+  },
+  "preservation": "Existing descriptor constructor/hash regressions pass, default Image remains64, NativeRoot96 and RootV4 240 remain separate. Selected factory rejects generic legacy descriptors; legacy factory rejects selected markers.",
+  "limits": [
+    "No packet supplies a quota or enables selected policy.",
+    "Registry residency is not a Root stack or static placement qualification.",
+    "Old V4 sealed-image admission is refused by selected M8 registry; a dynamic M8 image path requires its own measured profile."
+  ],
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

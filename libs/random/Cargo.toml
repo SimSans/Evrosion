@@ -1,0 +1,17 @@
+[package]
+name = "ev-random"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-only"
+
+[dependencies]
+ev-time-contract = { path = "../time-contract" }
+rand_chacha = { version = "=0.9.0", default-features = false }
+zeroize = { version = "=1.8.2", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"

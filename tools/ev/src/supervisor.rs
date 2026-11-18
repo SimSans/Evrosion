@@ -213,7 +213,7 @@ pub(crate) fn produce(
             &image_path,
         )
         .map_err(|e| e.to_string())?;
-        let image = fs::read(&image_path).map_err(|e| e.to_string())?;
+        let image = bounded_legacy_image(root, directory, toolchain, &image_path, &mut artifacts)?;
         let bytes = selected_manifest(&image, name);
         let measurement: [u8; 32] = Sha256::digest(&bytes).into();
         let verified = ev_kernel::bootstrap_manifest::verify(
@@ -292,7 +292,7 @@ pub(crate) fn produce(
             &path,
         )
         .map_err(|e| e.to_string())?;
-        let image = fs::read(&path).map_err(|e| e.to_string())?;
+        let image = bounded_legacy_image(root, directory, toolchain, &path, &mut artifacts)?;
         let measurement: [u8; 32] = Sha256::digest(&image).into();
         use ev_kernel::{
             capability::{Kind, Rights},
@@ -475,6 +475,19 @@ fn owner_roles() -> Vec<ev_kernel::service::Role> {
     })
     .collect()
 }
+/// Keep debug provenance separate from the bounded admitted ELF. Other Store/
+/// Generation/Owner profiles retain their existing compiler-strip behavior.
+fn pio_debug_separation(feature: &str) -> bool {
+    matches!(
+        feature,
+        "test-write"
+            | "test-verify"
+            | "test-direct-fault"
+            | "test-block-driver"
+            | "test-block-client-write"
+            | "test-block-client-verify"
+    )
+}
 fn produce_m3_block(
     root: &Path,
     directory: &Path,
@@ -589,10 +602,11 @@ fn produce_m3_block(
             &path,
         )
         .map_err(|e| e.to_string())?;
-        if feature == "test-block-driver" {
-            // Retain debugging information separately. SDK debug metadata can
-            // exceed the unchanged measured1MiB container bound even though
-            // the actual loadable driver is only a few pages.
+        if pio_debug_separation(feature) {
+            // Retain full debugging information separately. Public SDK debug
+            // metadata can exceed the unchanged1MiB container bound even for
+            // the small ordinary PIO actors. Loaded identity is checked below;
+            // final ordinary ServiceImage admission still runs independently.
             let raw_path = directory.join(format!("{name}.unstripped.elf"));
             fs::rename(&path, &raw_path).map_err(|e| e.to_string())?;
             let before = load_identity(&fs::read(&raw_path).map_err(|e| e.to_string())?)?;
@@ -1003,6 +1017,57 @@ fn load_identity(bytes: &[u8]) -> Result<LoadIdentity, String> {
     })
 }
 
+/// Preserve legacy policy and below-cap bytes. Unloaded DWARF growth may be
+/// separated only with the pinned tool and an exact loaded-identity comparison;
+/// callers still run their original full image/manifest/authority admission.
+fn bounded_legacy_image(
+    root: &Path,
+    directory: &Path,
+    toolchain: &Toolchain,
+    path: &Path,
+    artifacts: &mut Vec<Artifact>,
+) -> Result<Vec<u8>, String> {
+    let raw = fs::read(path).map_err(|e| e.to_string())?;
+    if raw.len() <= ev_kernel::bootstrap_manifest::MAX_IMAGE_BYTES {
+        return Ok(raw);
+    }
+    let name = path
+        .file_stem()
+        .and_then(|n| n.to_str())
+        .ok_or("legacy image name")?;
+    let tool = desktop_tool(root, directory, toolchain)?;
+    let raw_path = directory.join(format!("{name}.unstripped.elf"));
+    fs::copy(path, &raw_path).map_err(|e| e.to_string())?;
+    let before = load_identity(&raw)?;
+    let strip_log = directory.join(format!("{name}-strip.log"));
+    let mut strip = Command::new(&tool);
+    strip
+        .current_dir(root)
+        .arg("--strip-debug")
+        .arg(&raw_path)
+        .arg(path);
+    build::logged(&mut strip, &strip_log)?;
+    let image = fs::read(path).map_err(|e| e.to_string())?;
+    if before != load_identity(&image)? {
+        return Err(format!("{name}: debug stripping changed loaded identity"));
+    }
+    let record = directory.join(format!("{name}-image.json"));
+    build::write_json(
+        &record,
+        &serde_json::json!({
+            "schema":1,"kind":"source-legacy-debug-separation",
+            "unstripped_sha256":build::hash_file(&raw_path)?,"admitted_sha256":build::hash_file(path)?,
+            "unstripped_bytes":raw.len(),"admitted_bytes":image.len(),
+            "loaded_identity_unchanged":true,"llvm_objcopy":tool,"llvm_objcopy_sha256":build::hash_file(&tool)?,
+            "scope":"Exact entry/PT_LOAD flags, bytes, zero-fill and alignment unchanged; original bootstrap/ServiceImage size, manifest, authority, layout and private-stack admission still required. Full symbols retained separately. No runtime claim."
+        }),
+    )?;
+    for path in [raw_path, strip_log, record] {
+        desktop_graph::retain(root, &path, artifacts)?;
+    }
+    Ok(image)
+}
+
 fn desktop_tool(
     root: &Path,
     directory: &Path,
@@ -1222,6 +1287,7 @@ fn produce_ipc_discipline(
     generated: &mut String,
 ) -> Result<(), String> {
     use ev_kernel::{scheduler::Limits, service::ServiceImage};
+    let tool = desktop_tool(root, directory, toolchain)?;
     for (name, features, upper, depth) in [
         ("ipc-chain", "executable", "IPC_CHAIN", false),
         ("ipc-depth", "depth", "IPC_DEPTH", true),
@@ -1234,13 +1300,41 @@ fn produce_ipc_discipline(
             .env("CARGO_ENCODED_RUSTFLAGS", format!("-C\x1frelocation-model=static\x1f-C\x1fcode-model=large\x1f-C\x1fforce-frame-pointers=yes\x1f-C\x1fdebuginfo=1\x1f-C\x1flink-arg=--no-pie\x1f--remap-path-prefix={}=/evrosion", root.display()))
             .env("RUSTUP_AUTO_INSTALL", "0").env("CARGO_TERM_COLOR", "never");
         build::logged(&mut command, &directory.join(format!("{name}-build.log")))?;
-        let path = directory.join(format!("{name}.elf"));
+        // Retain source debugging separately from the bounded admitted ELF.
+        // Never raise the loader cap for unloaded DWARF or change compiler
+        // optimization to squeeze it under that cap.
+        let raw_path = directory.join(format!("{name}.unstripped.elf"));
         fs::copy(
             target.join("x86_64-unknown-none/release/ev-ipc-discipline"),
-            &path,
+            &raw_path,
         )
         .map_err(|e| e.to_string())?;
+        let raw = fs::read(&raw_path).map_err(|e| e.to_string())?;
+        let before = load_identity(&raw)?;
+        let path = directory.join(format!("{name}.elf"));
+        let strip_log = directory.join(format!("{name}-strip.log"));
+        let mut strip = Command::new(&tool);
+        strip
+            .current_dir(root)
+            .arg("--strip-debug")
+            .arg(&raw_path)
+            .arg(&path);
+        build::logged(&mut strip, &strip_log)?;
         let image = fs::read(&path).map_err(|e| e.to_string())?;
+        if before != load_identity(&image)? {
+            return Err(format!("{name}: stripping changed loaded identity"));
+        }
+        let record = directory.join(format!("{name}-image.json"));
+        build::write_json(
+            &record,
+            &serde_json::json!({
+                "schema":1,"kind":"source-ipc-discipline-debug-separation",
+                "unstripped_sha256":build::hash_file(&raw_path)?,"admitted_sha256":build::hash_file(&path)?,
+                "unstripped_bytes":raw.len(),"admitted_bytes":image.len(),
+                "loaded_identity_unchanged":true,"llvm_objcopy":tool,"llvm_objcopy_sha256":build::hash_file(&tool)?,
+                "scope":"Exact entry/PT_LOAD flags, bytes, zero-fill and alignment unchanged; original ServiceImage raw size, descriptor, private-stack and guard admission still required. No runtime claim."
+            }),
+        )?;
         let measurement: [u8; 32] = Sha256::digest(&image).into();
         let descriptor = ServiceImage::verify(
             &image,
@@ -1262,15 +1356,9 @@ fn produce_ipc_discipline(
             "pub const {upper}_IMAGE:&[u8]=include_bytes!({});\npub const {upper}_SHA:[u8;32]={measurement:?};\n",
             serde_json::to_string(&path).map_err(|e| e.to_string())?
         );
-        artifacts.push(Artifact {
-            path: path
-                .strip_prefix(root.join("build/m0"))
-                .map_err(|e| e.to_string())?
-                .to_str()
-                .ok_or("non-UTF-8 discipline image path")?
-                .into(),
-            sha256: build::hash_file(&path)?,
-        });
+        for path in [raw_path, path, strip_log, record] {
+            desktop_graph::retain(root, &path, artifacts)?;
+        }
     }
     Ok(())
 }
@@ -1408,7 +1496,7 @@ fn produce_cap_actors(
             &path,
         )
         .map_err(|e| e.to_string())?;
-        let image = fs::read(&path).map_err(|e| e.to_string())?;
+        let image = bounded_legacy_image(root, directory, toolchain, &path, artifacts)?;
         let measurement: [u8; 32] = Sha256::digest(&image).into();
         ServiceImage::verify(&image, measurement, Limits::new(512, 16, 1, 1), roles)
             .map_err(|e| format!("cap actor {name} image: {e:?}"))?;
@@ -1450,7 +1538,7 @@ fn produce_recovery(
         &image_path,
     )
     .map_err(|e| e.to_string())?;
-    let image = fs::read(&image_path).map_err(|e| e.to_string())?;
+    let image = bounded_legacy_image(root, directory, toolchain, &image_path, artifacts)?;
     let bytes = recovery_manifest(&image);
     let measurement: [u8; 32] = Sha256::digest(&bytes).into();
     let verified = ev_kernel::bootstrap_manifest::verify(
@@ -1526,6 +1614,29 @@ mod tests {
         for descriptor in [app, display] {
             assert_eq!(descriptor.limits().limit(Resource::CpuTicks), 2048);
             assert_eq!(descriptor.limits().limit(Resource::Frames), 32);
+        }
+    }
+    #[test]
+    fn ordinary_pio_debug_separation_does_not_change_other_profile_policy() {
+        for feature in [
+            "test-write",
+            "test-verify",
+            "test-direct-fault",
+            "test-block-driver",
+            "test-block-client-write",
+            "test-block-client-verify",
+        ] {
+            assert!(pio_debug_separation(feature));
+        }
+        for feature in [
+            "test-store-client",
+            "test-generation-client",
+            "test-owner-client",
+            "native-driver",
+            "",
+            "test-write-extra",
+        ] {
+            assert!(!pio_debug_separation(feature));
         }
     }
     #[test]
@@ -1945,9 +2056,11 @@ mod tests {
 }
 
 mod desktop_graph;
+pub(crate) mod download_graph;
 pub(crate) use desktop_graph::extend_desktop_graph;
 
 mod native_graph;
+pub(crate) mod network_graph;
 pub(crate) use native_graph::extend_native_graph;
 
 pub(crate) mod provider_graph;

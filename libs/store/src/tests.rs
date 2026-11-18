@@ -820,7 +820,11 @@ fn format_does_not_fabricate_known_good_or_health() {
                 }),
                 DEADLINE
             ),
-            Err(Error::StaleHealth)
+            Err(if field == 7 {
+                Error::InvalidRequest
+            } else {
+                Error::StaleHealth
+            })
         );
     }
     assert_eq!(store.device.writes, writes);
@@ -1556,4 +1560,842 @@ fn acknowledged_corrupt_sector_is_detected_before_claiming_commit() {
         store.execute(id, request, DEADLINE).unwrap();
         assert_eq!(read_user(&mut store), b"verified new state");
     }
+}
+
+#[test]
+fn mutable_namespace_refuses_foreign_creator_and_pending_lifecycle_before_any_replay() {
+    let initial = generation(1);
+    let pristine = formatted().into_device().cold();
+    for request in [
+        Request::Stage(&generation(2)),
+        Request::Activate(initial.generation),
+    ] {
+        let mut disk = pristine.clone();
+        let operation = Operation::from_request::<Fault>(request).unwrap();
+        disk.durable[3] = codec::journal(1, 1, &operation);
+        disk.cache = disk.durable;
+        disk.writes = 0;
+        disk.flushes = 0;
+        let before = disk.durable;
+        let failed = Store::open_mutable_namespace(disk, &initial, DEADLINE)
+            .err()
+            .expect("foreign pending lifecycle must refuse");
+        assert_eq!(failed.error, Error::Conflict);
+        assert_eq!(failed.device.writes, 0);
+        assert_eq!(failed.device.flushes, 0);
+        assert_eq!(failed.device.cache, before);
+        assert_eq!(failed.device.durable, before);
+        // The record has canonical, checksum-valid operation syntax. Refusal
+        // precedes interpreting its foreign lifecycle semantics or replay.
+        assert!(codec::decode_operation(&failed.device.durable[3]).is_some());
+    }
+    let mut disk = pristine;
+    disk.writes = 0;
+    disk.flushes = 0;
+    let before = disk.durable;
+    let failed = Store::open_mutable_namespace(disk, &generation(2), DEADLINE)
+        .err()
+        .expect("wrong creation must refuse");
+    assert_eq!(failed.error, Error::Conflict);
+    assert_eq!(failed.device.writes, 0);
+    assert_eq!(failed.device.flushes, 0);
+    assert_eq!(failed.device.cache, before);
+    assert_eq!(failed.device.durable, before);
+    let mut general = accepted_a();
+    execute(&mut general, Request::Stage(&generation(2)));
+    let mut disk = general.into_device().cold();
+    disk.writes = 0;
+    disk.flushes = 0;
+    let before = disk.durable;
+    let failed = Store::open_mutable_namespace(disk, &initial, DEADLINE)
+        .err()
+        .unwrap();
+    assert_eq!(failed.error, Error::Conflict);
+    assert_eq!(failed.device.writes, 0);
+    assert_eq!(failed.device.flushes, 0);
+    assert_eq!(failed.device.durable, before);
+}
+#[test]
+fn mutable_namespace_recovers_exact_pending_user_write_without_new_store_fields() {
+    let mut disk = formatted().into_device().cold();
+    let op = Operation::from_request::<Fault>(Request::WriteMutable {
+        object: ObjectId::user_data(),
+        bytes: b"exact reserved high-water checkpoint",
+    })
+    .unwrap();
+    disk.durable[3] = codec::journal(1, 1, &op);
+    disk.cache = disk.durable;
+    disk.writes = 0;
+    disk.flushes = 0;
+    let mut store = Store::open_mutable_namespace(disk, &generation(1), DEADLINE)
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    assert_eq!(
+        read_user(&mut store),
+        b"exact reserved high-water checkpoint"
+    );
+    assert_eq!(store.next_operation().unwrap().get(), 2);
+    assert!(store.device.writes > 0 && store.device.flushes > 0);
+    let mut again =
+        Store::open_mutable_namespace(store.into_device().cold(), &generation(1), DEADLINE)
+            .unwrap_or_else(|e| panic!("{:?}", e.error));
+    assert_eq!(
+        read_user(&mut again),
+        b"exact reserved high-water checkpoint"
+    );
+    assert_eq!(again.next_operation().unwrap().get(), 2);
+}
+#[test]
+fn mutable_namespace_recovery_can_be_interrupted_at_every_real_io_boundary() {
+    let mut disk = formatted().into_device().cold();
+    let op = Operation::from_request::<Fault>(Request::WriteMutable {
+        object: ObjectId::user_data(),
+        bytes: b"persisted original pending checkpoint",
+    })
+    .unwrap();
+    disk.durable[3] = codec::journal(1, 1, &op);
+    disk.cache = disk.durable;
+    let initial = Store::open_mutable_namespace(disk.clone(), &generation(1), DEADLINE)
+        .unwrap_or_else(|_| panic!());
+    let steps = initial.device.boundary;
+    for boundary in 1..=steps {
+        for mode in [Cut::Before, Cut::After, Cut::Torn] {
+            let mut candidate = disk.clone();
+            candidate.cut = Some((boundary, mode));
+            let rejected = Store::open_mutable_namespace(candidate, &generation(1), DEADLINE)
+                .err()
+                .expect("actual selected boundary");
+            let mut restored =
+                Store::open_mutable_namespace(rejected.device.cold(), &generation(1), DEADLINE)
+                    .unwrap_or_else(|e| panic!("cut {boundary}: {:?}", e.error));
+            assert_eq!(
+                read_user(&mut restored),
+                b"persisted original pending checkpoint"
+            );
+            assert_eq!(restored.next_operation().unwrap().get(), 2);
+        }
+    }
+}
+
+#[test]
+fn component_failure_retains_root_admission_and_immutable_child_evidence_across_reuse() {
+    let mut store = pending_b();
+    let admitted = boot(&mut store);
+    let evidence = FailureEvidence {
+        object_start: 333,
+        bytes: 256,
+        sha256: digest(b"actual immutable child fault capsule"),
+    };
+    execute(
+        &mut store,
+        Request::CriticalFault(CriticalFaultReport { admitted, evidence }),
+    );
+    assert_eq!(store.selected_manifest(DEADLINE).unwrap(), generation(1));
+    let failure = store.last_failure().unwrap().unwrap();
+    assert_eq!(failure.reason, LastFailureReason::CriticalComponentFault);
+    assert_eq!(failure.supervisor_image, generation(2).supervisor_image);
+    assert_eq!(failure.process_stamp, Some(admitted.process_stamp));
+    assert_eq!(failure.evidence, Some(evidence));
+    let root = codec::root(&store.root);
+    assert_eq!(u16::from_le_bytes(root[32..34].try_into().unwrap()), 416);
+    let mut store = opened(store.into_device());
+    assert_eq!(store.last_failure().unwrap(), Some(failure));
+    let good = boot(&mut store);
+    healthy(&mut store, good);
+    execute(&mut store, Request::Stage(&generation(3)));
+    execute(&mut store, Request::Activate(generation(3).generation));
+    let good = boot(&mut store);
+    healthy(&mut store, good);
+    let store = opened(store.into_device());
+    assert_eq!(store.last_failure().unwrap(), Some(failure));
+    assert_eq!(store.known_good(), Some(generation(3).generation));
+}
+#[test]
+fn legacy_root_shape_stays384_and_component_refusal_cannot_write() {
+    let legacy = accepted_a();
+    let root = codec::root(&legacy.root);
+    assert_eq!(u16::from_le_bytes(root[32..34].try_into().unwrap()), 384);
+    let mut store = pending_b();
+    let mut admitted = boot(&mut store);
+    let writes = store.device.writes;
+    let evidence = FailureEvidence {
+        object_start: 1,
+        bytes: 256,
+        sha256: [9; 32],
+    };
+    admitted.boot_serial += 1;
+    assert!(matches!(
+        store.execute(
+            store.next_operation().unwrap(),
+            Request::CriticalFault(CriticalFaultReport { admitted, evidence }),
+            DEADLINE
+        ),
+        Err(Error::StaleHealth)
+    ));
+    assert_eq!(store.device.writes, writes);
+    admitted.boot_serial -= 1;
+    for evidence in [
+        FailureEvidence {
+            bytes: 0,
+            ..evidence
+        },
+        FailureEvidence {
+            bytes: 4097,
+            ..evidence
+        },
+        FailureEvidence {
+            sha256: ZERO,
+            ..evidence
+        },
+    ] {
+        assert!(matches!(
+            store.execute(
+                store.next_operation().unwrap(),
+                Request::CriticalFault(CriticalFaultReport { admitted, evidence }),
+                DEADLINE
+            ),
+            Err(Error::InvalidRequest)
+        ));
+        assert_eq!(store.device.writes, writes);
+    }
+}
+#[test]
+fn component_failure_journal_is_old_or_exact_complete_reference_at_every_cut() {
+    let mut base = pending_b();
+    let admitted = boot(&mut base);
+    let base = base.into_device().cold();
+    let evidence = FailureEvidence {
+        object_start: 333,
+        bytes: 256,
+        sha256: [7; 32],
+    };
+    let request = Request::CriticalFault(CriticalFaultReport { admitted, evidence });
+    let mut complete = opened(base.clone());
+    let start = complete.device.boundary;
+    execute(&mut complete, request);
+    let steps = complete.device.boundary - start;
+    for at in 1..=steps {
+        for cut in [Cut::Before, Cut::After, Cut::Torn] {
+            let mut store = opened(base.clone());
+            store.device.cut = Some((store.device.boundary + at, cut));
+            let id = store.next_operation().unwrap();
+            let _ = store.execute(id, request, DEADLINE);
+            let disk = store.into_device();
+            let mut recovered = opened(disk);
+            match recovered.last_failure().unwrap() {
+                Some(f) => {
+                    assert_eq!(f.reason, LastFailureReason::CriticalComponentFault);
+                    assert_eq!(f.evidence, Some(evidence));
+                    assert_eq!(
+                        recovered.selected_manifest(DEADLINE).unwrap(),
+                        generation(1)
+                    );
+                }
+                None => assert_eq!(
+                    recovered.selected_manifest(DEADLINE).unwrap(),
+                    generation(2)
+                ),
+            }
+        }
+    }
+}
+
+#[test]
+fn health_v2_codec_and_exact_admission_preserve_v1_and_owner_bytes() {
+    for version in [0, 3, u16::MAX] {
+        let mut invalid = generation(1);
+        invalid.health_version = version;
+        assert!(!invalid.valid());
+        let rejected = Store::format_new(
+            Disk::blank(),
+            invalid,
+            b"owner-data",
+            BootPolicy::new(3).unwrap(),
+            DEADLINE,
+        )
+        .err()
+        .unwrap();
+        assert_eq!(rejected.device.writes, 0);
+        assert_eq!(rejected.device.durable, Disk::blank().durable);
+    }
+    for version in [1, 2] {
+        let mut manifest = generation(1);
+        manifest.health_version = version;
+        manifest.health_contract = digest(if version == 1 { b"exactv1" } else { b"exactv2" });
+        let make = if version == 1 {
+            Store::format_new
+        } else {
+            Store::format_new_downloaded_v2
+        };
+        let mut store = make(
+            Disk::blank(),
+            manifest,
+            b"owner-data",
+            BootPolicy::new(3).unwrap(),
+            DEADLINE,
+        )
+        .unwrap_or_else(|_| panic!("supported explicit profile"));
+        execute(&mut store, Request::BeginBoot(manifest.generation));
+        let actual = report(store.boot_plan(DEADLINE).unwrap());
+        let before = store.device.durable;
+        let writes = store.device.writes;
+        for field in 0..3 {
+            let mut stale = actual;
+            match field {
+                0 => stale.health_version = if version == 1 { 2 } else { 1 },
+                1 => stale.health_version = 3,
+                _ => stale.health_contract = digest(b"different same-version contract"),
+            }
+            assert_eq!(
+                store.execute(
+                    store.next_operation().unwrap(),
+                    Request::Admission(stale),
+                    DEADLINE
+                ),
+                Err(if field < 2 {
+                    Error::InvalidRequest
+                } else {
+                    Error::StaleHealth
+                })
+            );
+        }
+        assert_eq!(store.device.writes, writes);
+        assert_eq!(store.device.durable, before);
+        execute(&mut store, Request::Admission(actual));
+        let before = store.device.durable;
+        let writes = store.device.writes;
+        for field in 0..2 {
+            let mut stale = actual;
+            if field == 0 {
+                stale.health_version = if version == 1 { 2 } else { 1 };
+            } else {
+                stale.health_contract = digest(b"different same-version contract");
+            }
+            let probe = store.root.user_digest;
+            assert_eq!(
+                store.execute(
+                    store.next_operation().unwrap(),
+                    Request::Health(HealthReport {
+                        admitted: stale,
+                        outcome: HealthOutcome::CriticalPassed,
+                        observed_checks: 3,
+                        storage_probe: probe,
+                    }),
+                    DEADLINE
+                ),
+                Err(if field == 0 {
+                    Error::InvalidRequest
+                } else {
+                    Error::StaleHealth
+                })
+            );
+        }
+        assert_eq!(store.device.writes, writes);
+        assert_eq!(store.device.durable, before);
+        healthy(&mut store, actual);
+        let mut reopened = opened_for_profile(store.into_device(), version);
+        assert_eq!(reopened.selected_manifest(DEADLINE).unwrap(), manifest);
+        assert_eq!(reopened.known_good(), Some(manifest.generation));
+        assert_eq!(read_user(&mut reopened), b"owner-data");
+        assert_eq!(reopened.committed_boot_serial().unwrap(), 1);
+    }
+}
+
+fn profile_manifest(version: u16, id: u64) -> GenerationManifest {
+    let mut m = generation(id);
+    m.health_version = version;
+    m.health_contract = digest(if version == 1 {
+        b"fixed legacy1"
+    } else {
+        b"fixed downloaded2"
+    });
+    m
+}
+fn formatted_for_profile(version: u16) -> Store<Disk> {
+    let make = if version == 1 {
+        Store::format_new
+    } else {
+        Store::format_new_downloaded_v2
+    };
+    make(
+        Disk::blank(),
+        profile_manifest(version, 1),
+        b"owner-data",
+        BootPolicy::new(3).unwrap(),
+        DEADLINE,
+    )
+    .unwrap_or_else(|r| panic!("explicit profile format: {:?}", r.error))
+}
+fn opened_for_profile(disk: Disk, version: u16) -> Store<Disk> {
+    let open = if version == 1 {
+        Store::open
+    } else {
+        Store::open_downloaded_v2
+    };
+    open(disk.cold(), DEADLINE).unwrap_or_else(|r| panic!("profile open: {:?}", r.error))
+}
+fn accepted_for_profile(version: u16) -> Store<Disk> {
+    let mut store = formatted_for_profile(version);
+    let admitted = boot(&mut store);
+    healthy(&mut store, admitted);
+    store
+}
+fn profile_refusal_preserves(disk: Disk, version: u16) {
+    let before = disk.clone().cold();
+    let open = if version == 1 {
+        Store::open
+    } else {
+        Store::open_downloaded_v2
+    };
+    let rejected = open(disk.cold(), DEADLINE).err().unwrap();
+    assert_eq!(rejected.error, Error::Unsupported);
+    assert_eq!(rejected.device.writes, before.writes);
+    assert_eq!(rejected.device.flushes, before.flushes);
+    assert_eq!(rejected.device.cache, before.cache);
+    assert_eq!(rejected.device.durable, before.durable);
+    assert!(rejected.device.trace.iter().all(|ch| *ch == 'r'));
+}
+fn plant_pending(store: &Store<Disk>, request: Request<'_>) -> Disk {
+    let mut disk = store.device.clone().cold();
+    let id = store.next_operation().unwrap().get();
+    let op = Operation::from_request::<Fault>(request).unwrap();
+    let at = (2 + id % JOURNAL_SLOTS) as usize;
+    disk.cache[at] = codec::journal(id, store.root.sequence, &op);
+    disk.durable = disk.cache;
+    disk
+}
+
+#[test]
+fn sticky_profiles_refuse_new_foreign_format_requests_and_pre_idempotent_receipts() {
+    for version in [1, 2] {
+        let other = 3 - version;
+        let make = if version == 1 {
+            Store::format_new
+        } else {
+            Store::format_new_downloaded_v2
+        };
+        let rejected = make(
+            Disk::blank(),
+            profile_manifest(other, 1),
+            b"owner-data",
+            BootPolicy::new(3).unwrap(),
+            DEADLINE,
+        )
+        .err()
+        .unwrap();
+        assert_eq!(rejected.error, Error::InvalidRequest);
+        assert_eq!(
+            (
+                rejected.device.boundary,
+                rejected.device.writes,
+                rejected.device.flushes
+            ),
+            (0, 0, 0)
+        );
+        assert_eq!(rejected.device.durable, Disk::blank().durable);
+        let mut stage = accepted_for_profile(version);
+        let wanted = profile_manifest(version, 2);
+        let foreign = profile_manifest(other, 2);
+        let id = stage.next_operation().unwrap();
+        let before = (
+            stage.device.boundary,
+            stage.device.writes,
+            stage.device.flushes,
+        );
+        assert_eq!(
+            stage.execute(id, Request::Stage(&foreign), DEADLINE),
+            Err(Error::InvalidRequest)
+        );
+        assert_eq!(
+            (
+                stage.device.boundary,
+                stage.device.writes,
+                stage.device.flushes
+            ),
+            before
+        );
+        stage
+            .execute(id, Request::Stage(&wanted), DEADLINE)
+            .unwrap();
+        let before = (
+            stage.device.boundary,
+            stage.device.writes,
+            stage.device.flushes,
+        );
+        assert_eq!(
+            stage.execute(id, Request::Stage(&foreign), DEADLINE),
+            Err(Error::InvalidRequest)
+        );
+        assert_eq!(
+            (
+                stage.device.boundary,
+                stage.device.writes,
+                stage.device.flushes
+            ),
+            before
+        );
+        assert!(
+            stage
+                .execute(id, Request::Stage(&wanted), DEADLINE)
+                .unwrap()
+                .replayed
+        );
+        for kind in 0..3 {
+            let mut store = formatted_for_profile(version);
+            execute(&mut store, Request::BeginBoot(generation(1).generation));
+            let actual = report(store.boot_plan(DEADLINE).unwrap());
+            if kind != 0 {
+                execute(&mut store, Request::Admission(actual));
+            }
+            let mut bad = actual;
+            bad.health_version = other;
+            let evidence = FailureEvidence {
+                object_start: 333,
+                bytes: 256,
+                sha256: [7; 32],
+            };
+            let request = |a| match kind {
+                0 => Request::Admission(a),
+                1 => Request::Health(HealthReport {
+                    admitted: a,
+                    outcome: HealthOutcome::CriticalPassed,
+                    observed_checks: 3,
+                    storage_probe: digest(b"owner-data"),
+                }),
+                _ => Request::CriticalFault(CriticalFaultReport {
+                    admitted: a,
+                    evidence,
+                }),
+            };
+            let id = store.next_operation().unwrap();
+            let before = (
+                store.device.boundary,
+                store.device.writes,
+                store.device.flushes,
+            );
+            assert_eq!(
+                store.execute(id, request(bad), DEADLINE),
+                Err(Error::InvalidRequest)
+            );
+            assert_eq!(
+                (
+                    store.device.boundary,
+                    store.device.writes,
+                    store.device.flushes
+                ),
+                before
+            );
+            store.execute(id, request(actual), DEADLINE).unwrap();
+            let before = (
+                store.device.boundary,
+                store.device.writes,
+                store.device.flushes,
+            );
+            assert_eq!(
+                store.execute(id, request(bad), DEADLINE),
+                Err(Error::InvalidRequest)
+            );
+            assert_eq!(
+                (
+                    store.device.boundary,
+                    store.device.writes,
+                    store.device.flushes
+                ),
+                before
+            );
+            assert!(
+                store
+                    .execute(id, request(actual), DEADLINE)
+                    .unwrap()
+                    .replayed
+            );
+        }
+    }
+}
+
+#[test]
+fn sticky_profiles_check_pending_stage_and_admission_before_any_recovery_write() {
+    for version in [1, 2] {
+        let other = 3 - version;
+        let store = accepted_for_profile(version);
+        let foreign = profile_manifest(other, 2);
+        let disk = plant_pending(&store, Request::Stage(&foreign));
+        // Matching livehead with foreign pendingStage refuses; opposite profile
+        // also refuses the livehead. Neither direction is an implicit migration.
+        profile_refusal_preserves(disk.clone(), version);
+        profile_refusal_preserves(disk, other);
+        let mut store = formatted_for_profile(version);
+        execute(&mut store, Request::BeginBoot(generation(1).generation));
+        let mut foreign = report(store.boot_plan(DEADLINE).unwrap());
+        foreign.health_version = other;
+        profile_refusal_preserves(plant_pending(&store, Request::Admission(foreign)), version);
+    }
+}
+
+#[test]
+fn sticky_profiles_check_selected_staged_and_known_good_refs_without_older_head_fallback() {
+    for version in [1, 2] {
+        for target in 0..3 {
+            let base = accepted_for_profile(version);
+            let mut root = base.root;
+            let mut disk = base.into_device().cold();
+            let foreign = profile_manifest(3 - version, 2);
+            let body = codec::manifest(&foreign);
+            disk.cache[(GEN_BASE + 1) as usize] = codec::data(GEN_KIND, 2, 0, &body);
+            root.generations[1] = GenerationRef {
+                id: 2,
+                digest: digest(&body),
+                image: foreign.supervisor_image,
+                len: MANIFEST_BYTES as u16,
+            };
+            root.highest_generation = 2;
+            root.sequence += 1;
+            root.last_operation += 1;
+            match target {
+                0 => {
+                    root.active = 1;
+                    root.staged = 2;
+                    root.phase = 2;
+                }
+                1 => {
+                    root.staged = 2;
+                    root.phase = 1;
+                }
+                _ => {
+                    root.known_good = 1;
+                    root.staged = 1;
+                    root.phase = 2;
+                }
+            }
+            let encoded = codec::root(&root);
+            assert_eq!(codec::decode_root(&encoded), Some(root));
+            disk.cache[(root.sequence % 2) as usize] = encoded;
+            disk.durable = disk.cache;
+            profile_refusal_preserves(disk.clone(), version);
+            profile_refusal_preserves(disk, 3 - version);
+        }
+    }
+    let base = accepted_for_profile(1);
+    let old = base.root;
+    let mut disk = base.into_device().cold();
+    let foreign = profile_manifest(2, 2);
+    let body = codec::manifest(&foreign);
+    disk.cache[(GEN_BASE + 1) as usize] = codec::data(GEN_KIND, 2, 0, &body);
+    let mut newest = old;
+    newest.sequence += 1;
+    newest.last_operation += 1;
+    newest.active = 1;
+    newest.known_good = 1;
+    newest.highest_generation = 2;
+    newest.generations[1] = GenerationRef {
+        id: 2,
+        digest: digest(&body),
+        image: foreign.supervisor_image,
+        len: MANIFEST_BYTES as u16,
+    };
+    let encoded = codec::root(&newest);
+    assert_eq!(codec::decode_root(&encoded), Some(newest));
+    disk.cache[(newest.sequence % 2) as usize] = encoded;
+    let id = old.last_operation + 1;
+    let op = Operation::from_request::<Fault>(Request::WriteMutable {
+        object: ObjectId::user_data(),
+        bytes: b"must-not-replay-older",
+    })
+    .unwrap();
+    disk.cache[(2 + id % JOURNAL_SLOTS) as usize] = codec::journal(id, old.sequence, &op);
+    disk.durable = disk.cache;
+    // A fallback to the valid oldv1 head would replay this bound mutation and
+    // overwrite the unsupported newer head. Correct selection refuses untouched.
+    profile_refusal_preserves(disk.clone(), 1);
+    let mut current = opened_for_profile(disk, 2);
+    assert_eq!(current.selected_manifest(DEADLINE).unwrap(), foreign);
+    assert_eq!(current.root.sequence, newest.sequence);
+    assert_eq!(read_user(&mut current), b"owner-data");
+}
+
+#[test]
+fn sticky_same_profile_journals_recover_at_every_cut_for_all_publication_kinds() {
+    for version in [1, 2] {
+        for scenario in 0..8 {
+            let mut base = accepted_for_profile(version);
+            let next = profile_manifest(version, 2);
+            if matches!(scenario, 1..=5 | 7) {
+                execute(&mut base, Request::Stage(&next));
+            }
+            if matches!(scenario, 2..=5 | 7) {
+                execute(&mut base, Request::Activate(next.generation));
+            }
+            if matches!(scenario, 3..=5) {
+                execute(&mut base, Request::BeginBoot(next.generation));
+            }
+            let admitted = if matches!(scenario, 3..=5) {
+                Some(report(base.boot_plan(DEADLINE).unwrap()))
+            } else {
+                None
+            };
+            if matches!(scenario, 4 | 5) {
+                execute(&mut base, Request::Admission(admitted.unwrap()));
+            }
+            let request = match scenario {
+                0 => Request::Stage(&next),
+                1 => Request::Activate(next.generation),
+                2 => Request::BeginBoot(next.generation),
+                3 => Request::Admission(admitted.unwrap()),
+                4 => Request::Health(HealthReport {
+                    admitted: admitted.unwrap(),
+                    outcome: HealthOutcome::CriticalPassed,
+                    observed_checks: 3,
+                    storage_probe: digest(b"owner-data"),
+                }),
+                5 => Request::CriticalFault(CriticalFaultReport {
+                    admitted: admitted.unwrap(),
+                    evidence: FailureEvidence {
+                        object_start: 333,
+                        bytes: 256,
+                        sha256: [7; 32],
+                    },
+                }),
+                6 => Request::WriteMutable {
+                    object: ObjectId::user_data(),
+                    bytes: b"same-profile-owned-data",
+                },
+                _ => Request::SelectKnownGood,
+            };
+            let disk = base.into_device().cold();
+            let mut complete = opened_for_profile(disk.clone(), version);
+            let id = complete.next_operation().unwrap();
+            let start = complete.device.boundary;
+            complete.execute(id, request, DEADLINE).unwrap();
+            let steps = complete.device.boundary - start;
+            let expected = complete.root;
+            for step in 1..=steps {
+                for cut in [Cut::Before, Cut::After, Cut::Torn] {
+                    let mut interrupted = opened_for_profile(disk.clone(), version);
+                    interrupted.device.cut = Some((interrupted.device.boundary + step, cut));
+                    assert!(interrupted.execute(id, request, DEADLINE).is_err());
+                    let mut recovered = opened_for_profile(interrupted.into_device(), version);
+                    recovered.execute(id, request, DEADLINE).unwrap();
+                    assert_eq!(
+                        recovered.root, expected,
+                        "version{version} scenario{scenario} step{step}"
+                    );
+                    assert_eq!(
+                        read_user(&mut recovered),
+                        if scenario == 6 {
+                            b"same-profile-owned-data".as_slice()
+                        } else {
+                            b"owner-data".as_slice()
+                        }
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn checked_mutable_payload_refusal_precedes_all_recovery_publication() {
+    let initial = generation(1);
+    let pristine = formatted().into_device().cold();
+    let mut candidate = pristine.clone();
+    let operation = Operation::from_request::<Fault>(Request::WriteMutable {
+        object: ObjectId::user_data(),
+        bytes: b"foreign-pending",
+    })
+    .unwrap();
+    candidate.durable[3] = codec::journal(1, 1, &operation);
+    candidate.cache = candidate.durable;
+    candidate.writes = 0;
+    candidate.flushes = 0;
+    let before = candidate.durable;
+    let mut checked = vec![];
+    let rejected = Store::open_mutable_namespace_checked(
+        candidate,
+        &initial,
+        |payload| match payload {
+            MutablePayload::Committed(bytes) => {
+                checked.push((bytes.to_vec(), None));
+                true
+            }
+            MutablePayload::Pending {
+                committed,
+                proposed,
+            } => {
+                checked.push((committed.to_vec(), Some(proposed.to_vec())));
+                false
+            }
+        },
+        DEADLINE,
+    )
+    .err()
+    .expect("pending consumer refusal");
+    assert_eq!(rejected.error, Error::Conflict);
+    assert_eq!(rejected.device.writes, 0);
+    assert_eq!(rejected.device.flushes, 0);
+    assert_eq!(rejected.device.durable, before);
+    assert_eq!(checked.len(), 2);
+    assert_eq!(checked[1].1.as_deref(), Some(&b"foreign-pending"[..]));
+    assert_eq!(checked[0].0, checked[1].0);
+    let mut disk = pristine;
+    disk.writes = 0;
+    disk.flushes = 0;
+    let before = disk.durable;
+    let rejected = Store::open_mutable_namespace_checked(disk, &initial, |_| false, DEADLINE)
+        .err()
+        .expect("committed consumer refusal");
+    assert_eq!(rejected.error, Error::Conflict);
+    assert_eq!(rejected.device.writes, 0);
+    assert_eq!(rejected.device.flushes, 0);
+    assert_eq!(rejected.device.durable, before);
+}
+
+#[test]
+fn checked_mutable_payload_recovery_keeps_old_constructor_and_exact_valid_next_data() {
+    let initial = generation(1);
+    let mut disk = formatted().into_device().cold();
+    let next = b"approved-pending";
+    let operation = Operation::from_request::<Fault>(Request::WriteMutable {
+        object: ObjectId::user_data(),
+        bytes: next,
+    })
+    .unwrap();
+    disk.durable[3] = codec::journal(1, 1, &operation);
+    disk.cache = disk.durable;
+    let mut store = Store::open_mutable_namespace_checked(
+        disk,
+        &initial,
+        |payload| match payload {
+            MutablePayload::Committed(_) => true,
+            MutablePayload::Pending { proposed, .. } => proposed == next,
+        },
+        DEADLINE,
+    )
+    .unwrap_or_else(|_| panic!("checked valid recovery"));
+    assert_eq!(read_user(&mut store), next);
+    assert_eq!(store.next_operation().unwrap().get(), 2);
+    assert_eq!(read_user(&mut opened(store.into_device())), next);
+}
+
+#[test]
+fn checked_mutable_wrong_original_creation_never_calls_payload_consumer() {
+    let mut disk = formatted().into_device().cold();
+    disk.writes = 0;
+    disk.flushes = 0;
+    let before = disk.durable;
+    let mut called = false;
+    let rejected = Store::open_mutable_namespace_checked(
+        disk,
+        &generation(2),
+        |_| {
+            called = true;
+            true
+        },
+        DEADLINE,
+    )
+    .err()
+    .expect("wrong original creation");
+    assert_eq!(rejected.error, Error::Conflict);
+    assert!(!called);
+    assert_eq!(rejected.device.writes, 0);
+    assert_eq!(rejected.device.flushes, 0);
+    assert_eq!(rejected.device.durable, before);
 }

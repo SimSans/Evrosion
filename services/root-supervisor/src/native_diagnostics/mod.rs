@@ -3,6 +3,7 @@
 #![forbid(unsafe_code)]
 pub use ev_diagnostics::{framing, live};
 pub mod presentation;
+pub mod session;
 pub mod system;
 use ev_diagnostics::{
     Capture, Crash, Provenance,
@@ -23,13 +24,16 @@ impl Boundary for Syscalls {
 pub enum JobAuthority {
     Current,
     Delegated(u64),
+    /// An actual negotiated query55 capability; never a diagnostic PID.
+    ProcessControl(u64),
 }
 impl JobAuthority {
-    fn handle(self) -> Result<u64, Error> {
+    fn query(self) -> Result<(u64, u64), Error> {
         match self {
-            Self::Current => Ok(0),
-            Self::Delegated(0) => Err(Error::Authority),
-            Self::Delegated(handle) => Ok(handle),
+            Self::Current => Ok((syscall::JOB_INFO, 0)),
+            Self::Delegated(0) | Self::ProcessControl(0) => Err(Error::Authority),
+            Self::Delegated(handle) => Ok((syscall::JOB_INFO, handle)),
+            Self::ProcessControl(handle) => Ok((syscall::PROCESS_JOB_INFO, handle)),
         }
     }
 }
@@ -38,7 +42,7 @@ pub use ev_diagnostics::live::Identity;
 /// ProcessIdentity response. Integers in this struct do not bypass Kernel checks.
 pub struct StoppedTarget {
     pub process_control: u64,
-    pub job_control: u64,
+    pub job_authority: JobAuthority,
     pub identity: Identity,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -97,13 +101,13 @@ impl<B: Boundary> Collector<B> {
     }
     #[inline(never)]
     pub fn job(&mut self, authority: JobAuthority) -> Result<Job, Error> {
-        let handle = authority.handle()?;
+        let (number, handle) = authority.query()?;
         let first_tick = self.now()?;
         let mut values = [0u64; 9];
         for (field, value) in values.iter_mut().enumerate() {
-            *value = self.query(syscall::JOB_INFO, handle, field as u64)?;
+            *value = self.query(number, handle, field as u64)?;
         }
-        if values[0] == 0 || self.query(syscall::JOB_INFO, handle, 0)? != values[0] {
+        if values[0] == 0 || self.query(number, handle, 0)? != values[0] {
             return Err(Error::Identity);
         }
         let last_tick = self.now()?;
@@ -138,9 +142,13 @@ impl<B: Boundary> Collector<B> {
         provenance: Provenance,
     ) -> Result<Option<Captured>, Error> {
         if target.process_control == 0
-            || target.job_control == 0
             || target.identity.process == 0
             || target.identity.thread == 0
+            || matches!(
+                target.job_authority,
+                JobAuthority::Current | JobAuthority::Delegated(0)
+            )
+            || matches!(target.job_authority, JobAuthority::ProcessControl(h) if h != target.process_control)
         {
             return Err(Error::Authority);
         }
@@ -173,7 +181,7 @@ impl<B: Boundary> Collector<B> {
         if (words[1], words[2]) != (target.identity.process, target.identity.thread) {
             return Err(Error::Identity);
         }
-        let job = self.job(JobAuthority::Delegated(target.job_control))?;
+        let job = self.job(target.job_authority)?;
         if job.diagnostic_id != words[0] {
             return Err(Error::Identity);
         }
@@ -235,6 +243,28 @@ pub fn service_provenance(
 ) -> Result<Provenance, Error> {
     use ev_userspace_contract::root_v2::graph::Child;
     if child == Child::App {
+        return Err(Error::Identity);
+    }
+    Ok(Provenance {
+        component: ev_diagnostics::Component::Service(child.image().selector() as u16),
+        image,
+        package: None,
+        component_build: build,
+        generation: None,
+        epoch,
+        incarnation,
+    })
+}
+/// Explicit V4 graph role. This typed metadata helper creates neither a legacy
+/// Child value nor a package claim; actual controls still gate collection.
+pub fn network_service_provenance(
+    child: ev_userspace_contract::root_v4::graph::Child,
+    image: [u8; 32],
+    build: [u8; 32],
+    epoch: u64,
+    incarnation: u64,
+) -> Result<Provenance, Error> {
+    if child == ev_userspace_contract::root_v4::graph::Child::App {
         return Err(Error::Identity);
     }
     Ok(Provenance {

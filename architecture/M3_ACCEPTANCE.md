@@ -4,7 +4,7 @@ Status: **PASS — bounded Internal reference-machine scope**, 2026-10-27.
 The owner authorized continuous implementation through 0.1. M0 remains frozen
 at `m0`; no historical proof, commit, push or publication is changed here.
 
-The [portable cumulative evidence](../docs/release/0.1-preview.md#validation-and-provenance)
+The portable cumulative evidence (local engineering archive)
 passes **103 checks**, **278 kernel host tests**, complete equivalence of **273
 code inputs**, and unchanged separately recorded validator sources. It retains
 16 preceding positive/expected-negative boot runs and eight storage workflows
@@ -26,7 +26,7 @@ claiming documentation fingerprints never changed.
 
 The cumulative runner deliberately labels its raw result a subset, rather than
 automatically promoting a milestone. This separate reconciliation accepts the
-composition against E-025.34–44 and R-011.16. [M3 readiness](../docs/release/0.1-preview.md#validation-and-provenance)
+composition against E-025.34–44 and R-011.16. M3 readiness
 and the [boot-health contract](designs/BOOT_HEALTH.md) define the accepted limits.
 A-014 is verified for concrete Started, probation and KnownGood criteria: exact
 measured admission, timely current CriticalReady, durable storage probe and fresh
@@ -47,7 +47,7 @@ normal File service, network and AI; arbitrary storage corruption, DMA-bearing
 Root recovery, general shared-buffer cancellation and SMP userspace need their
 own proofs. Automated live stdin is not human-interaction acceptance.
 
-The [first cumulative selection failure](../docs/release/0.1-preview.md#validation-and-provenance)
+The first cumulative selection failure (local engineering archive)
 is preserved. Its nested evidence announcements were incorrectly treated as
 multiple suites; 21 adversarial tests and the successful combined rerun verify
 the corrected strict top-level selector. Earlier journal/deadline/retirement

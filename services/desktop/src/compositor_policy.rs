@@ -1,7 +1,7 @@
 //! Fixed two-surface composition state. These plans grant no memory access.
 //! The actual adapter may read a surface only while its one writer is blocked
 //! in that surface's protected Present call. Window/session control reads none.
-use crate::protocol::WindowControl;
+use crate::protocol::{CursorControl, WindowControl};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Producer {
@@ -69,6 +69,7 @@ pub struct State {
     next: [u32; 2],
     window: u32,
     visible: bool,
+    cursor_sequence: u32,
 }
 impl Default for State {
     fn default() -> Self {
@@ -82,6 +83,7 @@ impl State {
             next: [1; 2],
             window: 0,
             visible: false,
+            cursor_sequence: 0,
         }
     }
     pub const fn visible(&self) -> bool {
@@ -101,6 +103,7 @@ impl State {
         if reset.producer == Producer::Shell {
             self.window = 0;
             self.visible = false;
+            self.cursor_sequence = 0;
         }
         Ok(())
     }
@@ -114,6 +117,17 @@ impl State {
         }
         self.window = control.sequence;
         self.visible = control.visible;
+        Ok(())
+    }
+    pub fn cursor(&mut self, control: CursorControl) -> Result<(), Error> {
+        control.request().map_err(|_| Error::Counter)?;
+        if self.epochs[1] == 0
+            || self.next[1] <= 1
+            || self.cursor_sequence.checked_add(1) != Some(control.sequence)
+        {
+            return Err(Error::Stale);
+        }
+        self.cursor_sequence = control.sequence;
         Ok(())
     }
     /// Invoke while servicing the matching actual Present, after validating its
@@ -151,6 +165,45 @@ mod tests {
     use super::*;
     fn reset(state: &mut State, producer: Producer, epoch: u32) {
         state.reset(SessionReset { producer, epoch }).unwrap();
+    }
+    #[test]
+    fn cursor_requires_actual_shell_present_and_its_sequence_never_advances_surface_credit() {
+        let mut s = State::new();
+        let cursor = |sequence| CursorControl {
+            x: 319,
+            y: 199,
+            sequence,
+        };
+        assert_eq!(s.cursor(cursor(1)), Err(Error::Stale));
+        reset(&mut s, Producer::Shell, 1);
+        assert_eq!(s.cursor(cursor(1)), Err(Error::Stale));
+        s.window(WindowControl {
+            visible: false,
+            sequence: 1,
+        })
+        .unwrap();
+        s.present(Producer::Shell, 1, 1).unwrap();
+        s.cursor(cursor(1)).unwrap();
+        s.cursor(cursor(2)).unwrap();
+        assert_eq!(s.cursor(cursor(2)), Err(Error::Stale));
+        assert_eq!(s.cursor(cursor(4)), Err(Error::Stale));
+        s.window(WindowControl {
+            visible: false,
+            sequence: 2,
+        })
+        .unwrap();
+        s.present(Producer::Shell, 2, 2).unwrap();
+        reset(&mut s, Producer::App, 1);
+        s.cursor(cursor(3)).unwrap();
+        reset(&mut s, Producer::Shell, 2);
+        assert_eq!(s.cursor(cursor(1)), Err(Error::Stale));
+        s.window(WindowControl {
+            visible: false,
+            sequence: 1,
+        })
+        .unwrap();
+        s.present(Producer::Shell, 1, 1).unwrap();
+        s.cursor(cursor(1)).unwrap();
     }
     #[test]
     fn control_cannot_supply_a_present_or_read_credit() {

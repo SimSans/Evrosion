@@ -1,11 +1,11 @@
 # ADR-0055 — Source Root self-notification progress
 
 Status: Accepted bounded repair; source checks and five-cold System regression pass.
-Date: 2026-11-11. Documented mechanism refinement.
+Date: 2026-11-11. Founder engineering mandate Level B.
 
 ## Measured failure
 
-The [third composed attempt](../../docs/release/0.1-preview.md#validation-and-provenance)
+The third composed attempt (local engineering archive)
 reaches actual App/Shell faults and replacement but stops at Shell restoration.
 All651 RPCs complete and CPU quotas have room. **Events is full with four
 messages**, unlike the empty RPC queues. Three accepted messages came from Root;
@@ -22,7 +22,7 @@ rejects an old App frame rather than relabelling it restored.
 
 The original failure diagnosis incorrectly said all queues were empty. The
 immutable raw trace already contains the full Events state; a
-[correction record](../../docs/release/0.1-preview.md#validation-and-provenance)
+correction record (local engineering archive)
 preserves that distinction without rewriting the original evidence.
 
 ## Repair
@@ -54,16 +54,16 @@ later M4/Native selected-file regressions, including real held64 evidence,
 Shell/App restoration, full cleanup and source/disk joins. No complete System
 or0.1 acceptance follows from the source repair alone.
 
-The [next actual five-cold System cohort](../../docs/release/0.1-preview.md#validation-and-provenance)
+The next actual five-cold System cohort (local engineering archive)
 passes the strict full Shell/App restoration and all subsequent recovery phases,
 with actual fresh App Present, ten validated timings and complete retirement.
 No observer, deadline or resource condition was weakened for that pass. Later
 M4/Native permission/current-source cumulative regressions remain separate gates.
 
-Current-source regressions also pass: [six-cold Native lifecycle](../../docs/release/0.1-preview.md#validation-and-provenance),
-[four-cold owner permissions](../../docs/release/0.1-preview.md#validation-and-provenance),
-[M4 surface](../../docs/release/0.1-preview.md#validation-and-provenance)
-and [full M4 desktop](../../docs/release/0.1-preview.md#validation-and-provenance).
+Current-source regressions also pass: six-cold Native lifecycle (local engineering archive),
+four-cold owner permissions (local engineering archive),
+M4 surface (local engineering archive)
+and full M4 desktop (local engineering archive).
 These exercise genuine held64 notification, selected-file denial/cancel, cold policy,
 App/Shell restoration and unchanged retirement bounds; final cumulative readiness
 is recorded separately.

@@ -1,0 +1,20 @@
+[package]
+name = "ev-release-trust"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-only"
+
+[dependencies]
+ed25519-dalek = { version = "=2.2.0", default-features = false }
+sha2 = { version = "=0.10.9", default-features = false, features = ["force-soft"] }
+ev-time-contract = { path = "../time-contract" }
+
+[dev-dependencies]
+curve25519-dalek = { version = "=4.1.3", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"

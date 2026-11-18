@@ -11,6 +11,12 @@ use ev_userspace_contract::{
 };
 use ev_userspace_graphics::Surface;
 use ev_userspace_runtime as rt;
+#[cfg(feature = "document-workflow")]
+mod document;
+#[cfg(feature = "network-negative-probe")]
+mod negative;
+#[cfg(feature = "native-session")]
+mod session;
 
 struct FileWindow {
     address: usize,
@@ -30,6 +36,17 @@ impl FileWindow {
         Self {
             address: usize::try_from(record.checked_sub(4096).unwrap_or_else(|| rt::exit(830)))
                 .unwrap_or_else(|_| rt::exit(831)),
+        }
+    }
+    #[cfg(feature = "native-session")]
+    fn note_at(record: u64, dedicated: bool) -> Self {
+        Self {
+            address: usize::try_from(
+                record
+                    .checked_sub(if dedicated { 2 * 4096 } else { 4096 })
+                    .unwrap_or_else(|| rt::exit(830)),
+            )
+            .unwrap_or_else(|_| rt::exit(831)),
         }
     }
     fn publish(&mut self, bytes: &[u8; 256]) {
@@ -58,7 +75,9 @@ impl FileWindow {
     fn read_snapshot(&mut self, cap: u64, stop: u64) -> (u64, Payload) {
         self.guards();
         self.publish(&Request::Read.encode());
-        let deadline = stop.checked_add(512).unwrap_or_else(|| rt::exit(858));
+        let deadline = rt::execution::deadline(stop, now(), if stop == 0 { 8192 } else { 512 })
+            .ok()
+            .unwrap_or_else(|| rt::exit(858));
         let reply = rt::rpc::call(cap, CALL, deadline).unwrap_or_else(|_| rt::exit(833));
         require(reply == REPLY, 833);
         self.guards();
@@ -83,7 +102,9 @@ impl FileWindow {
             }
             .encode(),
         );
-        let deadline = stop.checked_add(512).unwrap_or_else(|| rt::exit(858));
+        let deadline = rt::execution::deadline(stop, now(), if stop == 0 { 8192 } else { 512 })
+            .ok()
+            .unwrap_or_else(|| rt::exit(858));
         let reply = rt::rpc::call(cap, CALL, deadline).unwrap_or_else(|_| rt::exit(871));
         require(reply == REPLY, 872);
         self.guards();
@@ -95,6 +116,8 @@ impl FileWindow {
     }
 }
 struct App {
+    #[cfg(feature = "document-workflow")]
+    document: document::State,
     surface: Surface,
     window: FileWindow,
     present: u64,
@@ -109,14 +132,19 @@ struct App {
     base: u64,
     saved_value: u32,
     data: app_data::Client,
+    #[cfg(feature = "native-session")]
+    session: session::State,
 }
 impl App {
-    fn render(&mut self) {
-        let frame = self
-            .frame
-            .checked_add(1)
-            .filter(|n| *n != u32::MAX)
-            .unwrap_or_else(|| rt::exit(836));
+    fn paint(&mut self) -> Result<(), ev_graphics::Error> {
+        #[cfg(feature = "document-workflow")]
+        if self.stop == 0 {
+            return self.document_paint();
+        }
+        #[cfg(feature = "native-session")]
+        if self.stop == 0 {
+            return self.session_paint();
+        }
         native::render(
             &mut self.surface,
             native::View {
@@ -129,7 +157,14 @@ impl App {
                 saved_value: self.saved_value,
             },
         )
-        .unwrap_or_else(|_| rt::exit(837));
+    }
+    fn render(&mut self) {
+        let frame = self
+            .frame
+            .checked_add(1)
+            .filter(|n| *n != u32::MAX)
+            .unwrap_or_else(|| rt::exit(836));
+        self.paint().unwrap_or_else(|_| rt::exit(837));
         self.surface
             .publish(u64::from(frame))
             .unwrap_or_else(|_| rt::exit(876));
@@ -141,7 +176,9 @@ impl App {
             838,
         );
         let present = Present(frame);
-        let deadline = self.stop.checked_add(512).unwrap_or_else(|| rt::exit(858));
+        let deadline = rt::execution::deadline(self.stop, now(), 512)
+            .ok()
+            .unwrap_or_else(|| rt::exit(858));
         let reply = rt::rpc::call(self.present, present.request().unwrap(), deadline)
             .unwrap_or_else(|_| rt::exit(839));
         require(Present::parse_reply(reply) == Ok(present), 839);
@@ -175,6 +212,18 @@ impl App {
         self.render();
     }
     fn control(&mut self, bytes: [u8; 8]) {
+        #[cfg(feature = "document-workflow")]
+        if self.stop == 0 && self.document_control(bytes) {
+            return;
+        }
+        #[cfg(feature = "network-negative-probe")]
+        if bytes == *b"EVNABUS1" {
+            negative::abusive_cpu();
+        }
+        #[cfg(feature = "native-session")]
+        if self.stop == 0 && self.session_control(bytes) {
+            return;
+        }
         if bytes[..2] == *b"ND" {
             // Completed bootstrap data exchange cannot accept a duplicate or
             // unsolicited reply during normal UI/control processing.
@@ -232,7 +281,7 @@ impl App {
                         };
                         rt::exit(846 + u64::from(value));
                     }
-                    Key::Escape => {}
+                    Key::Escape | Key::Left | Key::Right => {}
                 }
             }
             _ => rt::exit(847),
@@ -252,8 +301,13 @@ fn receive(cap: u64) -> Option<rt::Reply> {
     }
 }
 fn data_reply(control: u64, client: &mut app_data::Client, stop: u64) -> u32 {
+    let retry_stop = if stop == 0 {
+        rt::execution::deadline(stop, now(), 8192).unwrap_or_else(|_| rt::exit(889))
+    } else {
+        stop
+    };
     loop {
-        require(now() < stop, 889);
+        require(now() < retry_stop, 889);
         if let Some(reply) = receive(control) {
             require(reply.capability == 0, 890);
             return match client
@@ -268,7 +322,15 @@ fn data_reply(control: u64, client: &mut app_data::Client, stop: u64) -> u32 {
     }
 }
 pub fn run(b: &ev_userspace_contract::Bootstrap<'_>, record: u64, stop: u64) -> ! {
-    require(b.grants().count() == 6, 850);
+    let dedicated_note = cfg!(feature = "native-session") && b.grants().count() == 7;
+    require(b.grants().count() == 6 || dedicated_note, 850);
+    if dedicated_note {
+        let note = grant(b, 7, 1, 7);
+        let access = rt::inspect(note, 7);
+        require(access.status == 0 && access.capability == 0, 853);
+    }
+    #[cfg(feature = "network-negative-probe")]
+    require(negative::app_denials(b, stop) == Ok(6), 891);
     let surface = grant(b, 1, 1, 7);
     let present = grant(b, 2, 2, 8);
     let events = grant(b, 3, 2, 8);
@@ -296,7 +358,9 @@ pub fn run(b: &ev_userspace_contract::Bootstrap<'_>, record: u64, stop: u64) -> 
         rt::syscall::RPC_CALL,
         file_window,
         u64::from_le_bytes(CALL),
-        stop.checked_add(512).unwrap_or_else(|| rt::exit(858)),
+        rt::execution::deadline(stop, now(), 512)
+            .ok()
+            .unwrap_or_else(|| rt::exit(858)),
     );
     require(
         denied.status == 1 && denied.value == 0 && denied.capability == 0,
@@ -305,7 +369,9 @@ pub fn run(b: &ev_userspace_contract::Bootstrap<'_>, record: u64, stop: u64) -> 
     // Exercise the real refusal path before the first valid frame. An App with
     // SEND to its Present endpoint can submit malformed data without taking
     // Display or the kernel down, and a refused frame consumes no frame serial.
-    let deadline = stop.checked_add(512).unwrap_or_else(|| rt::exit(858));
+    let deadline = rt::execution::deadline(stop, now(), 512)
+        .ok()
+        .unwrap_or_else(|| rt::exit(858));
     let refused =
         rt::rpc::call(present, *b"BADP\0\0\0\0", deadline).unwrap_or_else(|_| rt::exit(859));
     require(refused == *b"EVDE\x03\0\0\0", 860);
@@ -332,7 +398,7 @@ pub fn run(b: &ev_userspace_contract::Bootstrap<'_>, record: u64, stop: u64) -> 
     let read = data_reply(keys, &mut data, stop);
     require(ev_native_hello::allowed_saved_value(read), 885);
     #[cfg(feature = "native-b")]
-    if read != ev_native_hello::UPDATED_VALUE {
+    if !cfg!(feature = "native-session") && read != ev_native_hello::UPDATED_VALUE {
         let request = data
             .begin_set(ev_native_hello::UPDATED_VALUE)
             .unwrap_or_else(|_| rt::exit(886));
@@ -345,6 +411,8 @@ pub fn run(b: &ev_userspace_contract::Bootstrap<'_>, record: u64, stop: u64) -> 
     let saved_value = data.finish().unwrap_or_else(|_| rt::exit(888));
     require(surface.is_zero() && window.is_zero(), 861);
     let mut app = App {
+        #[cfg(feature = "document-workflow")]
+        document: document::State::new(),
         surface,
         window,
         present,
@@ -359,12 +427,42 @@ pub fn run(b: &ev_userspace_contract::Bootstrap<'_>, record: u64, stop: u64) -> 
         base,
         saved_value,
         data,
+        #[cfg(feature = "native-session")]
+        session: session::State::new(),
     };
+    #[cfg(feature = "native-session")]
+    app.session_window(record, dedicated_note);
+    #[cfg(feature = "document-workflow")]
+    if dedicated_note {
+        app.document.window = Some(FileWindow::note_at(record, true));
+    }
     event(events, *b"EVGARDY1", stop);
-    app.render();
+    // A sustained health subject first reads its real saved Note; the existing
+    // validated reply handler renders/Present-ACKs that coherent first frame
+    // before Critical. Ordinary and finite sessions keep their loading frame.
+    if !cfg!(feature = "startup-health") || stop != 0 {
+        app.render();
+    }
+    #[cfg(feature = "native-session")]
+    if stop == 0 && (!cfg!(feature = "document-workflow") || cfg!(feature = "startup-health")) {
+        app.session_read();
+    }
     loop {
-        require(now() < stop, 855);
+        require(rt::execution::live(stop, now()), 855);
+        #[cfg(feature = "native-session")]
+        if stop == 0 && (!cfg!(feature = "document-workflow") || cfg!(feature = "startup-health")) {
+            app.session_poll();
+        }
+        #[cfg(feature = "document-workflow")]
+        if stop == 0 {
+            app.document_poll();
+        }
         if let Some(r) = receive(selected) {
+            #[cfg(feature = "document-workflow")]
+            if stop == 0 && r.capability != 0 {
+                app.document_selected(r.value.to_le_bytes(), r.capability);
+                continue;
+            }
             require(
                 r.value.to_le_bytes() == *b"EVREAD01" && r.capability != 0,
                 856,

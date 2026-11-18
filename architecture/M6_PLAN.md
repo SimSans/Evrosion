@@ -1,14 +1,21 @@
 # Road to Evrosion 0.2
 
-Prepared 2026-11-12. **Plan prepared; implementation has not started.** The owner
+Prepared 2026-11-12. **Implementation started under the owner's explicit 0.2 goal.** The owner
 has now reported running 0.1 with a positive visual impression; the
-[visual review record](../docs/release/0.1-preview.md#validation-and-provenance) preserves that narrow scope.
-M6-01 is complete and M6-02, the interactive session, is next. M5/0.1 remains the
-accepted engineering checkpoint.
+visual review record (local engineering archive) preserves that narrow scope.
+Updated 2026-11-15: M6-01 through M6-08 now pass in the declared virtual scope.
+Candidate14 completed actual signed B health/KnownGood, C failure/offline recovery,
+two-Linux whole-target reproduction, the fresh graphical guide and a 652-second
+engineering exercise with same-volume cold Saved reopening. The reviewed
+204-file Main adoption also passes. M6-10 now passes bounded local VM engineering
+acceptance with the recorded workspace checks and qualification limits. See readiness and
+current progress. Physical M6-09 remains deferred;
+public release and official signing remain separate owner decisions.
 
-The working 0.2 target is **M6 Connected Developer Alpha**: an interactive native
-session, one virtual network path, authenticated update retrieval with real
-rollback, and qualification of one physical reference machine. This implements
+The working 0.2 target is **M6 VM-based Connected Developer Alpha**: an interactive
+native session, one virtual network path and authenticated update retrieval with
+real rollback. The [accepted owner amendment](plans/amendments/2026-11-12-m6-virtual-acceptance.md)
+defers physical qualification to a later milestone; it does not waive any virtual gate. This implements
 [E-025.69–77](plans/roadmap/E-025-initial-scope.md) and the existing
 [post-0.1 direction](plans/release-project/Evrosion_R-007_to_R-011_Superfile_v1.md).
 It refines the execution order without changing the foundational architecture.
@@ -31,7 +38,8 @@ stage it and activate at a safe boundary. Execute its actual downloaded code
 after a cold boot and durably promote B to Known Good after genuine health.
 Then a downloaded bad candidate C fails probation and returns to protected B,
 with later user edits preserved and recovery available offline.
-Repeat the declared basic experience on one explicitly supported physical target.
+Qualify the declared QEMU virtual-machine profile. Physical execution is a later
+qualification gate under the accepted owner amendment.
 
 The first downloaded System cohort may retain the existing compatible Kernel,
 protected Root and storage backend while replacing selected critical userspace
@@ -41,8 +49,8 @@ replacement is a separate proof; it cannot be inferred from that demonstration.
 ## Execution order and completion gates
 
 These are new execution-task identifiers. The referenced E/R/A identifiers are
-the existing architecture requirements. M6-01 now records the owner’s positive visual smoke review. All runtime
-implementation tasks remain TODO; writing this plan is not a runtime PASS.
+the existing architecture requirements. M6-01 retains the owner’s positive visual smoke review. M6-02 through M6-08 now have current-source virtual PASS evidence; M6-10 now records scoped local VM engineering acceptance. Runtime completion requires each gate
+below; design work or compilation alone is not a runtime PASS.
 
 | Task | Deliverable | Completion gate | Dependencies |
 |---|---|---|---|
@@ -54,19 +62,19 @@ implementation tasks remain TODO; writing this plan is not a runtime PASS.
 | M6-06 | Native networking and one useful client | Actual guest NIC traffic supports the client's address configuration, DNS and bounded reliable transfer. A permitted native client shows a verified response; an unauthorized app or forbidden destination is denied. Offline, timeout and link-loss states are understandable. | M6-04; M6-05 before authenticated transport |
 | M6-07 | Durable objects, verifier and executable admission | Persist actual acquired content, verify it under an independently provisioned development trust root, then parse/seal/map/admit an executable absent from compiled banks and execute it offline after a cold boot. Preserve compatible App/data namespaces and package-bound grant checks across builds. Offline bundles use the same verifier. | M6-03/05; can develop alongside networking |
 | M6-08 | Network update and offline recovery | Retrieve through M6-06, verify/stage through M6-07, cold-execute healthy downloaded B and durably promote it after health; then downloaded bad C fails and offline cold recovery returns to B on the same owned disk. Preserve later edits and correctly revalidate permissions. | M6-06/07 and interactive controls |
-| M6-09 | One physical reference machine | On the nominated x86-64 UEFI target, prove boot, display, keyboard/mouse, storage and network through actual assigned devices. Use the target's actual memory map/reservations, bounded resources and physical outstanding-work stop/reset/quiescence proof. Start RAM/read-only, then use an explicitly authorized disposable test medium. Record controllers, firmware and recovery. | Inventory early; execute after virtual safety/runtime gates |
-| M6-10 | Final 0.2 acceptance and handoff | Freeze the candidate, run the required current regressions and negative matrix, complete an actual interactive/network/download/rollback demonstration, test the guide in a fresh supported environment, and record local readiness with exact limits. | All required gates above |
+| M6-09 | One physical reference machine — deferred by owner to a later milestone | On the nominated x86-64 UEFI target, prove boot, display, keyboard/mouse, storage and network through actual assigned devices. Use the target's actual memory map/reservations, bounded resources and physical outstanding-work stop/reset/quiescence proof. Start RAM/read-only, then use an explicitly authorized disposable test medium. Record controllers, firmware and recovery. | Inventory early; execute after virtual safety/runtime gates |
+| M6-10 | Final 0.2 acceptance and handoff | Freeze the candidate, run the required current regressions and negative matrix, complete an actual interactive/network/download/rollback demonstration, test the guide in a fresh supported environment, and record local VM readiness with exact limits. | M6-01 through M6-08; M6-09 is explicitly deferred |
 
 M6-03, M6-04 and the time/entropy design can proceed independently after review.
 The common verifier can be tested with offline signed fixtures before networking
 is ready. Physical target inventory should happen early, so actual controller
 needs influence the device work instead of becoming a late surprise.
 
-The physical gate is part of the full M6/0.2 target. Machine availability and
-safe test-medium access are future owner inputs. If unavailable, complete the
-virtual branch and leave this gate pending; do not label QEMU as physical proof
-or silently remove hardware from the completion claim. No hardware purchase or
-personal-disk operation is assumed by this plan.
+The owner explicitly deferred the physical gate from 0.2 on 2026-11-12. Complete
+the virtual branch for this release; retain physical qualification as later work,
+and never label QEMU or the read-only host inventory as physical Evrosion proof.
+The nominated development PC remains protected by its host OS. No hardware
+purchase, physical boot or personal-disk operation is assumed by this plan.
 
 ## Interactive runtime and usability
 
@@ -175,7 +183,7 @@ Follow [E-019](plans/platform/E-019-update-and-lifecycle.txt),
 and the existing [health contract](designs/BOOT_HEALTH.md). General Kernel/Root
 replacement must independently prove its boot selection and recovery before
 being advertised. Network-driver recovery does not close the common Root/Block
-reconstruction gap recorded in [0.1 readiness](../docs/release/0.1-preview.md#validation-and-provenance).
+reconstruction gap recorded in 0.1 readiness.
 
 ## Physical target qualification
 
@@ -215,7 +223,7 @@ boot/image/RAM/IPC/App/response baselines with the accepted 0.1 methods, adding
 network transfer/backpressure and update/recovery measurements. No arbitrary
 performance competition is added.
 
-The final record must distinguish virtual versus physical execution, scripted
+The final record must distinguish VM execution versus deferred physical qualification, scripted
 versus human interaction, development trust versus official signing, and actual
 device recovery versus unproved general Root/boot-stack reconstruction. Document
 real source/artifact hashes, dependencies and known limits. Public release still
@@ -244,7 +252,7 @@ experiment. Record what the owner expected to control, confusing state and actua
 failures separately from new feature requests. Do not describe this as an already
 interactive daily desktop or try the fixture image on personal hardware.
 
-Keep the reviewed candidate and evidence identifiable. Retain honest doctor
-results and use a clean validation snapshot for clean-revision checks. Do not
-reset unrelated work or regenerate a tracked lockfile merely to make a check
-green. Record implementation status and evidence against the gates above.
+Keep the reviewed candidate and evidence identifiable. A dirty tracked lockfile
+remains a reported qualification limit; clean-revision checks require the accepted
+clean validation snapshot. Do not rewrite a source snapshot merely to make a
+check pass. Changes require appropriate qualification against the selected scope.

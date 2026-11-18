@@ -14,7 +14,7 @@ impl GrantSnapshot {
     }
 }
 impl<T: Wire, W: Window> State<T, W> {
-    fn grant_scope(packages: &Packages<'_>, owner: UserId) -> Scope {
+    fn grant_scope(packages: &impl Sources, owner: UserId) -> Scope {
         Scope {
             user: owner,
             app: packages.app(),
@@ -25,10 +25,11 @@ impl<T: Wire, W: Window> State<T, W> {
     }
     pub fn grant_snapshot(
         &mut self,
-        packages: &Packages<'_>,
+        packages: &impl Sources,
         owner: UserId,
         deadline: u64,
     ) -> Result<GrantSnapshot, Error> {
+        self.invalidate_health_reads();
         self.usable()?;
         let result = PolicyOwner::with_open(
             self.backend.device(Region::GrantPolicy, true),
@@ -64,10 +65,11 @@ impl<T: Wire, W: Window> State<T, W> {
     /// Explicit owner allocation of an EMPTY policy namespace grants no READ.
     pub fn grant_initialize(
         &mut self,
-        packages: &Packages<'_>,
+        packages: &impl Sources,
         owner: UserId,
         deadline: u64,
     ) -> Result<(), Error> {
+        self.invalidate_health_reads();
         self.usable()?;
         if self.grants_fenced()
             || self
@@ -112,14 +114,16 @@ impl<T: Wire, W: Window> State<T, W> {
     /// Called INSIDE Picker's validated ReadDelivery handoff, before actual44.
     pub fn grant_remember(
         &mut self,
-        packages: &Packages<'_>,
+        packages: &impl Sources,
         owner: UserId,
         expected: Expected,
         delivery: &ReadDelivery<'_>,
         deadline: u64,
     ) -> Result<grants::Published, Error> {
+        self.invalidate_health_reads();
         self.usable()?;
-        if self.grants_fenced() {
+        if self.grants_fenced() || !Self::grant_package(packages, delivery.selection().requester())
+        {
             return Err(Error::State);
         }
         let mut entered = false;
@@ -138,11 +142,12 @@ impl<T: Wire, W: Window> State<T, W> {
     }
     pub fn grant_prepare_revoke(
         &mut self,
-        packages: &Packages<'_>,
+        packages: &impl Sources,
         owner: UserId,
         expected: Expected,
         deadline: u64,
     ) -> Result<(), Error> {
+        self.invalidate_health_reads();
         self.usable()?;
         if self.grants_fenced() {
             return Err(Error::State);
@@ -168,10 +173,11 @@ impl<T: Wire, W: Window> State<T, W> {
     /// retired its actual capability branches before this durable tombstone.
     pub fn grant_commit_revoke(
         &mut self,
-        packages: &Packages<'_>,
+        packages: &impl Sources,
         owner: UserId,
         deadline: u64,
     ) -> Result<grants::Published, Error> {
+        self.invalidate_health_reads();
         self.usable()?;
         if !self.grant_fenced || self.grant_pending.is_none() {
             return Err(Error::State);
@@ -194,15 +200,16 @@ impl<T: Wire, W: Window> State<T, W> {
     }
     pub fn grant_remint<H: FreshReadHandoff>(
         &mut self,
-        packages: &Packages<'_>,
+        packages: &impl Sources,
         owner: UserId,
         current: Requester,
         object: ObjectView,
         deadline: u64,
         handoff: &mut H,
     ) -> Result<Delivery<H::Ticket, H::Error>, Error> {
+        self.invalidate_health_reads();
         self.usable()?;
-        if self.grants_fenced() {
+        if self.grants_fenced() || !Self::grant_package(packages, current) {
             return Err(Error::State);
         }
         let mut entered = false;
@@ -217,6 +224,12 @@ impl<T: Wire, W: Window> State<T, W> {
         );
         let result = release(result, entered);
         self.finish_grant(result)
+    }
+    fn grant_package(packages: &impl Sources, current: Requester) -> bool {
+        current.app.app == packages.app()
+            && packages
+                .source(current.app.package.bytes())
+                .is_some_and(|source| packages.checked_source(source).is_ok())
     }
     fn finish_grant<V>(&mut self, result: Result<V, GrantFailure>) -> Result<V, Error> {
         match result {

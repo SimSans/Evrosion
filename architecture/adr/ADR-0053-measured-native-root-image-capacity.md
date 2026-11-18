@@ -12,7 +12,7 @@ below the unchanged1MiB image-file bound. Actual PT_LOAD needs65text,5read-only,
 the existing bootstrap/stack and page-table overhead. The legacy64-image-page
 parser rejects Capacity before any VM starts.
 
-The [immutable failed attempt](../../docs/release/0.1-preview.md#validation-and-provenance)
+The immutable failed attempt (local engineering archive)
 retains exact candidate sources, unstripped/admitted images, census and logs.
 Compilation and this census do not attest execution or every indirect call path.
 

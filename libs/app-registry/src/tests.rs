@@ -1,4 +1,5 @@
 extern crate std;
+mod checked_open;
 use super::*;
 use ev_store::{GenerationId, SECTOR_BYTES, Sector};
 use ev_zion::{

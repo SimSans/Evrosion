@@ -1,6 +1,6 @@
 # Performance baselines
 
-The [accepted reference record](docs/release/0.1-preview.md#validation-and-provenance)
+The accepted reference record (local engineering archive)
 joins the complete five-cold System proof and five separate checked IPC samples.
 These values describe the retained source/artifact cohorts on the current host;
 final whole0.1 readiness remains separate.

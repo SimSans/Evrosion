@@ -52,7 +52,7 @@ Three consequences for current implementation:
 This annex completes A-013's required lifetime/persistence/binding definitions.
 Actual implementation and evidence still determine which bindings are proved.
 Deferred Machine/login/realm/AI infrastructure is not fabricated or made an extra
-0.1 feature requirement. The [A-003 execution proof](../../docs/release/0.1-preview.md#validation-and-provenance)
+0.1 feature requirement. The A-003 execution proof (local engineering archive)
 separately verifies explicit consent, durable publication, cold fresh-capability
 delivery, live revocation and cold denial in four actual VMs. This is a bounded
 fixed-owner proof; it does not implement production enrollment or Trusted Control.
@@ -71,7 +71,7 @@ fixed-owner proof; it does not implement production enrollment or Trusted Contro
 - [ADR-0048](../adr/ADR-0048-internal-zion-package-and-activation-metadata.md) and
   [ADR-0049](../adr/ADR-0049-native-root-package-banks-and-durable-app-state.md)
   define the bounded actual AppId/package/lifecycle/data representation.
-  [Native lifecycle execution](../../docs/release/0.1-preview.md#validation-and-provenance)
+  Native lifecycle execution (local engineering archive)
   proves its exact retained six-phase cohort, not future grant runtime behavior.
 - Actual types are [AppId](../../libs/app-identity/src/lib.rs),
   [picker identity/approval metadata](../../libs/picker/src/lib.rs),

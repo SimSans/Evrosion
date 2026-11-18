@@ -1,0 +1,69 @@
+"""Closed Internal document semantic profile; not a general IDL compiler."""
+import json
+
+
+def schema(source):
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate document schema field: ' + key)
+            result[key] = value
+        return result
+
+    value = json.loads(source, object_pairs_hook=unique)
+    # The checked template implements this precise bounded wire profile. A new
+    # layout/meaning needs a reviewed template and generator change, not ignored
+    # fields. The actual schema supplies the emitted constants and labels.
+    canonical = lambda x: json.dumps(x, sort_keys=True, separators=(',', ':'))
+    if canonical(value) != canonical(EXPECTED):
+        raise ValueError('unsupported ev.ui.document@1 schema; no binding generated')
+    return value
+
+
+EXPECTED = {
+    'schema': 1, 'interface': 'ev.ui.document', 'version': 1, 'maturity': 'Internal',
+    'snapshot': {
+        'bytes': 256, 'header_bytes': 32, 'text_bytes': 224, 'magic': 'EVDOCV01',
+        'endianness': 'little',
+        'fields': {'version_u16': 8, 'state_u8': 10, 'focus_u8': 11, 'choice_u8': 12,
+                   'access_u8': 13, 'text_length_u16': 14, 'cursor_u16': 16,
+                   'anchor_u16': 18, 'confirmed_revision_u64': 20, 'feedback_u8': 28,
+                   'dirty_bool_u8': 29, 'reserved_zero': [30, 31],
+                   'text_utf8_zero_tail': 32},
+        'states': {'Closed': 0, 'Selecting': 1, 'Saved': 2, 'Dirty': 3, 'Saving': 4,
+                   'Readback': 5, 'Unavailable': 6, 'ConfirmDiscard': 7},
+        'focus': {'Text': 1, 'Save': 2, 'Open': 3, 'Close': 4, 'Discard': 5, 'KeepEditing': 6, 'SelectAll': 7, 'OpenRead': 8},
+        'choices': {'None': 0, 'Notes': 1, 'Private': 2},
+        'access': {'None': 0, 'Read': 1, 'Edit': 2},
+        'feedback': {'None': 0, 'Full': 1, 'ReadOnly': 2, 'UnsupportedText': 3,
+                     'Conflict': 4, 'Storage': 5, 'Denied': 6, 'Busy': 7,
+                     'Uncertain': 8, 'Exhausted': 9}},
+    'text': {'encoding': 'UTF-8', 'allowed_controls': ['LF', 'CR', 'TAB'],
+             'cursor_and_anchor': 'byte_offsets_at_UTF8_scalar_boundaries',
+             'selection': 'half_open_between_cursor_and_anchor',
+             'overflow': 'refuse_without_changing_existing_text',
+             'unsupported': 'preserve_original_bytes_never_reinterpret_or_replace'},
+    'semantics': {
+        'labels': {'Text': 'Document text', 'Save': 'Save', 'Open': 'Open document',
+                   'Close': 'Close document', 'Discard': 'Discard changes', 'KeepEditing': 'Keep editing', 'SelectAll': 'Select all', 'OpenRead': 'Open read only'},
+        'documents': {'Notes': 'Notes.txt', 'Private': 'Private.txt'},
+        'roles': {'Text': 'text_box', 'Save': 'button', 'Open': 'button', 'Close': 'button',
+                  'Discard': 'button', 'KeepEditing': 'button', 'SelectAll': 'button', 'OpenRead': 'button'},
+        'saved': 'matching_actual_File_commit_and_same_revision_content_readback',
+        'dirty': 'current_text_differs_from_confirmed_document',
+        'authority': 'metadata_only_actual_current_exact_object_endpoint_authorizes_IO',
+        'provider_scope': 'contract_does_not_claim_a_screen_reader_or_IME_provider'},
+    'transport': {'max_capabilities': 0, 'snapshot_is_not_authority': True,
+                  'actual_sender_and_shared_memory_ownership': 'validated_by_transport_not_wire_identity',
+                  'timeout': 'uncertain_execution_no_frame_reuse_or_fresh_counter_retry'}}
+
+
+def substitutions(spec):
+    return {
+        'INTERFACE': spec['interface'], 'VERSION': str(spec['version']),
+        'FRAME_BYTES': str(spec['snapshot']['bytes']),
+        'TEXT_BYTES': str(spec['snapshot']['text_bytes']),
+        **{'LABEL_' + k.upper(): v for k, v in spec['semantics']['labels'].items()},
+        **{'DOCUMENT_' + k.upper(): v for k, v in spec['semantics']['documents'].items()},
+    }

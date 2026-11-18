@@ -79,8 +79,18 @@ const NUMBERS: &[&str] = &[
 pub(crate) struct Record {
     pub counts: BTreeMap<String, u64>,
     pub actions: Vec<Action>,
+    pub history_complete: bool,
+    pub downloaded_actions: Vec<crate::downloaded_protocol::Action>,
 }
 pub(crate) fn summary(line: &str, build: &str) -> Result<BTreeMap<String, u64>> {
+    summary_profile(line, build, false, 0)
+}
+fn summary_profile(
+    line: &str,
+    build: &str,
+    session: bool,
+    cancelled: u64,
+) -> Result<BTreeMap<String, u64>> {
     let f: Vec<_> = line.split(' ').collect();
     if line.len() > 2048
         || f.len() != 4 + NUMBERS.len() + 5
@@ -107,16 +117,17 @@ pub(crate) fn summary(line: &str, build: &str) -> Result<BTreeMap<String, u64>> 
         return Err("Native ownership/exit facts missing".into());
     }
     if counts["starts"] == 0
-        || counts["calls"] != counts["replies"]
+        || Some(counts["calls"]) != counts["replies"].checked_add(cancelled)
         || counts["bank_maps"] != 2
         || counts["bank_detaches"] != 2
-        || counts["bank_reclaimed"] != counts["package_a_pages"] + counts["package_b_pages"]
+        || Some(counts["bank_reclaimed"])
+            != counts["package_a_pages"].checked_add(counts["package_b_pages"])
     {
         return Err("inconsistent Native process/call/bank accounting".into());
     }
     for slot in ["a", "b"] {
         let starts = counts[&format!("app_{slot}_starts")];
-        if starts > 64
+        if (!session && starts > 64)
             || starts != counts[&format!("app_{slot}_stops")]
             || starts != counts[&format!("app_{slot}_reaps")]
             || !(1..=63).contains(&counts[&format!("package_{slot}_pages")])
@@ -132,22 +143,91 @@ pub(crate) fn summary(line: &str, build: &str) -> Result<BTreeMap<String, u64>> 
     Ok(counts)
 }
 pub(crate) fn record(serial: &[u8], build: &str) -> Result<Record> {
+    record_profile(serial, build, false, false, None)
+}
+pub(crate) fn record_session(serial: &[u8], build: &str) -> Result<Record> {
+    record_profile(serial, build, true, false, None)
+}
+/// Dedicated document-crash history only; ordinary state parsers stay strict.
+pub(crate) fn record_document_crash(
+    serial: &[u8],
+    build: &str,
+    proof: &crate::document_crash::Proof,
+) -> Result<Record> {
+    if !proof.matches(serial, build) {
+        return Err("document crash proof belongs to different raw serial/build".into());
+    }
+    record_checked_profile(serial, build, true, false, None, Some(proof))
+}
+pub(crate) fn record_network(serial: &[u8], build: &str) -> Result<Record> {
+    record_profile(serial, build, true, true, None)
+}
+pub(crate) fn record_network_negative(
+    serial: &[u8],
+    build: &str,
+    cancelled: &crate::network_negative::records::Cancelled,
+) -> Result<Record> {
+    record_profile(serial, build, true, true, Some(cancelled))
+}
+fn record_profile(
+    serial: &[u8],
+    build: &str,
+    session: bool,
+    network: bool,
+    cancelled: Option<&crate::network_negative::records::Cancelled>,
+) -> Result<Record> {
+    record_checked_profile(serial, build, session, network, cancelled, None)
+}
+fn record_checked_profile(
+    serial: &[u8],
+    build: &str,
+    session: bool,
+    network: bool,
+    cancelled: Option<&crate::network_negative::records::Cancelled>,
+    document_crash: Option<&crate::document_crash::Proof>,
+) -> Result<Record> {
+    if document_crash.is_some_and(|p| !p.matches(serial, build))
+        || document_crash.is_some() && (!session || network || cancelled.is_some())
+    {
+        return Err("document crash proof outside its exact offline session".into());
+    }
     if serial.len() > 1024 * 1024 {
         return Err("Native serial exceeds1MiB".into());
     }
     let text = std::str::from_utf8(serial).map_err(|_| "Native serial notUTF8")?;
+    if cancelled.is_some_and(|proof| !proof.matches(serial))
+        || (cancelled.is_none() && text.lines().any(|r| r.starts_with("EVROSION_M6_NEGATIVE")))
+    {
+        return Err("negative network history outside its exact typed qualification".into());
+    }
+    let omitted = session && crate::session_protocol::retention(serial, build)?.omitted != 0;
+    let downloaded_actions = if network {
+        crate::downloaded_protocol::records(serial, build, !omitted)?
+    } else {
+        if text
+            .lines()
+            .any(|row| row.starts_with("EVROSION_M6_DOWNLOADED_ACTION"))
+        {
+            return Err("downloaded action outside selected Network profile".into());
+        }
+        Vec::new()
+    };
     let mut actions = Vec::new();
     let mut counts = None;
     let mut live = None;
     let mut stopped = None;
     let mut old = BTreeSet::new();
+    let mut prefix_closed = false;
     for line in text
         .split_inclusive('\n')
         .filter(|s| s.ends_with('\n'))
         .map(|s| s.trim_end_matches(['\r', '\n']))
     {
+        if session && line.starts_with("EVROSION_M6_LOG_BOUND ") {
+            prefix_closed = true;
+        }
         if line.starts_with("EVROSION_M5_NATIVE_ACTION") {
-            if counts.is_some() || actions.len() >= 192 {
+            if counts.is_some() || prefix_closed || (!session && actions.len() >= 192) {
                 return Err("Native action after completion/over budget".into());
             }
             let event = action(line, build)?;
@@ -171,24 +251,47 @@ pub(crate) fn record(serial: &[u8], build: &str) -> Result<Record> {
             }
             actions.push(event);
         } else if line.starts_with("EVROSION_M5_NATIVE ") {
-            if counts.is_some() || live.is_some() || stopped.is_some() {
+            if counts.is_some() || (!omitted && (live.is_some() || stopped.is_some())) {
                 return Err("duplicate Native completion or retained App owner".into());
             }
-            counts = Some(summary(line, build)?);
+            counts = Some(if session {
+                summary_profile(
+                    line,
+                    build,
+                    true,
+                    cancelled.map_or(0, |proof| proof.count()),
+                )?
+            } else {
+                summary(line, build)?
+            });
         } else if line.starts_with("EVROSION_M4_DESKTOP ") {
             return Err("Native fixture mixed Desktop completion".into());
         }
     }
-    let states = states(serial, build)?;
+    let states = if let Some(proof) = document_crash {
+        proof.states().to_vec()
+    } else if network {
+        states_network(serial, build)?
+    } else {
+        states_profile(serial, build, session, false)?
+    };
     if !states.last().is_some_and(|state| state.is("finish")) {
         return Err("Native completion lacks final complete requested finish report".into());
     }
     let counts = counts.ok_or("Native completion missing")?;
     let actual = actions.iter().filter(|a| a.kind == "start").count() as u64;
-    if actual != counts["app_a_starts"] + counts["app_b_starts"] {
+    let total = counts["app_a_starts"]
+        .checked_add(counts["app_b_starts"])
+        .ok_or("Native start total overflow")?;
+    if (!omitted && actual != total) || (omitted && actual > total) {
         return Err("Native action count differs from completion".into());
     }
-    Ok(Record { counts, actions })
+    Ok(Record {
+        counts,
+        actions,
+        history_complete: !omitted,
+        downloaded_actions,
+    })
 }
 #[cfg(test)]
 mod tests {
@@ -198,6 +301,38 @@ mod tests {
             "EVROSION_NATIVE_STATE protocol=1 build={build} report=1 op=open result=ok installed=0 active=none staged=none previous=none process=0 thread=0 revision=0 data_epoch=0 data_counter=0 value=0 mutations=0 recovery=0 actual_process=0 actual_thread=0 actual_image_sha256={} identity_matches=true",
             "0".repeat(64)
         )
+    }
+    #[test]
+    fn downloaded_tags_require_selected_network_profile_and_never_alias_banks() {
+        let build = "a".repeat(64);
+        let base = state(&build).replace("installed=0", "installed=1");
+        let fetch = state(&build).replace("op=open", "op=update-fetch");
+        assert!(state_line(&fetch, &build).is_err());
+        assert!(
+            state_line_network(&fetch, &build)
+                .unwrap()
+                .is("update-fetch")
+        );
+        for field in ["active", "staged", "previous"] {
+            for tag in ["downloaded-b", "downloaded-c"] {
+                let row = base.replace(&format!("{field}=none"), &format!("{field}={tag}"));
+                assert!(state_line(&row, &build).is_err());
+                assert_eq!(state_line_network(&row, &build).unwrap().fields[field], tag);
+                assert!(states(format!("{row}\n").as_bytes(), &build).is_err());
+                let parsed = states_network(format!("{row}\n").as_bytes(), &build).unwrap();
+                assert_eq!(parsed[0].fields[field], tag);
+                for bad in ["downloaded-a", "downloaded-d", "Downloaded-b", "b-download"] {
+                    assert!(state_line_network(&row.replace(tag, bad), &build).is_err());
+                }
+            }
+        }
+        for tag in ["none", "a", "b"] {
+            let row = base.replace("active=none", &format!("active={tag}"));
+            assert_eq!(
+                state_line(&row, &build).unwrap().fields,
+                state_line_network(&row, &build).unwrap().fields
+            );
+        }
     }
     #[test]
     fn complete_state_binds_actual_identity_build_sequence_and_closed_tags() {
@@ -250,6 +385,81 @@ mod tests {
         }
         assert!(action(&line, &"c".repeat(64)).is_err());
     }
+
+    #[test]
+    fn sustained_parser_retains_accounting_beyond_the_finite_incarnation_cap() {
+        // Parser fixture only: replace actual14 actions with200 complete
+        // distinct incarnations. This does not claim these ran in a VM.
+        let historical = include_str!("../../../tests/fixtures/m6-session-exercise-parser.serial");
+        let first = historical
+            .lines()
+            .find(|l| l.starts_with("EVROSION_M5_NATIVE_ACTION "))
+            .unwrap();
+        let build = first
+            .split(' ')
+            .nth(2)
+            .unwrap()
+            .strip_prefix("build=")
+            .unwrap();
+        let image = action(first, build).unwrap().image_sha256;
+        let baseline = crate::session_protocol::retention(historical.as_bytes(), build).unwrap();
+        let original_actions: Vec<_> = historical
+            .lines()
+            .filter(|line| line.starts_with("EVROSION_M5_NATIVE_ACTION "))
+            .collect();
+        let original_bytes: usize = original_actions.iter().map(|line| line.len() + 1).sum();
+        let mut synthetic_actions = String::new();
+        for i in 0..200 {
+            for kind in ["start", "stop", "reap"] {
+                synthetic_actions.push_str(&format!("EVROSION_M5_NATIVE_ACTION protocol=1 build={build} action={kind} process={} thread={} image_sha256={image}\n",2000+i,3000+i));
+            }
+        }
+        let retained = baseline.retained - original_actions.len() as u64 + 600;
+        let detail_bytes =
+            baseline.detail_bytes - original_bytes as u64 + synthetic_actions.len() as u64;
+        let mut output = String::new();
+        let mut inserted = false;
+        for line in historical.lines() {
+            if line.starts_with("EVROSION_M5_NATIVE_ACTION ") {
+                if !inserted {
+                    output.push_str(&synthetic_actions);
+                    inserted = true;
+                }
+            } else if line.starts_with("EVROSION_M6_LOG ") {
+                output.push_str(&format!("EVROSION_M6_LOG protocol=1 build={build} observed={retained} retained={retained} omitted=0 detail_bytes={detail_bytes} final_bytes={} omitted_bytes=0 prefix_closed=false\n",baseline.final_bytes));
+            } else if line.starts_with("EVROSION_M5_NATIVE ") {
+                let changed = line
+                    .split(' ')
+                    .map(|field| {
+                        let (key, _) = field.split_once('=').unwrap_or((field, ""));
+                        let value = match key {
+                            "processes" | "starts" => Some(207),
+                            "app_a_starts" | "app_a_stops" | "app_a_reaps" => Some(200),
+                            "app_b_starts" | "app_b_stops" | "app_b_reaps" | "app_b_process"
+                            | "app_b_thread" => Some(0),
+                            "app_a_process" => Some(2199),
+                            "app_a_thread" => Some(3199),
+                            _ => None,
+                        };
+                        value.map_or_else(|| field.to_owned(), |v| format!("{key}={v}"))
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                output.push_str(&changed);
+                output.push('\n');
+            } else {
+                output.push_str(line);
+                output.push('\n');
+            }
+        }
+        let result = record_session(output.as_bytes(), build).unwrap();
+        assert!(result.history_complete);
+        assert_eq!(result.actions.len(), 600);
+        assert_eq!(result.counts["app_a_starts"], 200);
+        assert!(record(output.as_bytes(), build).is_err());
+        let bad = output.replacen("action=stop process=2000", "action=reap process=2000", 1);
+        assert!(record_session(bad.as_bytes(), build).is_err());
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -274,6 +484,14 @@ impl StateRecord {
 /// Complete state diagnostics only. These snapshots are not atomic machine
 /// state or persistence receipts; the host independently checks actual facts.
 pub(crate) fn state_line(line: &str, build: &str) -> Result<StateRecord> {
+    state_line_profile(line, build, false)
+}
+/// Selected V4 state claims only. Labels never establish actual downloaded
+/// execution, publication, Kernel admission or health.
+pub(crate) fn state_line_network(line: &str, build: &str) -> Result<StateRecord> {
+    state_line_profile(line, build, true)
+}
+fn state_line_profile(line: &str, build: &str, network: bool) -> Result<StateRecord> {
     const FIELDS: &[&str] = &[
         "report",
         "op",
@@ -325,6 +543,7 @@ pub(crate) fn state_line(line: &str, build: &str) -> Result<StateRecord> {
                     | "finish"
                     | "boot"
                     | "crash-shell"
+                    | "crash-app"
                     | "invalid"
                     | "initialize-grants"
                     | "remember"
@@ -333,9 +552,16 @@ pub(crate) fn state_line(line: &str, build: &str) -> Result<StateRecord> {
                     | "system-stage"
                     | "system-activate"
                     | "recover-good"
+                    | "time-probe"
+                    | "time-check"
+                    | "update-init"
+                    | "update-inspect"
             ) => {}
+            "op" if network && value == "update-fetch" => {}
             "result" if matches!(value, "ok" | "busy" | "refused" | "recovery") => (),
             "active" | "staged" | "previous" if matches!(value, "none" | "a" | "b") => (),
+            "active" | "staged" | "previous"
+                if network && matches!(value, "downloaded-b" | "downloaded-c") => {}
             "actual_image_sha256" => {
                 digest(field, key)?;
             }
@@ -362,15 +588,39 @@ pub(crate) fn state_line(line: &str, build: &str) -> Result<StateRecord> {
     Ok(state)
 }
 pub(crate) fn states(serial: &[u8], build: &str) -> Result<Vec<StateRecord>> {
+    states_profile(serial, build, false, false)
+}
+pub(crate) fn states_network(serial: &[u8], build: &str) -> Result<Vec<StateRecord>> {
+    states_profile(serial, build, true, true)
+}
+fn states_profile(
+    serial: &[u8],
+    build: &str,
+    session: bool,
+    network: bool,
+) -> Result<Vec<StateRecord>> {
     if serial.len() > 1024 * 1024 {
         return Err("Native state log exceeds1MiB".into());
     }
     let text = std::str::from_utf8(serial).map_err(|_| "Native states notUTF8")?;
     let mut states = Vec::new();
+    let mut closed = false;
     for line in text.split_inclusive('\n').filter(|l| l.ends_with('\n')) {
+        if session && line.starts_with("EVROSION_M6_LOG_BOUND ") {
+            closed = true;
+        }
         if line.starts_with("EVROSION_NATIVE_STATE") {
-            let state = state_line(line.trim_end_matches(['\r', '\n']), build)?;
-            if state.number("report")? != states.len() as u64 + 1 || states.len() >= 64 {
+            let state = state_line_profile(line.trim_end_matches(['\r', '\n']), build, network)?;
+            let report = state.number("report")?;
+            let previous = states
+                .last()
+                .map(|s: &StateRecord| s.number("report"))
+                .transpose()?
+                .unwrap_or(0);
+            if (!closed && report != previous + 1)
+                || (closed && (report <= previous || !state.is("finish")))
+                || (!session && states.len() >= 64)
+            {
                 return Err("Native state sequence replay/gap/overflow".into());
             }
             states.push(state);

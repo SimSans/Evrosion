@@ -1,0 +1,33 @@
+[package]
+name = "ev-net-stack"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-only"
+
+[dependencies]
+ev-net-device = { path = "../net-device" }
+smoltcp = { version = "=0.14.0", default-features = false, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "proto-dhcpv4",
+    "proto-dns",
+    "socket-dhcpv4",
+    "socket-dns",
+    "socket-udp",
+    "socket-tcp",
+    "socket-tcp-reno",
+    "iface-max-addr-count-2",
+    "iface-neighbor-cache-count-8",
+    "iface-max-route-count-2",
+    "dns-max-result-count-2",
+    "dns-max-server-count-2",
+    "dns-max-name-size-255",
+    "assembler-max-segment-count-4",
+] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"

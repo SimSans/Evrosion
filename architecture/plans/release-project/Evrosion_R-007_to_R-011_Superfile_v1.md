@@ -899,7 +899,7 @@ Spend when the project actually needs scale/security capabilities unavailable at
 ### Dependency turns malicious
 **Control:** lockfile, review, license/security scanning, provenance, update review.
 
-### AI generates huge unsafe change that passes shallow tests
+### A large unsafe change passes shallow tests
 **Control:** architecture fitness lane + subsystem tests + human accountability.
 
 ### Solo founder gets blocked by enterprise bureaucracy

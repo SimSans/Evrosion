@@ -13,6 +13,26 @@ pub struct RootDomains {
     destination: SpaceId,
 }
 impl RootDomains {
+    /// Selected boot factory after independent typed V5 verification. Authority
+    /// must itself have been constructed for the selected workspace envelope.
+    /// A default/legacy Authority refuses before any bank is committed.
+    #[cfg(feature = "workspace-authority")]
+    pub fn allocate_workspace(
+        a: &mut Authority,
+        _manifest: &crate::root_manifest_v5::CurrentRoot<'_>,
+    ) -> Result<Self, Error> {
+        let mut staged = a.staged_copy();
+        let custody = staged.create_workspace_control_space()?;
+        let branches = staged.create_workspace_control_space()?;
+        let destination = staged.create_workspace_control_space()?;
+        let result = Self {
+            custody,
+            branches,
+            destination,
+        };
+        *a = staged;
+        Ok(result)
+    }
     /// Boot-only fresh creation. The actual objects and backing are separately
     /// created/retained by verified resource factories IN this custody domain.
     /// One exclusive Authority borrow spans bank reservation and publication.

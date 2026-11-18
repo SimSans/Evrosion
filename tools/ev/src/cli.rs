@@ -27,6 +27,28 @@ Usage:
   cargo ev test architecture --milestone M0
   cargo ev image --verify-reproducible
   cargo ev bootstrap
+  cargo ev session
+  cargo ev document-session
+  cargo ev network
+  cargo ev test document-workflow
+  cargo ev test document-compatibility
+  cargo ev test document-update [--authority-root PATH]
+  cargo ev test document-session-guide
+  cargo ev test session
+  cargo ev test network-probe
+  cargo ev test time-probe
+  cargo ev test time-pause-probe
+  cargo ev test time-refresh-probe
+  cargo ev test time-corrupt-probe
+  cargo ev test entropy-missing-probe
+  cargo ev test update-namespace-probe
+  cargo ev test owner-ui-probe [--authority-root PATH]
+  cargo ev test owner-ui-exercise-probe [--authority-root PATH]
+  cargo ev test owner-ui-first-use-probe [--authority-root PATH]
+  cargo ev test acquisition-probe [--authority-root PATH]
+  cargo ev test system-health [--authority-root PATH]
+  acquisition-probe uses one fixed600s bound per owned VM; PATH is the signer workspace root.
+  V4 network workflows explicitly use the optimized release reference Kernel.
   cargo ev run [--root PATH] [--ovmf-code PATH] [--ovmf-vars PATH] [--timeout SECONDS] [--cpus N]
   cargo ev test boot [--root PATH] [--ovmf-code PATH] [--ovmf-vars PATH] [--timeout SECONDS] [--runs N] [--cpus N]
   cargo ev doctor --help
@@ -109,7 +131,20 @@ pub enum Cli {
     Boot(BootOptions),
     Preview(BootOptions),
     Workflow(String),
+    Workspace(Vec<OsString>),
+    App(Vec<OsString>),
     Recover(PathBuf),
+    Acquisition(AcquisitionOptions),
+    OwnerUi(AcquisitionOptions),
+    OwnerUiExercise(AcquisitionOptions),
+    OwnerUiFirstUse(AcquisitionOptions),
+    SystemHealth(AcquisitionOptions),
+    DocumentUpdate(AcquisitionOptions),
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct AcquisitionOptions {
+    pub authority_root: Option<PathBuf>,
 }
 
 pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Cli, String> {
@@ -124,6 +159,12 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Cli, Strin
         [command, topic] if command == "help" && topic == "doctor" => return Ok(Cli::DoctorHelp),
         _ => {}
     }
+    if arguments[0] == "app" {
+        return Ok(Cli::App(arguments[1..].to_vec()));
+    }
+    if arguments[0] == "workspace" {
+        return Ok(Cli::Workspace(arguments[1..].to_vec()));
+    }
     if arguments[0] == "recover" {
         if arguments.len() != 3 || arguments[1] != "--from" || arguments[2].is_empty() {
             return Err("usage: cargo ev recover --from PREPARED_OWNER_SUITE".into());
@@ -131,7 +172,62 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> Result<Cli, Strin
         return Ok(Cli::Recover(PathBuf::from(&arguments[2])));
     }
     let words: Vec<_> = arguments.iter().map(|v| v.to_str().unwrap_or("")).collect();
+    if matches!(
+        words.get(0..2),
+        Some([
+            "test",
+            "acquisition-probe"
+                | "owner-ui-probe"
+                | "owner-ui-exercise-probe"
+                | "owner-ui-first-use-probe"
+                | "system-health"
+                | "document-update"
+        ])
+    ) {
+        let mut options = AcquisitionOptions::default();
+        let mut args = arguments[2..].iter();
+        while let Some(flag) = args.next() {
+            if flag == "--help" || flag == "-h" {
+                if arguments.len() == 3 {
+                    return Ok(Cli::Help);
+                }
+                return Err("acquisition help cannot be combined with options".into());
+            }
+            if flag != "--authority-root" || options.authority_root.is_some() {
+                return Err(format!("unknown or duplicate acquisition option: {flag:?}"));
+            }
+            options.authority_root = Some(PathBuf::from(value_after(flag, &mut args)?));
+        }
+        return Ok(match words[1] {
+            "system-health" => Cli::SystemHealth(options),
+            "document-update" => Cli::DocumentUpdate(options),
+            "owner-ui-probe" => Cli::OwnerUi(options),
+            "owner-ui-exercise-probe" => Cli::OwnerUiExercise(options),
+            "owner-ui-first-use-probe" => Cli::OwnerUiFirstUse(options),
+            _ => Cli::Acquisition(options),
+        });
+    }
     let workflow = match words.as_slice() {
+        ["session"] => Some("session"),
+        ["document-session"] => Some("document-session"),
+        ["network"] => Some("network-session"),
+        ["test", "document-workflow"] => Some("document-workflow"),
+        ["test", "document-compatibility"] => Some("document-compatibility"),
+        ["test", "document-session-guide"] => Some("document-session-guide"),
+        ["test", "session"] => Some("session-conformance"),
+        ["test", "network-probe"] => Some("network-probe"),
+        ["test", "network-authority-probe"] => Some("network-authority-probe"),
+        ["test", "network-destination-probe"] => Some("network-destination-probe"),
+        ["test", "network-driver-stop-probe"] => Some("network-driver-stop-probe"),
+        ["test", "network-service-stop-probe"] => Some("network-service-stop-probe"),
+        ["test", "network-link-loss-probe"] => Some("network-link-loss-probe"),
+        ["test", "network-endurance-probe"] => Some("network-endurance-probe"),
+        ["test", "time-probe"] => Some("time-probe"),
+        ["test", "time-pause-probe"] => Some("time-pause-probe"),
+        ["test", "time-refresh-probe"] => Some("time-refresh-probe"),
+        ["test", "time-corrupt-probe"] => Some("time-corrupt-probe"),
+        ["test", "entropy-missing-probe"] => Some("entropy-missing-probe"),
+        ["test", "update-namespace-probe"] => Some("update-namespace-probe"),
         ["bootstrap"] => Some("bootstrap"),
         ["image", "--verify-reproducible"] => Some("repro"),
         ["test", "m0"] => Some("acceptance"),
@@ -264,6 +360,19 @@ fn parse_work(arguments: &[OsString]) -> Result<Cli, String> {
                     "m5-native",
                     "m5-native-system",
                     "m5-native-recovery",
+                    "m6-session",
+                    "m7-document",
+                    "m7-document-session",
+                    "m7-document-network",
+                    "m7-document-system",
+                    "m7-document-recovery",
+                    "m6-network",
+                    "m6-network-system",
+                    "m6-network-recovery",
+                    "m6-network-owner",
+                    "m6-network-system-owner",
+                    "m6-network-recovery-owner",
+                    "m6-network-negative",
                     "m5-provider",
                     "m5-ipc-bench",
                 ]
@@ -304,4 +413,90 @@ fn positive(value: &OsStr, maximum: u64) -> Result<u64, String> {
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|value| (1..=maximum).contains(value))
         .ok_or_else(|| format!("expected an integer from 1 through {maximum}"))
+}
+
+#[cfg(test)]
+mod acquisition_tests {
+    use super::*;
+    fn parsed(words: &[&str]) -> Result<Cli, String> {
+        parse(words.iter().map(OsString::from))
+    }
+    #[test]
+    fn first_use_is_an_explicit_finite_test_route_with_only_the_existing_signer_option() {
+        assert_eq!(
+            parsed(&["test", "owner-ui-first-use-probe"]).unwrap(),
+            Cli::OwnerUiFirstUse(AcquisitionOptions::default())
+        );
+        assert_eq!(
+            parsed(&[
+                "test",
+                "owner-ui-first-use-probe",
+                "--authority-root",
+                "/owned/signer"
+            ])
+            .unwrap(),
+            Cli::OwnerUiFirstUse(AcquisitionOptions {
+                authority_root: Some(PathBuf::from("/owned/signer"))
+            })
+        );
+        for words in [
+            vec!["test", "owner-ui-first-use-probe", "--timeout", "1200"],
+            vec![
+                "test",
+                "owner-ui-first-use-probe",
+                "--authority-root",
+                "a",
+                "--authority-root",
+                "b",
+            ],
+        ] {
+            assert!(parsed(&words).is_err());
+        }
+    }
+    #[test]
+    fn acquisition_signer_workspace_is_explicit_unique_and_never_inferred() {
+        assert_eq!(
+            parsed(&["test", "owner-ui-probe"]).unwrap(),
+            Cli::OwnerUi(AcquisitionOptions::default())
+        );
+        assert_eq!(
+            parsed(&["test", "acquisition-probe"]).unwrap(),
+            Cli::Acquisition(AcquisitionOptions::default())
+        );
+        assert_eq!(
+            parsed(&[
+                "test",
+                "acquisition-probe",
+                "--authority-root",
+                "signer workspace"
+            ])
+            .unwrap(),
+            Cli::Acquisition(AcquisitionOptions {
+                authority_root: Some("signer workspace".into())
+            })
+        );
+        for words in [
+            vec!["test", "acquisition-probe", "--authority-root"],
+            vec!["test", "acquisition-probe", "--authority-root", ""],
+            vec![
+                "test",
+                "acquisition-probe",
+                "--authority-root",
+                "a",
+                "--authority-root",
+                "b",
+            ],
+            vec!["test", "acquisition-probe", "--root", "a"],
+            vec![
+                "test",
+                "acquisition-probe",
+                "--authority-root",
+                "a",
+                "--timeout",
+                "900",
+            ],
+        ] {
+            assert!(parsed(&words).is_err(), "{words:?}");
+        }
+    }
 }

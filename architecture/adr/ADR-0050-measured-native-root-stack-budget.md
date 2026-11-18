@@ -1,10 +1,10 @@
 # ADR-0050 — Measured Native Root stack budget
 
 Status: Accepted bounded implementation refinement. Date: 2026-11-11.
-Documented mechanism refinement; no foundational guarantee or public Stable ABI changes.
+Founder mandate Level B; no foundational guarantee or public Stable ABI changes.
 
 The first actual Native Root failed72 bytes below its guarded16KiB user stack
-before Home. The [immutable failed run](../../docs/release/0.1-preview.md#validation-and-provenance)
+before Home. The immutable failed run (local engineering archive)
 retains the actual binary, fault, preceding worlds, disk and source inputs. The
 separate256KiB kernel stack passed its own linked preflight; increasing that
 stack would not address the user fault.

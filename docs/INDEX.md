@@ -1,6 +1,8 @@
 # Documentation
 
 - [Linux build/run guide](development/QUICKSTART.md)
+- [Native document session](development/DOCUMENT_SESSION.md)
+- [Bounded 0.2 network walkthrough](development/M6_WALKTHROUGH.md)
 - [0.1 scope and limits](release/0.1-preview.md)
 - [Source identity](../SOURCE_IDENTITY.md)
 - [Technical architecture](../architecture/README.md)

@@ -1,8 +1,8 @@
 # M1 acceptance contract
 
 Status: PASS — verified 2026-10-03.
-[Aggregate evidence](../docs/release/0.1-preview.md#validation-and-provenance) and
-[readiness/limits](../docs/release/0.1-preview.md#validation-and-provenance).
+Aggregate evidence (local engineering archive) and
+readiness/limits.
 Scope: the owner-confirmed union of E-025.18–23, PRE-M0 §43 and R-011.14.
 Run `python3 tools/m1/acceptance.py` for the complete mechanism gate.
 
@@ -15,19 +15,19 @@ contains the final gate and refreshed regression snapshot.
 
 | Required behavior | Executed evidence |
 |---|---|
-| Validated boot handoff and observable diagnostics | [Frozen M0 acceptance](../docs/release/0.1-preview.md#validation-and-provenance) plus all cumulative M1 boots |
-| Physical page allocation and kernel allocation after bootstrap | [Frame ownership/recycling](../docs/release/0.1-preview.md#validation-and-provenance), [dynamic allocations during user execution](../docs/release/0.1-preview.md#validation-and-provenance) |
-| Create multiple isolated address spaces; map/unmap and anonymous memory | [CPL3 isolation](../docs/release/0.1-preview.md#validation-and-provenance), [allocation/free and stale-address faults](../docs/release/0.1-preview.md#validation-and-provenance) |
-| Threads, basic scheduling, saved CPU state | [Guarded contexts](../docs/release/0.1-preview.md#validation-and-provenance), [preemption](../docs/release/0.1-preview.md#validation-and-provenance), [user extended state](../docs/release/0.1-preview.md#validation-and-provenance) |
-| Exceptions, interrupts and timers | [Protection faults](../docs/release/0.1-preview.md#validation-and-provenance), [bounded timer](../docs/release/0.1-preview.md#validation-and-provenance) |
-| Early SMP without uniprocessor data-model assumptions | [Actual second CPU and shared atomic work](../docs/release/0.1-preview.md#validation-and-provenance), scheduler CPU slots and exclusive-owner boundaries |
-| Object capabilities, derivation and revocation | [Authority tables](../docs/release/0.1-preview.md#validation-and-provenance), [hardware mapping revocation](../docs/release/0.1-preview.md#validation-and-provenance) |
-| IPC endpoint/control transfer and capability transfer | [Bounded mailbox/escrow](../docs/release/0.1-preview.md#validation-and-provenance), [actual scheduled-user IPC](../docs/release/0.1-preview.md#validation-and-provenance) |
-| Bounded wait/wake | [Arrival, deadline, stale ticket and stopped-clock proofs](../docs/release/0.1-preview.md#validation-and-provenance) |
-| Shared Memory Objects | [Capability-checked hardware sharing](../docs/release/0.1-preview.md#validation-and-provenance), [lease invalidation](../docs/release/0.1-preview.md#validation-and-provenance) |
-| Fault delivery and ordinary user-fault survival | [Actual UD/PF/GP notification and survivors](../docs/release/0.1-preview.md#validation-and-provenance) |
-| Quiescent teardown and ownership return | [Process/escrow retirement](../docs/release/0.1-preview.md#validation-and-provenance), [scrubbed physical reuse](../docs/release/0.1-preview.md#validation-and-provenance) |
-| Job skeleton and resource attribution | [Hierarchical admission/accounting](../docs/release/0.1-preview.md#validation-and-provenance), [runtime allocation rollback](../docs/release/0.1-preview.md#validation-and-provenance) |
+| Validated boot handoff and observable diagnostics | Frozen M0 acceptance (local engineering archive) plus all cumulative M1 boots |
+| Physical page allocation and kernel allocation after bootstrap | Frame ownership/recycling (local engineering archive), dynamic allocations during user execution (local engineering archive) |
+| Create multiple isolated address spaces; map/unmap and anonymous memory | CPL3 isolation (local engineering archive), allocation/free and stale-address faults (local engineering archive) |
+| Threads, basic scheduling, saved CPU state | Guarded contexts (local engineering archive), preemption (local engineering archive), user extended state (local engineering archive) |
+| Exceptions, interrupts and timers | Protection faults (local engineering archive), bounded timer (local engineering archive) |
+| Early SMP without uniprocessor data-model assumptions | Actual second CPU and shared atomic work (local engineering archive), scheduler CPU slots and exclusive-owner boundaries |
+| Object capabilities, derivation and revocation | Authority tables (local engineering archive), hardware mapping revocation (local engineering archive) |
+| IPC endpoint/control transfer and capability transfer | Bounded mailbox/escrow (local engineering archive), actual scheduled-user IPC (local engineering archive) |
+| Bounded wait/wake | Arrival, deadline, stale ticket and stopped-clock proofs (local engineering archive) |
+| Shared Memory Objects | Capability-checked hardware sharing (local engineering archive), lease invalidation (local engineering archive) |
+| Fault delivery and ordinary user-fault survival | Actual UD/PF/GP notification and survivors (local engineering archive) |
+| Quiescent teardown and ownership return | Process/escrow retirement (local engineering archive), scrubbed physical reuse (local engineering archive) |
+| Job skeleton and resource attribution | Hierarchical admission/accounting (local engineering archive), runtime allocation rollback (local engineering archive) |
 | AF-003: no capability means denial | Host owner/generation/type/rights checks and real invalid endpoint, allocation and mapping calls in the cumulative suite |
 | AF-005: attenuation cannot regain rights | Host derivation/transfer tests and actual receiver WRITE denial while READ succeeds |
 | AF-009: Memory Object requires capability | Host `af009_mapping_requires_right_object_map_and_access_rights` plus actual unauthorized map/allocation denial |

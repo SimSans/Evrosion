@@ -1,163 +1,12 @@
-//! Bounded opaque eight-byte transport. Source identity comes from dispatch.
-//! No File, graphics, input or selection policy is interpreted here.
+//! Bounded opaque scalar RPC. Source identity comes from actual dispatch.
 use super::*;
-use ev_kernel::ipc::{Delivery, MAX_MESSAGES, Reclaimed};
-#[derive(Clone, Copy)]
-struct Accepted {
-    ticket: Ticket,
-    sender: SpaceId,
-    process: ProcessId,
-    thread: ThreadId,
-}
-pub(super) struct Wire {
-    pub object: usize,
-    pub mailbox: Option<Mailbox>,
-    pub receiver: SpaceId,
-    pub bound: Option<ThreadId>,
-    pub closed: bool,
-    pub control: Option<Handle>,
-    accepted: [Option<Accepted>; MAX_MESSAGES],
-}
-impl Wire {
-    pub fn new(object: usize, receiver: SpaceId, mailbox: Mailbox) -> Self {
-        Self {
-            object,
-            mailbox: Some(mailbox),
-            receiver,
-            bound: None,
-            closed: false,
-            control: None,
-            accepted: [None; MAX_MESSAGES],
-        }
-    }
-    pub fn pending(&self) -> usize {
-        self.mailbox.as_ref().map_or(0, Mailbox::pending)
-    }
-    /// Retained accepted-send bookkeeping, read only on fatal Native diagnosis.
-    /// These scalar IDs correlate the receipt; none conveys authority.
-    #[cfg(feature = "test-m5-native")]
-    pub fn accepted_senders(&self) -> impl Iterator<Item = (u64, u64, u64)> + '_ {
-        self.accepted.iter().flatten().map(|accepted| {
-            (
-                accepted.ticket.0,
-                accepted.process.diagnostic_id(),
-                accepted.thread.diagnostic_id(),
-            )
-        })
-    }
-    pub fn send(
-        &mut self,
-        a: &mut Authority,
-        m: Metadata,
-        cap: Handle,
-        value: u64,
-        deadline: Deadline,
-        now: u64,
-    ) -> Result<Ticket, IpcError> {
-        let slot = self
-            .accepted
-            .iter()
-            .position(Option::is_none)
-            .ok_or(IpcError::Full)?;
-        let ticket = self
-            .mailbox
-            .as_mut()
-            .ok_or(IpcError::RestrictedBinding)?
-            .send(
-                a,
-                m.domain,
-                cap,
-                Outgoing {
-                    bytes: &value.to_le_bytes(),
-                    capability: None,
-                    deadline,
-                },
-                now,
-            )?;
-        self.accepted[slot] = Some(Accepted {
-            ticket,
-            sender: m.domain,
-            process: m.process,
-            thread: m.thread,
-        });
-        Ok(ticket)
-    }
-    pub fn receive(
-        &mut self,
-        a: &mut Authority,
-        m: Metadata,
-        cap: Handle,
-        now: u64,
-    ) -> Result<(Delivery, ProcessId, ThreadId), IpcError> {
-        let mailbox = self.mailbox.as_mut().ok_or(IpcError::RestrictedBinding)?;
-        let ticket = mailbox.peek_ticket(a, m.domain, cap, now)?;
-        let slot = self
-            .accepted
-            .iter()
-            .position(|x| x.is_some_and(|x| x.ticket == ticket))
-            .ok_or(IpcError::InvalidTicket)?;
-        let accepted = self.accepted[slot].unwrap();
-        let delivery = mailbox.receive(a, m.domain, cap, now)?;
-        assert_eq!(delivery.ticket, ticket);
-        self.accepted[slot] = None;
-        Ok((delivery, accepted.process, accepted.thread))
-    }
-    pub fn bind(
-        &mut self,
-        a: &Authority,
-        controller: SpaceId,
-        control: Handle,
-        target: Metadata,
-        receive: Handle,
-    ) -> Result<(), IpcError> {
-        if self.receiver == target.domain && !self.closed {
-            return Ok(());
-        }
-        self.control = Some(control);
-        let mailbox = self.mailbox.as_mut().ok_or(IpcError::RestrictedBinding)?;
-        if self.closed {
-            mailbox.reopen_empty(a, controller, control, target.domain, receive)?;
-        } else {
-            mailbox.rebind_empty(a, controller, control, target.domain, receive)?;
-        }
-        self.receiver = target.domain;
-        self.closed = false;
-        self.bound = None;
-        Ok(())
-    }
-    pub fn close(&mut self, a: &mut Authority, now: u64) -> Result<(), IpcError> {
-        let mailbox = self.mailbox.as_mut().ok_or(IpcError::RestrictedBinding)?;
-        if !self.closed {
-            mailbox.receiver_died(self.receiver)?;
-            self.closed = true;
-        }
-        for entry in &mut self.accepted {
-            if let Some(accepted) = *entry
-                && a.is_live_space(accepted.sender)
-            {
-                assert_eq!(
-                    mailbox.reclaim(a, accepted.sender, accepted.ticket, now)?,
-                    Reclaimed::NoCapability
-                );
-                *entry = None;
-            }
-        }
-        mailbox.reap_dead_senders(a, now)?;
-        for entry in &mut self.accepted {
-            if entry.is_some_and(|x| !a.is_live_space(x.sender)) {
-                *entry = None;
-            }
-        }
-        self.bound = None;
-        assert_eq!(
-            mailbox.pending(),
-            0,
-            "closed incarnation must drain every sender's queued payload"
-        );
-        assert!(self.accepted.iter().all(Option::is_none));
-        Ok(())
-    }
-}
+use graph::DeliveryMode;
+#[cfg(feature = "test-m6-network")]
+mod rejection;
+mod wire;
+#[cfg(feature = "test-m6-session")]
+pub(super) use wire::AsyncExpiry;
+pub(super) use wire::Wire;
 #[derive(Clone, Copy)]
 pub(super) struct Pending {
     pub id: CallId,
@@ -168,10 +17,103 @@ pub(super) struct Pending {
     pub ticket: Ticket,
     pub value: u64,
     pub delivered: bool,
+    #[cfg(feature = "test-m6-session")]
+    pub terminal: Option<cancellation::Terminal>,
+    #[cfg(feature = "test-m6-session")]
+    pub deadline: Deadline,
+    #[cfg(feature = "test-m6-session")]
+    pub started: u64,
+    #[cfg(feature = "test-m6-session")]
+    pub sampled: bool,
     #[cfg(feature = "test-m5-native")]
     pub file_replace: bool,
 }
 impl Runtime<'_, '_> {
+    #[cfg(feature = "test-m6-network")]
+    #[inline(never)]
+    fn record_rpc_rejection(
+        &mut self,
+        index: usize,
+        capability: Handle,
+        wire: Option<usize>,
+        deadline: u64,
+        tick: u64,
+        code: rejection::Code,
+    ) {
+        if self.rpc_rejection_seen[index] {
+            return;
+        }
+        self.rpc_rejection_seen[index] = true;
+        let meta = self.current(index);
+        let parent = self
+            .rpc
+            .serving(meta.thread)
+            .and_then(|id| self.rpc.context(id).ok().map(|context| (id, context)));
+        let (parent_call, parent_deadline, parent_delivered) =
+            parent.map_or((0, 0, 0), |(id, context)| {
+                (
+                    id.serial(),
+                    context.deadline.tick(),
+                    self.pending
+                        .iter()
+                        .flatten()
+                        .find(|p| p.id == id)
+                        .map_or(2, |p| u8::from(p.delivered)),
+                )
+            });
+        (self.observations)(Observation::SessionRpcRejection(SessionRpcRejection {
+            actor: index,
+            process: meta.process.diagnostic_id(),
+            thread: meta.thread.diagnostic_id(),
+            capability: capability.0,
+            wire: wire.unwrap_or(255),
+            endpoint: wire.map_or(0, |w| self.wires[w].as_ref().unwrap().object),
+            deadline,
+            tick,
+            branch: code.branch,
+            reason: code.reason,
+            detail: code.detail,
+            parent_call,
+            parent_deadline,
+            parent_delivered,
+        }));
+    }
+    #[cfg(feature = "test-m6-session")]
+    pub(super) fn trace_rpc(&mut self, pending: Pending, phase: SessionRpcPhase, status: u64) {
+        if matches!(phase, SessionRpcPhase::Terminal) {
+            if self.rpc_trace[1] >= 32 {
+                return;
+            }
+            self.rpc_trace[1] += 1;
+        } else if !pending.sampled {
+            return;
+        }
+        let caller = self.metadata(pending.caller).unwrap();
+        let callee = self.metadata(pending.callee).unwrap();
+        let budget = self
+            .s
+            .cpu_budget(callee.job)
+            .unwrap()
+            .expect("measured session budget");
+        (self.observations)(Observation::SessionRpc(SessionRpc {
+            phase,
+            call_epoch: pending.id.epoch().get(),
+            call: pending.id.serial(),
+            caller_process: caller.process.diagnostic_id(),
+            caller_thread: caller.thread.diagnostic_id(),
+            callee_process: callee.process.diagnostic_id(),
+            callee_thread: callee.thread.diagnostic_id(),
+            endpoint: self.wires[pending.wire].as_ref().unwrap().object,
+            request: pending.value,
+            started: pending.started,
+            tick: crate::timer::now(),
+            deadline: pending.deadline.tick(),
+            status,
+            callee_cpu: self.s.usage(callee.job, Resource::CpuTicks).unwrap(),
+            scheduler_tick: self.s.observed_tick(),
+            budget,
+        }));
+    }
     pub(super) fn wire(&self, m: Metadata, cap: Handle, rights: Rights) -> Option<usize> {
         let object = self
             .a
@@ -191,14 +133,60 @@ impl Runtime<'_, '_> {
         frame: &mut UserContext,
     ) -> bool {
         let m = self.current(index);
-        if absolute <= self.stop.tick() || absolute > self.stop.tick().checked_add(1024).unwrap() {
+        let operation_origin = if cfg!(feature = "test-m6-session") {
+            crate::timer::now()
+        } else {
+            self.stop.tick()
+        };
+        let span = if cfg!(feature = "test-m6-session") {
+            self.wire(m, cap, Rights::SEND)
+                .and_then(graph::channel)
+                .map_or(1024, |channel| channel.session_rpc_ticks())
+        } else {
+            1024
+        };
+        let Some(operation_limit) = operation_origin.checked_add(span) else {
+            scalar(frame, 4, 0);
+            return false;
+        };
+        if absolute <= operation_origin || absolute == u64::MAX || absolute > operation_limit {
             scalar(frame, 4, 0);
             return false;
         }
         let Some(wire) = self.wire(m, cap, Rights::SEND) else {
+            #[cfg(feature = "test-m6-network")]
+            self.record_rpc_rejection(
+                index,
+                cap,
+                None,
+                absolute,
+                crate::timer::now(),
+                rejection::WIRE,
+            );
             scalar(frame, 1, 0);
+            #[cfg(feature = "test-m6-network-negative")]
+            self.negative_denial(
+                index,
+                ev_userspace_contract::syscall::RPC_CALL,
+                0,
+                value,
+                frame,
+            );
             return false;
         };
+        if self.wires[wire].as_ref().unwrap().delivery != DeliveryMode::Rpc {
+            #[cfg(feature = "test-m6-network")]
+            self.record_rpc_rejection(
+                index,
+                cap,
+                Some(wire),
+                absolute,
+                crate::timer::now(),
+                rejection::DELIVERY,
+            );
+            scalar(frame, 1, 0);
+            return false;
+        }
         let Some(callee) = self.wires[wire]
             .as_ref()
             .unwrap()
@@ -230,6 +218,17 @@ impl Runtime<'_, '_> {
             .unwrap()
             .check_send(self.a, m.domain, cap, &value.to_le_bytes(), deadline, now)
         {
+            #[cfg(feature = "test-m6-network")]
+            if error != IpcError::Full {
+                self.record_rpc_rejection(
+                    index,
+                    cap,
+                    Some(wire),
+                    absolute,
+                    now,
+                    rejection::mailbox(error),
+                );
+            }
             scalar(frame, if error == IpcError::Full { 2 } else { 1 }, 0);
             return false;
         }
@@ -253,7 +252,29 @@ impl Runtime<'_, '_> {
                 scalar(frame, 2, 0);
                 return false;
             }
-            Err(_) => {
+            Err(ev_kernel::rpc::Error::DeadlineExceeded) => {
+                scalar(frame, 4, 0);
+                return false;
+            }
+            Err(ev_kernel::rpc::Error::PeerDied) => {
+                scalar(frame, 5, 0);
+                return false;
+            }
+            Err(ev_kernel::rpc::Error::Cancelled) => {
+                scalar(frame, 6, 0);
+                return false;
+            }
+            Err(error) => {
+                #[cfg(feature = "test-m6-network")]
+                self.record_rpc_rejection(
+                    index,
+                    cap,
+                    Some(wire),
+                    absolute,
+                    now,
+                    rejection::rpc(error),
+                );
+                let _ = error;
                 scalar(frame, 1, 0);
                 return false;
             }
@@ -263,12 +284,15 @@ impl Runtime<'_, '_> {
         let ticket = self.wires[wire]
             .as_mut()
             .unwrap()
-            .send(self.a, m, cap, value, deadline, now)
+            .send_rpc(self.a, m, cap, value, deadline, now)
             .expect("preflighted RPC queue");
         if matches!(wire, 12 | 14) {
             self.snapshots = [observation::Snapshot::default(); 2];
         }
+        #[cfg(not(feature = "test-m6-session"))]
         let wait = self.s.block(0, deadline).unwrap();
+        #[cfg(feature = "test-m6-session")]
+        let wait = self.s.block_guarded(0, deadline).unwrap();
         #[cfg(feature = "test-m5-native")]
         let file_replace = if self.native.is_some()
             && index == Child::App.index() + 1
@@ -288,6 +312,13 @@ impl Runtime<'_, '_> {
         } else {
             false
         };
+        #[cfg(feature = "test-m6-session")]
+        let sampled = if callee == Child::Block.index() + 1 && self.rpc_trace[0] < 32 {
+            self.rpc_trace[0] += 1;
+            true
+        } else {
+            false
+        };
         self.pending[slot] = Some(Pending {
             id,
             caller: index,
@@ -297,12 +328,36 @@ impl Runtime<'_, '_> {
             ticket,
             value,
             delivered: false,
+            #[cfg(feature = "test-m6-session")]
+            terminal: None,
+            #[cfg(feature = "test-m6-session")]
+            deadline,
+            #[cfg(feature = "test-m6-session")]
+            started: now,
+            #[cfg(feature = "test-m6-session")]
+            sampled,
             #[cfg(feature = "test-m5-native")]
             file_replace,
         });
+        #[cfg(feature = "test-m6-network")]
+        if self.startup_recording()
+            && index == Child::App.index() + 1
+            && callee == Child::Display.index() + 1
+            && wire == Channel::AppPresent.index()
+            && ev_kernel::startup_trace::present_request(value)
+            && self
+                .startup_trace
+                .select_present(id.epoch().get(), id.serial())
+        {
+            self.startup_present(self.pending[slot].unwrap(), 3, now);
+        }
+        #[cfg(feature = "test-m6-session")]
+        self.trace_rpc(self.pending[slot].unwrap(), SessionRpcPhase::Accepted, 0);
         self.facts.calls += 1;
         self.facts.blocks += 1;
         self.facts.max_pending = self.facts.max_pending.max(self.rpc.outstanding() as u64);
+        #[cfg(feature = "test-m6-network-negative")]
+        self.negative_client(self.pending[slot].unwrap(), None);
         scalar(frame, 0, 0);
         true
     }
@@ -312,6 +367,10 @@ impl Runtime<'_, '_> {
             extended(frame, 1, 0, 0);
             return;
         };
+        if self.wires[wire].as_ref().unwrap().delivery != DeliveryMode::Rpc {
+            extended(frame, 1, 0, 0);
+            return;
+        }
         let Some(slot) = self
             .pending
             .iter()
@@ -328,13 +387,15 @@ impl Runtime<'_, '_> {
         let (delivery, _, _) = self.wires[wire]
             .as_mut()
             .unwrap()
-            .receive(self.a, m, cap, crate::timer::now())
+            .receive_rpc(self.a, m, cap, crate::timer::now())
             .unwrap();
         assert_eq!(delivery.ticket, p.ticket);
         assert_eq!(delivery.length, 8);
         assert_eq!(delivery.capability, None);
         assert_eq!(&delivery.bytes[..8], &p.value.to_le_bytes());
         self.pending[slot].as_mut().unwrap().delivered = true;
+        #[cfg(feature = "test-m6-network")]
+        self.startup_present_now(p, 4);
         extended(frame, 0, p.value, p.id.serial());
     }
     pub(super) fn reply_rpc(
@@ -345,7 +406,13 @@ impl Runtime<'_, '_> {
         serial: u64,
         frame: &mut UserContext,
     ) {
+        #[cfg(feature = "test-m6-network")]
+        let startup_reply_tick = (index == Child::Display.index() + 1 && self.startup_recording())
+            .then(crate::timer::now);
         let m = self.current(index);
+        #[cfg(feature = "test-m6-session")]
+        self.observe_rpc_outcomes(crate::timer::now())
+            .expect("actual RPC outcome joins");
         let Some(wire) = self.wire(m, cap, RECEIVE) else {
             extended(frame, 1, 0, 0);
             return;
@@ -359,11 +426,42 @@ impl Runtime<'_, '_> {
             return;
         };
         let p = self.pending[slot].unwrap();
-        if !self.s.waiting(p.wait) {
+        #[cfg(feature = "test-m6-session")]
+        let retired_caller = self
+            .metadata(p.caller)
+            .is_some_and(|meta| self.s.state(meta.thread) == Ok(State::Exited));
+        #[cfg(not(feature = "test-m6-session"))]
+        let retired_caller = false;
+        if !self.s.waiting(p.wait) && !retired_caller {
             extended(frame, 1, 0, 0);
             return;
         }
+        #[cfg(feature = "test-m6-session")]
+        if p.terminal.is_some() {
+            match self
+                .rpc
+                .complete_scalar(m.thread, p.id, crate::timer::now(), None)
+            {
+                Ok(completion) => {
+                    assert!(!completion.deliver_reply && !completion.wake_caller);
+                    assert_eq!(Some(completion.status), p.terminal.map(|t| t.status));
+                    self.finish_cancelled_call(slot);
+                    self.facts.replies += 1;
+                    // The actual callee acknowledges that it no longer touches
+                    // this request. Its reply body is never delivered as success.
+                    extended(frame, 0, 0, 0);
+                }
+                Err(_) => extended(frame, 1, 0, 0),
+            }
+            return;
+        }
+        #[cfg(feature = "test-m6-network")]
+        if let Some(tick) = startup_reply_tick {
+            self.startup_present(p, 5, tick);
+        }
         let presented = self.before_reply(p, value);
+        #[cfg(feature = "test-m6-network-negative")]
+        self.negative_client(p, Some(value));
         let completion = self
             .rpc
             .complete(m.thread, p.id, crate::timer::now())
@@ -372,7 +470,13 @@ impl Runtime<'_, '_> {
         assert_eq!(completion.status, Status::Ok);
         assert!(self.s.wake(p.wait));
         scalar(self.context_mut(p.caller), 0, value);
+        #[cfg(feature = "test-m6-network")]
+        if presented.is_some() {
+            self.startup_present_now(p, 8);
+        }
         self.completed_opaque(p, value);
+        #[cfg(feature = "test-m6-session")]
+        self.trace_rpc(p, SessionRpcPhase::Completed, 0);
         if let Some(step) = presented {
             (self.observations)(Observation::Step(step));
         }

@@ -63,4 +63,4 @@ exhaustion, and a permanently latched recovery state. Actual Root catastrophe,
 whole graph teardown, exact reconstitution and independent recovery must have
 separate executed hardware evidence before claiming AF-007A–H or whole M2.
 The existing parked-AP BSP proof does not establish general SMP or device DMA
-quiescence. Current results belong in [M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+quiescence. Current results belong in M2 progress.

@@ -15,6 +15,7 @@ def extra_checks(run, checks):
         ('architecture', ['python3', 'tools/check_architecture.py']),
         ('governance-negative-cases', ['python3', '-m', 'unittest', 'discover', '-s', 'tests/host', '-p', 'test_*.py', '-v']),
         ('dependency-inventory', ['python3', 'tools/cargo_inventory.py', '--check']),
+        ('status', ['python3', 'tools/status.py', '--check']),
     ]:
         run(name, command)
 

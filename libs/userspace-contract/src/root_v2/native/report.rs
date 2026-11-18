@@ -27,6 +27,18 @@ pub enum Operation {
     SystemStage = 18,
     SystemActivate = 19,
     RecoverGood = 20,
+    /// Console ACK only: accepted arm is never successful UTC/verification.
+    TimeProbe = 21,
+    /// Completed explicit local content provisioning, never remote trust/health.
+    UpdateInitialize = 22,
+    /// Authenticated local checkpoint inspection, never UTC freshness.
+    UpdateInspect = 23,
+    /// A fresh elapsed/anchor diagnostic only; never qualified UTC.
+    TimeCheck = 24,
+    /// V4-only remote acquisition result; no activation or health authority.
+    UpdateFetch = 25,
+    /// Explicit owned-VM document diagnostic; never health or control authority.
+    CrashApp = 26,
 }
 impl Operation {
     pub const fn name(self) -> &'static str {
@@ -43,6 +55,7 @@ impl Operation {
             Self::Cancel => "cancel",
             Self::Finish => "finish",
             Self::CrashShell => "crash-shell",
+            Self::CrashApp => "crash-app",
             Self::Invalid => "invalid",
             Self::InitializeGrants => "initialize-grants",
             Self::Remember => "remember",
@@ -51,6 +64,11 @@ impl Operation {
             Self::SystemStage => "system-stage",
             Self::SystemActivate => "system-activate",
             Self::RecoverGood => "recover-good",
+            Self::TimeProbe => "time-probe",
+            Self::TimeCheck => "time-check",
+            Self::UpdateInitialize => "update-init",
+            Self::UpdateInspect => "update-inspect",
+            Self::UpdateFetch => "update-fetch",
         }
     }
 }
@@ -78,6 +96,8 @@ pub enum Slot {
     None = 0,
     A = 1,
     B = 2,
+    DownloadedB = 3,
+    DownloadedC = 4,
 }
 impl Slot {
     pub const fn name(self) -> &'static str {
@@ -85,6 +105,8 @@ impl Slot {
             Self::None => "none",
             Self::A => "a",
             Self::B => "b",
+            Self::DownloadedB => "downloaded-b",
+            Self::DownloadedC => "downloaded-c",
         }
     }
 }
@@ -114,8 +136,16 @@ pub enum Error {
 }
 impl Snapshot {
     fn words(self) -> Result<[u32; WORDS], Error> {
+        self.words_for(false)
+    }
+    fn words_for(self, v4: bool) -> Result<[u32; WORDS], Error> {
         if (self.process == 0) != (self.thread == 0)
             || (!self.installed && (self.active != Slot::None || self.staged != Slot::None))
+            || (!v4
+                && [self.active, self.staged, self.previous]
+                    .iter()
+                    .any(|s| (*s as u8) > 2))
+            || (!v4 && self.operation == Operation::UpdateFetch)
         {
             return Err(Error::Shape);
         }
@@ -124,9 +154,9 @@ impl Snapshot {
                 | ((self.result as u32) << 8)
                 | ((self.installed as u32) << 10)
                 | ((self.active as u32) << 11)
-                | ((self.staged as u32) << 13)
-                | ((self.previous as u32) << 15)
-                | ((self.recovery as u32) << 17),
+                | ((self.staged as u32) << if v4 { 14 } else { 13 })
+                | ((self.previous as u32) << if v4 { 17 } else { 15 })
+                | ((self.recovery as u32) << if v4 { 20 } else { 17 }),
             self.process as u32,
             (self.process >> 32) as u32,
             self.thread as u32,
@@ -141,8 +171,12 @@ impl Snapshot {
             (self.mutations >> 32) as u32,
         ])
     }
+    #[cfg(test)]
     fn decode(w: [u32; WORDS]) -> Result<Self, Error> {
-        if w[0] >> 18 != 0 {
+        Self::decode_for(w, false)
+    }
+    fn decode_for(w: [u32; WORDS], v4: bool) -> Result<Self, Error> {
+        if w[0] >> if v4 { 21 } else { 18 } != 0 {
             return Err(Error::Shape);
         }
         let operation = match w[0] & 255 {
@@ -166,12 +200,20 @@ impl Snapshot {
             18 => Operation::SystemStage,
             19 => Operation::SystemActivate,
             20 => Operation::RecoverGood,
+            21 => Operation::TimeProbe,
+            22 => Operation::UpdateInitialize,
+            23 => Operation::UpdateInspect,
+            24 => Operation::TimeCheck,
+            25 if v4 => Operation::UpdateFetch,
+            26 => Operation::CrashApp,
             _ => return Err(Error::Shape),
         };
         let slot = |n| match n {
             0 => Ok(Slot::None),
             1 => Ok(Slot::A),
             2 => Ok(Slot::B),
+            3 if v4 => Ok(Slot::DownloadedB),
+            4 if v4 => Ok(Slot::DownloadedC),
             _ => Err(Error::Shape),
         };
         let result = match (w[0] >> 8) & 3 {
@@ -184,10 +226,10 @@ impl Snapshot {
             operation,
             result,
             installed: w[0] & (1 << 10) != 0,
-            active: slot((w[0] >> 11) & 3)?,
-            staged: slot((w[0] >> 13) & 3)?,
-            previous: slot((w[0] >> 15) & 3)?,
-            recovery: w[0] & (1 << 17) != 0,
+            active: slot((w[0] >> 11) & if v4 { 7 } else { 3 })?,
+            staged: slot((w[0] >> if v4 { 14 } else { 13 }) & if v4 { 7 } else { 3 })?,
+            previous: slot((w[0] >> if v4 { 17 } else { 15 }) & if v4 { 7 } else { 3 })?,
+            recovery: w[0] & (1 << if v4 { 20 } else { 17 }) != 0,
             process: u64::from(w[1]) | (u64::from(w[2]) << 32),
             thread: u64::from(w[3]) | (u64::from(w[4]) << 32),
             revision: u64::from(w[5]) | (u64::from(w[6]) << 32),
@@ -196,7 +238,7 @@ impl Snapshot {
             value: w[10],
             mutations: u64::from(w[11]) | (u64::from(w[12]) << 32),
         };
-        value.words()?;
+        value.words_for(v4)?;
         Ok(value)
     }
 }
@@ -204,16 +246,29 @@ pub struct Frames {
     serial: u32,
     words: [u32; WORDS],
     cursor: u8,
+    version: u8,
 }
 impl Frames {
     pub fn new(serial: u32, snapshot: Snapshot) -> Result<Self, Error> {
+        Self::new_for(serial, snapshot, false)
+    }
+    /// Explicit selected V4 only: never accepted by the default v1 decoder.
+    pub fn new_v4(serial: u32, snapshot: Snapshot) -> Result<Self, Error> {
+        Self::new_for(serial, snapshot, true)
+    }
+    fn new_for(serial: u32, snapshot: Snapshot, v4: bool) -> Result<Self, Error> {
         if serial == 0 {
             return Err(Error::Serial);
         }
         Ok(Self {
             serial,
-            words: snapshot.words()?,
+            words: if v4 {
+                snapshot.words_for(true)?
+            } else {
+                snapshot.words()?
+            },
             cursor: 0,
+            version: if v4 { 2 } else { 1 },
         })
     }
     pub fn next_frame(&mut self) -> Option<[u8; 8]> {
@@ -224,7 +279,7 @@ impl Frames {
             _ => return None,
         };
         self.cursor += 1;
-        let mut b = [b'N', b'R', 1, field, 0, 0, 0, 0];
+        let mut b = [b'N', b'R', self.version, field, 0, 0, 0, 0];
         b[4..].copy_from_slice(&value.to_le_bytes());
         Some(b)
     }
@@ -236,6 +291,7 @@ pub struct Decoder {
     last: u32,
     serial: u32,
     next: u8,
+    version: u8,
     words: [u32; WORDS],
 }
 impl Default for Decoder {
@@ -245,10 +301,18 @@ impl Default for Decoder {
 }
 impl Decoder {
     pub const fn new() -> Self {
+        Self::with_version(1)
+    }
+    /// Strict opt-in decoder for selected V4 NRv2; it refuses all v1 frames.
+    pub const fn new_v4() -> Self {
+        Self::with_version(2)
+    }
+    const fn with_version(version: u8) -> Self {
         Self {
             last: 0,
             serial: 0,
             next: 0,
+            version,
             words: [0; WORDS],
         }
     }
@@ -256,7 +320,7 @@ impl Decoder {
         self.next != 0
     }
     pub fn accept(&mut self, b: [u8; 8]) -> Result<Option<Snapshot>, Error> {
-        if b[..3] != [b'N', b'R', 1] {
+        if b[..3] != [b'N', b'R', self.version] {
             return Err(Error::Header);
         }
         let value = u32::from_le_bytes(b[4..].try_into().unwrap());
@@ -281,7 +345,7 @@ impl Decoder {
             if value != self.serial {
                 return Err(Error::Serial);
             }
-            let snapshot = Snapshot::decode(self.words)?;
+            let snapshot = Snapshot::decode_for(self.words, self.version == 2)?;
             self.last = self.serial;
             self.serial = 0;
             self.next = 0;
@@ -352,7 +416,7 @@ mod tests {
         let mut w = s.words().unwrap();
         w[0] |= 1 << 31;
         assert!(Snapshot::decode(w).is_err());
-        for op in 21..=255 {
+        for op in (25..=255).filter(|op| *op != 26) {
             let mut w = s.words().unwrap();
             w[0] = (w[0] & !255) | op;
             assert!(Snapshot::decode(w).is_err());
@@ -386,6 +450,10 @@ mod native3_ack_tests {
             Operation::SystemStage,
             Operation::SystemActivate,
             Operation::RecoverGood,
+            Operation::TimeProbe,
+            Operation::UpdateInitialize,
+            Operation::UpdateInspect,
+            Operation::TimeCheck,
         ];
         for (index, op) in ops.into_iter().enumerate() {
             assert_eq!(op as usize, index + 1);
@@ -406,6 +474,16 @@ mod native3_ack_tests {
                 recovery: false,
             };
             assert_eq!(Snapshot::decode(snapshot.words().unwrap()), Ok(snapshot));
+            let crash = Snapshot {
+                operation: Operation::CrashApp,
+                ..snapshot
+            };
+            assert_eq!(Operation::CrashApp as u8, 26);
+            assert_eq!(Snapshot::decode(crash.words().unwrap()), Ok(crash));
         }
     }
 }
+
+#[cfg(test)]
+#[path = "report_v4_tests.rs"]
+mod v4_tests;

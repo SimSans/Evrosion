@@ -30,6 +30,21 @@ impl Window {
             unsafe { (self.address as *mut u8).add(index).write_volatile(byte) };
         }
     }
+    #[cfg(all(feature = "desktop", feature = "native-session"))]
+    pub fn client_frame(
+        &self,
+        admitted: impl FnOnce(&[u8; 256]) -> ev_file::Response,
+    ) -> ev_file::Response {
+        ev_file_service::desktop_frame::handle(
+            |index| {
+                // SAFETY: the helper reads only256..4096 of this exact retained
+                // page. App is blocked in its actual File RPC; no Rust borrow
+                // of shared RAM escapes the volatile byte read.
+                unsafe { (self.address as *const u8).add(index).read_volatile() }
+            },
+            || admitted(&self.load()),
+        )
+    }
     #[cfg(feature = "server")]
     pub fn ready(&self) {
         self.marker(READY);

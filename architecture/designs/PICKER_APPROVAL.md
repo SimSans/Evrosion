@@ -33,7 +33,7 @@ resolves current facts again at commit. The core rejects changed object/revision
 requester/AppId/package/incarnation/session, policy/permission, death, expiry,
 clock reversal or a different action digest. Remember-per-user intent is a
 separate [portable policy representation](../../libs/picker/src/intent.rs).
-The later [Native3 A-003 execution](../../docs/release/0.1-preview.md#validation-and-provenance)
+The later Native3 A-003 execution (local engineering archive)
 proves remembered owner policy and cold fresh authority separately; no raw process
 handle or live capability is persisted by this M4 picker.
 
@@ -95,7 +95,7 @@ that stronger scope. The handoff is not a token-only generic mint API.
 
 ## Executed evidence and remaining boundaries
 
-The [full desktop physical proof](../../docs/release/0.1-preview.md#validation-and-provenance)
+The full desktop physical proof (local engineering archive)
 retains the actual source cohort, Hello.zion/catalogue, input/QMP/UART transcript,
 20 unmodified captures and all failed transient captures. Fifteen required stages
 pass exact complete scanout comparison. Held Enter spans 68 actual running guest
@@ -106,12 +106,12 @@ capability deliveries, two actual page faults and two actual replacements occur;
 Display remains the same process. Cold read-only disk inspection preserves both
 File objects and all System/guard regions.
 
-[Current core/startup checks](../../docs/release/0.1-preview.md#validation-and-provenance)
+Current core/startup checks (local engineering archive)
 retain 355 kernel and 41 contract tests plus strict lint, including exact rights
-and private-parent revocation. [Consent/window checks](../../docs/release/0.1-preview.md#validation-and-provenance)
+and private-parent revocation. Consent/window checks (local engineering archive)
 retain the 15 Shell/Desktop, 10 graphics and 138 frontend passing tests, one existing
 ignored frontend test, target lint and the exact five-file correction. Earlier
-[portable authority/reuse evidence](../../docs/release/0.1-preview.md#validation-and-provenance)
+portable authority/reuse evidence (local engineering archive)
 records managed lifecycle/recycle coverage; portable negatives do not turn every
 race into a separately executed physical claim.
 
@@ -121,7 +121,7 @@ Secure Attention nor authentication/enrollment, shell-independent recovery UI,
 protection against an arbitrary malicious trusted Shell, general privileged
 settings/install/delete/AI consent, durable remembered grants, SMP races or
 production hardware security. [M4 acceptance](../M4_ACCEPTANCE.md) is PASS for
-this bounded profile after the [current original surface regression](../../docs/release/0.1-preview.md#validation-and-provenance)
-and [formal reconciliation](../../docs/release/0.1-preview.md#validation-and-provenance).
+this bounded profile after the current original surface regression (local engineering archive)
+and formal reconciliation (local engineering archive).
 The broader E-017 Trusted Control and Layer 3 owner-power requirements remain
 intact and open for their actual protected control/recovery integration.

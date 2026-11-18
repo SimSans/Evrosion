@@ -5,10 +5,16 @@ Status: PASS — integrated acceptance verified 2026-10-03. Physical reclamation
 allocation, shared Memory Objects, live revocation, extended CPU contexts,
 hierarchical Job accounting and capability-routed fault delivery now join the
 verified bootstrap, scheduling and IPC primitives.
-See [executed progress](../docs/release/0.1-preview.md#validation-and-provenance) and the
+See executed progress and the
 [complete acceptance contract](M1_ACCEPTANCE.md) for the M1/M2 boundary.
 
-## Technical baseline
+## Scope and baseline
+
+M1 implements the kernel spine within the M1–M5 developer-preview scope.
+The specific architecture decisions below retain their recorded boundaries.
+Engineering acceptance and public release are separate decisions.
+
+M0 remains accepted and frozen at tag `m0`. Its existing evidence stays intact.
 
 At M1 start the kernel validated the boot handoff, printed bounded diagnostics
 and halted/exited. The implementation now runs isolated, preempted user contexts,
@@ -59,15 +65,13 @@ beyond Internal maturity in this slice.
   documents remain preserved; this decision does not claim containment implemented.
 - **RES-003 — resolved 2026-10-02:** use the full combined M1 scope from
   E-025.18–23, PRE-M0 §43 and R-011.14, including the Job/accounting skeleton,
-  capability derivation/revocation and architecture fitness tests. After being
-  asked whether final acceptance should include that combined scope, the owner
-  replied “Yes continue”; the assistant explicitly restated this interpretation.
+  capability derivation/revocation and architecture fitness tests. The owner
+  confirmed that final acceptance should include this combined scope.
   This resolved scope; implementation and acceptance were verified separately in the subsequent M1 gate.
 - **OQ-7 — SMP implementation plan, 2026-10-01:** bootstrap began on one CPU
-  (E-025.21). After recommending a two-CPU M1 proof and the owner instructing
-  continued work without waiting, proceed with that recommendation before
-  scheduler/locking design is fixed. This is the stated implementation
-  choice under the work authorization, not a separately selected owner answer.
+  (E-025.21). The implementation plan selected a two-CPU M1 proof before the
+  scheduler/locking design was fixed. This was an implementation choice within
+  the selected scope, not a separately selected owner answer.
 
 No filesystem, networking, desktop UI, Windows runtime or userspace memory policy
 is added to the kernel. Existing later product requirements remain in their

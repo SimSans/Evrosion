@@ -12,6 +12,8 @@ import time
 import tomllib
 import xml.etree.ElementTree as ET
 
+from repro_artifacts import compare as compare_target_artifacts
+
 ROOT = Path(__file__).resolve().parents[2]
 EV = [os.environ["EV_FRONTEND"]] if os.environ.get("EV_FRONTEND") else ["cargo", "ev"]
 
@@ -93,20 +95,37 @@ def repro():
         checks.append(command(["cargo", "ev", "doctor"], path / f"doctor-{label}.txt", cwd=clone))
         builds.append((clone, manifest))
     comparisons = {}
+    comparison_error = None
+    comparison_scope = None
+    warm_comparison = None
     if len(builds) == 2:
-        for artifact in ["kernel", "loader", "image"]:
-            a, b = [clone / "build/m0" / manifest[artifact]["path"] for clone, manifest in builds]
-            # Actual byte comparison, as well as independent digests; no masked regions.
-            equal = a.stat().st_size == b.stat().st_size
-            with a.open("rb") as left, b.open("rb") as right:
-                while equal:
-                    chunk = left.read(1024 * 1024)
-                    if chunk != right.read(1024 * 1024):
-                        equal = False
-                    if not chunk:
-                        break
-            comparisons[artifact] = {"identical": equal, "a_sha256": digest(a), "b_sha256": digest(b),
-                                     "bytes": a.stat().st_size, "a": str(a.relative_to(ROOT)), "b": str(b.relative_to(ROOT))}
+        try:
+            compared = compare_target_artifacts(*builds[0], *builds[1])
+            comparisons = compared["comparisons"]
+            # Preserve the existing repository-relative comparison path schema.
+            for row in comparisons.values():
+                for key in ("a", "b"):
+                    row[key] = str(Path(row[key]).relative_to(ROOT))
+            comparison_scope = {key: value for key, value in compared.items() if key != "comparisons"}
+        except (KeyError, OSError, TypeError, ValueError) as error:
+            comparison_error = str(error)
+        clone, cold_manifest = builds[0]
+        row = command(["cargo", "ev", "build"], path / "warm-build.log", cwd=clone)
+        checks.append(row)
+        if row["passed"]:
+            warm_manifest = json.loads((clone / "build/m0/manifest.json").read_text())
+            write(path / "manifest-a-warm.json", warm_manifest)
+            try:
+                if warm_manifest["source_dirty"] or warm_manifest["source_revision"] != head:
+                    raise ValueError("warm build source is not the same clean revision")
+                warm_comparison = compare_target_artifacts(clone, cold_manifest, clone, warm_manifest)
+                row["passed"] = all(item["identical"] for item in warm_comparison["comparisons"].values())
+                for item in warm_comparison["comparisons"].values():
+                    for key in ("a", "b"):
+                        item[key] = str(Path(item[key]).relative_to(ROOT))
+            except (KeyError, OSError, TypeError, ValueError) as error:
+                row["passed"] = False
+                row["comparison_error"] = str(error)
     if len(builds) == 2:
         clone = builds[0][0]
         (clone / "acceptance-dirty-marker.txt").write_text("Deliberate M0 dirty-source acceptance fixture.\n")
@@ -120,10 +139,13 @@ def repro():
         row["expected_exit_status"] = 1
         row["passed"] = row["exit_status"] == 1 and "unset RUSTFLAGS" in (path / "invalid-build-flags.log").read_text()
         checks.append(row)
-    passed = len(builds) == 2 and all(x["passed"] for x in checks) and all(x["identical"] for x in comparisons.values())
+    passed = (len(builds) == 2 and comparison_error is None and warm_comparison is not None
+              and all(x["passed"] for x in checks) and all(x["identical"] for x in comparisons.values()))
     write(path / "results.json", {"schema": 1, "kind": "reproducibility", "passed": passed,
           "source_revision": head, "checks": checks, "comparisons": comparisons,
-          "method": "Two Git clones, separate empty target directories, full kernel and EFI compilations; shared pinned toolchain/registry sources on one prepared host. Not a hermetic cross-host claim."})
+          "comparison_error": comparison_error, "comparison_scope": comparison_scope,
+          "warm_comparison": warm_comparison,
+          "method": "Two Git clones, separate empty target directories, full kernel, component and EFI compilations, then one warm rebuild; shared pinned toolchain/registry sources on one prepared host. Not a hermetic or cross-host claim."})
     print(f"{'PASS' if passed else 'FAIL'} independent unsigned image comparison", flush=True)
     return passed
 

@@ -1,0 +1,144 @@
+{
+  "schema": 1,
+  "created_utc": "2026-11-16T03:36:11.188312+00:00",
+  "status": "PASS_COMPONENT_ONLY",
+  "scope": "Internal A1 snapshot/action/range codecs and linked native Editor publisher/dispatcher. No actual consumer, native authority/revocation/protected consent, semantic VM workflow or full M8 qualification follows.",
+  "tests": {
+    "SDK": 23,
+    "native_Editor_library": 6,
+    "strict_host_lint": true,
+    "strict_bare_target_lint": true
+  },
+  "wire": "41,01 eight-byte frames; paged16-node snapshots and separate ordered18-word operations with256-byte UTF8 ranges, full64-bit context, finite monotonic nonces and explicit abort/drain",
+  "actor_elf": {
+    "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/editor-a1-native-01/editor.elf",
+    "sha256": "0e86ec62a93dfafca6f20d81eb2e430229f64a27ecf92ff646c546b3bba6b4a2",
+    "bytes": 117616
+  },
+  "canonical_bytes": 117616,
+  "loaded_pages_including_stack": 289,
+  "resolved_stack_census_bytes": 11832,
+  "stack_limit_bytes": 32768,
+  "stack_limitations": "Actual linked userspace fixed-prologue and resolved code-reference census from _start, against the declared guarded32KiB stack. Not a formal whole-program, recursion, interrupt or runtime high-water bound.",
+  "current_bank_measurement": {
+    "bytes": 243538,
+    "limit": 258048,
+    "free": 14510,
+    "scope": "EditorA1 with older cohort01 Files/Inspector/B. Not next full-cohort placement qualification."
+  },
+  "native_dispatch": "Last fully sent semantic snapshot + current accepted full Display tuple before request. Root channel custody; Root retains consumer rights/lease. Painting intent receipts wait actual resulting Present; Root needs fresh snapshot. Focus never steals Root keyboard/window focus. Open/SaveAs never approves protected permission.",
+  "retained_semantics": "Malformed/expired streams fence until correlated explicit abort/drain. Abort does not undo accepted action. Root must retain forwarded original lease/operation through revocation and consumer relay drain.",
+  "source_records": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/libs/workspace-client/src/lib.rs",
+      "sha256": "50b22d3a3eccdd7485f12a72ddf1489639e8e5614b14c053655cd800cb20b1e8",
+      "bytes": 8346
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/libs/workspace-client/src/semantic.rs",
+      "sha256": "38c556c6254ae5e1ec72086ec32f7bffebe1ae0061dfa6265fc48e2f8e54ac6d",
+      "bytes": 33997
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/libs/workspace-client/src/semantic/operation.rs",
+      "sha256": "8fe3df2e92ef4bfc7da22bebf5b1b4eeba77f670594341d450060cecc60d1c85",
+      "bytes": 21886
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/libs/workspace-client/src/native.rs",
+      "sha256": "7ed04feb3b81f89ff3ea1bf69325e4abe1983e5e559bc67796c8c637e812b746",
+      "bytes": 7904
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/libs/workspace-client/src/ui.rs",
+      "sha256": "e69413d7e02ea996204d1c3a9ab264c0d8b568680e506a65113c4e78f75f8927",
+      "bytes": 13419
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/apps/editor/src/main.rs",
+      "sha256": "4571a1cc348232edd3038c7987ffdc70e33bbc0661d358a0891a70efc307aa84",
+      "bytes": 34678
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/apps/editor/src/lib.rs",
+      "sha256": "cac0d050e4962639dcf841ca06184248656a29aea8dca790cc7146162320c927",
+      "bytes": 7404
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/apps/editor/src/semantic.rs",
+      "sha256": "01d57217dceb3eb4955acc564dbcdb05f68839d792cf62c81c85f15324d90739",
+      "bytes": 4530
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/apps/editor/src/native_semantic.rs",
+      "sha256": "889967a4a0983c56a975ee78e46bec34bbe52b2af4b6d9834f48cc1615db73f4",
+      "bytes": 10494
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/apps/editor/src/tests.rs",
+      "sha256": "ddabaf2da03b6ab5c5ae505270667c60b1f00924eb35c5a47bd906c1c9801cb4",
+      "bytes": 8940
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/apps/editor/linker.ld",
+      "sha256": "39a8a56a758f890d268fe506ff21f854e451ccf08766f68e4b37e74e8e2c2732",
+      "bytes": 1177
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/apps/editor/Cargo.toml",
+      "sha256": "6feaca19d4c68ef9f7e4d718e46404da0a5937cd28d8ce1b90dc3b5ce34d027d",
+      "bytes": 785
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/libs/workspace-editor/src/lib.rs",
+      "sha256": "ec1363475c0aad7de0632c3232a403342c39a5f887ed9ea6ca827b5e8384f4c7",
+      "bytes": 19801
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/source/libs/userspace-contract/src/root_v5/surface.rs",
+      "sha256": "aacc7a45de4b850a4d0f7bf7e5bca4d714561ded6fa69f2c83728b657364154e",
+      "bytes": 11088
+    }
+  ],
+  "evidence": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/editor-semantic-joined-tests-02.json",
+      "sha256": "1fa57afc5c363fa4180afd6f96f54eca67d3468f07b7270f232f6f650f371f5f",
+      "bytes": 972
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/semantic-sdk-host-lint-01.json",
+      "sha256": "067715a799ee5618dc65cd0a17aea3075f0b01ff31a3e518153c41105023d0dd",
+      "bytes": 1019
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/editor-semantic-operations-bare-lint-03.json",
+      "sha256": "dc045bf20e51f0ff59b40f4ff9d9da962a79399ef28bb85b4d05f580fb98da1a",
+      "bytes": 1207
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/editor-a1-native-01.json",
+      "sha256": "597187ffde02310df359b2e9ed669bc698066a9e03cc593436f92a46fa12db1b",
+      "bytes": 2395
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/editor-a1-native-01/ELF.json",
+      "sha256": "b04375982f22004f81562c13a4ae075e06606e43dd129740f251d59657af3838",
+      "bytes": 9564
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/editor-a1-native-01/STACK.json",
+      "sha256": "b07d99726ed8a0b71bac6756284bfca84ec61248339eff0b2eb98b0339a07029",
+      "bytes": 317903
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/editor-a1-bank-measure-01.json",
+      "sha256": "2fd9d6c87c0b9628d7818f036203c09df43ef62b76aaf9597bff83b933a9bfa2",
+      "bytes": 1220
+    }
+  ],
+  "native_VM_qualified": false,
+  "engineering_gates_complete": 0,
+  "Main_runtime_adopted": false,
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

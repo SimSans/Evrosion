@@ -2,6 +2,7 @@
 use core::sync::atomic::{AtomicU64, Ordering};
 use ev_boot_contract::{MemoryKind, MemoryMap, MemoryRegion};
 static NEXT_ALLOCATOR: AtomicU64 = AtomicU64::new(1);
+/// Fixed metadata entries, each retaining one contiguous owned RAM run.
 pub const MAX_RECYCLED: usize = 512;
 
 pub const FRAME_SIZE: u64 = 4096;
@@ -25,6 +26,18 @@ pub struct Exhausted;
 pub enum ReclaimError {
     WrongAllocator,
     Capacity,
+    Overlap,
+}
+
+// Packed sorted owned free-run metadata. No mapping or authority is inferred.
+struct FreeRun {
+    first: u64,
+    pages: u64,
+}
+impl FreeRun {
+    fn end(&self) -> u64 {
+        self.first + self.pages * FRAME_SIZE
+    }
 }
 
 /// One owner during bootstrap, before interrupts or other CPUs allocate.
@@ -37,7 +50,8 @@ pub enum ReclaimError {
 /// touches physical bytes. Returned frames require zeroing before user exposure.
 pub struct BootstrapFrames {
     identity: u64,
-    recycled: [Option<PhysicalFrame>; MAX_RECYCLED],
+    recycled: [Option<FreeRun>; MAX_RECYCLED],
+    recycled_frames: u64,
     recycled_count: usize,
     reuse_count: u64,
     map: MemoryMap,
@@ -72,6 +86,7 @@ impl BootstrapFrames {
                 .expect("allocator identity exhausted"),
             recycled: [const { None }; MAX_RECYCLED],
             recycled_count: 0,
+            recycled_frames: 0,
             reuse_count: 0,
             map,
             region: 0,
@@ -112,33 +127,88 @@ impl BootstrapFrames {
     pub fn owns(&self, frame: &PhysicalFrame) -> bool {
         frame.allocator == self.identity
     }
+    /// Conservative minimum additional independent claims guaranteed to fit.
+    /// Adjacent returns may coalesce even when this lower bound is zero.
     pub fn recycle_capacity(&self) -> usize {
         MAX_RECYCLED - self.recycled_count
     }
+    pub fn recycled_frames(&self) -> u64 {
+        self.recycled_frames
+    }
     pub fn reused_frames(&self) -> u64 {
         self.reuse_count
+    }
+    fn remove_run(&mut self, index: usize) -> FreeRun {
+        let run = self.recycled[index].take().expect("packed recycle runs");
+        for i in index..self.recycled_count - 1 {
+            self.recycled[i] = self.recycled[i + 1].take();
+        }
+        self.recycled_count -= 1;
+        run
     }
     pub fn reclaim(&mut self, frame: PhysicalFrame) -> Result<(), (ReclaimError, PhysicalFrame)> {
         if frame.allocator != self.identity {
             return Err((ReclaimError::WrongAllocator, frame));
         }
-        if self.recycled_count == MAX_RECYCLED {
-            return Err((ReclaimError::Capacity, frame));
+        let start = frame.start;
+        let end = start + FRAME_SIZE;
+        let mut index = 0;
+        while index < self.recycled_count && self.recycled[index].as_ref().unwrap().first < start {
+            index += 1;
         }
-        self.recycled[self.recycled_count] = Some(frame);
-        self.recycled_count += 1;
+        let left = index.checked_sub(1).and_then(|i| self.recycled[i].as_ref());
+        let right = self.recycled.get(index).and_then(Option::as_ref);
+        if left.is_some_and(|r| r.end() > start) || right.is_some_and(|r| r.first < end) {
+            return Err((ReclaimError::Overlap, frame));
+        }
+        let joins_left = left.is_some_and(|r| r.end() == start);
+        let joins_right = right.is_some_and(|r| r.first == end);
+        match (joins_left, joins_right) {
+            (true, true) => {
+                let right = self.remove_run(index);
+                self.recycled[index - 1].as_mut().unwrap().pages += 1 + right.pages;
+            }
+            (true, false) => self.recycled[index - 1].as_mut().unwrap().pages += 1,
+            (false, true) => {
+                let run = self.recycled[index].as_mut().unwrap();
+                run.first = start;
+                run.pages += 1;
+            }
+            (false, false) => {
+                if self.recycled_count == MAX_RECYCLED {
+                    return Err((ReclaimError::Capacity, frame));
+                }
+                for i in (index..self.recycled_count).rev() {
+                    self.recycled[i + 1] = self.recycled[i].take();
+                }
+                self.recycled[index] = Some(FreeRun {
+                    first: start,
+                    pages: 1,
+                });
+                self.recycled_count += 1;
+            }
+        }
+        self.recycled_frames += 1;
         self.remaining += 1;
         Ok(())
     }
     pub fn allocate(&mut self) -> Result<PhysicalFrame, Exhausted> {
         if self.recycled_count > 0 {
             let reuse_count = self.reuse_count.checked_add(1).ok_or(Exhausted)?;
-            self.recycled_count -= 1;
+            let run = self.recycled[0].as_mut().expect("packed recycle runs");
+            let start = run.first;
+            run.first += FRAME_SIZE;
+            run.pages -= 1;
+            if run.pages == 0 {
+                self.remove_run(0);
+            }
+            self.recycled_frames -= 1;
             self.remaining -= 1;
             self.reuse_count = reuse_count;
-            return Ok(self.recycled[self.recycled_count]
-                .take()
-                .expect("packed recycle pool"));
+            return Ok(PhysicalFrame {
+                start,
+                allocator: self.identity,
+            });
         }
         while let Some(region) = self.map.regions().get(self.region) {
             if region.kind == MemoryKind::Usable {
@@ -166,6 +236,59 @@ mod tests {
     use super::*;
     use ev_boot_contract::{BootError, MAX_MEMORY_REGIONS};
     use std::{vec, vec::Vec};
+    #[test]
+    fn free_run_keeps_the_existing_metadata_entry_layout() {
+        assert_eq!(
+            core::mem::size_of::<Option<FreeRun>>(),
+            core::mem::size_of::<Option<PhysicalFrame>>()
+        );
+        assert_eq!(core::mem::size_of::<Option<FreeRun>>(), 24);
+    }
+
+    #[test]
+    fn extent_preflight_counts_all_frames_in_a_run_before_reuse_overflow() {
+        use crate::{
+            memory_extent::{Error, MAX_PAGES, UninitializedRam},
+            scheduler::{Limits, Resource, Scheduler},
+        };
+        let mut a = BootstrapFrames::new(
+            MemoryMap::validate([usable(FRAME_SIZE, (MAX_PAGES as u64 + 1) * FRAME_SIZE)]).unwrap(),
+        );
+        let frames: Vec<_> = (0..MAX_PAGES).map(|_| a.allocate().unwrap()).collect();
+        for frame in frames {
+            a.reclaim(frame).unwrap();
+        }
+        assert_eq!(a.recycle_capacity(), MAX_RECYCLED - 1);
+        assert_eq!(a.recycled_frames(), MAX_PAGES as u64);
+        // Test-only private boundary injection; production has no reset API.
+        a.reuse_count = u64::MAX - (MAX_PAGES as u64 - 1);
+        let mut scheduler = Scheduler::new();
+        let job = scheduler
+            .create_job_with_limits(Limits::new(1000, MAX_PAGES as u64, 1, 1))
+            .unwrap();
+        let before = (
+            a.remaining_frames(),
+            a.recycled_frames(),
+            a.reused_frames(),
+            a.recycle_capacity(),
+            scheduler.usage(job, Resource::Frames).unwrap(),
+        );
+        let rejected = UninitializedRam::allocate(&mut a, &mut scheduler, job, MAX_PAGES)
+            .err()
+            .unwrap();
+        assert_eq!(rejected.error, Error::Exhausted);
+        assert!(rejected.owner.is_none());
+        assert_eq!(
+            (
+                a.remaining_frames(),
+                a.recycled_frames(),
+                a.reused_frames(),
+                a.recycle_capacity(),
+                scheduler.usage(job, Resource::Frames).unwrap()
+            ),
+            before
+        );
+    }
 
     fn usable(start: u64, end: u64) -> MemoryRegion {
         MemoryRegion {
@@ -223,29 +346,54 @@ mod tests {
         }
     }
     #[test]
-    fn full_recycle_metadata_returns_owned_frame_without_losing_accounting() {
+    fn full_fragmented_metadata_returns_exact_owner_and_merge_restores_capacity() {
+        let count = 2 * (MAX_RECYCLED + 1);
         let mut a = BootstrapFrames::new(
-            MemoryMap::validate([usable(4096, (MAX_RECYCLED as u64 + 2) * 4096)]).unwrap(),
+            MemoryMap::validate([usable(4096, (count as u64 + 1) * 4096)]).unwrap(),
         );
-        let mut frames: Vec<_> = (0..=MAX_RECYCLED).map(|_| a.allocate().unwrap()).collect();
-        let extra = frames.pop().unwrap();
-        for frame in frames {
-            a.reclaim(frame).unwrap();
+        let mut all: Vec<_> = (0..count).map(|_| Some(a.allocate().unwrap())).collect();
+        for i in 0..MAX_RECYCLED {
+            a.reclaim(all[2 * i].take().unwrap()).unwrap();
         }
+        let extra = all[2 * MAX_RECYCLED].take().unwrap();
         assert_eq!(a.recycle_capacity(), 0);
+        let address = extra.start();
         let (error, extra) = a.reclaim(extra).unwrap_err();
         assert_eq!(error, ReclaimError::Capacity);
+        assert_eq!(extra.start(), address);
         assert_eq!(a.remaining_frames(), MAX_RECYCLED as u64);
-        let outstanding = a.allocate().unwrap();
+        a.reclaim(all[1].take().unwrap()).unwrap(); // bridges two existing runs
+        assert_eq!(a.recycle_capacity(), 1);
         a.reclaim(extra).unwrap();
-        assert_eq!(a.remaining_frames(), MAX_RECYCLED as u64);
-        let mut addresses: Vec<_> = (0..MAX_RECYCLED)
-            .map(|_| a.allocate().unwrap().start())
-            .collect();
-        addresses.push(outstanding.start());
-        addresses.sort_unstable();
-        addresses.dedup();
-        assert_eq!(addresses.len(), MAX_RECYCLED + 1);
+        for frame in all.into_iter().flatten() {
+            a.reclaim(frame).unwrap();
+        }
+        assert_eq!(a.recycled_frames(), count as u64);
+        assert_eq!(a.recycled_count, 1);
+        let addresses: Vec<_> = (0..count).map(|_| a.allocate().unwrap().start()).collect();
+        assert!(addresses.windows(2).all(|v| v[1] == v[0] + 4096));
+        assert_eq!(a.allocate(), Err(Exhausted));
+        assert_eq!(a.remaining_frames(), 0);
+    }
+    #[test]
+    fn more_than512_contiguous_returns_use_one_metadata_entry_without_losing_identity() {
+        let count = 4096;
+        let mut a =
+            BootstrapFrames::new(MemoryMap::validate([usable(4096, (count + 1) * 4096)]).unwrap());
+        let mut all: Vec<_> = (0..count).map(|_| a.allocate().unwrap()).collect();
+        while let Some(frame) = all.pop() {
+            a.reclaim(frame).unwrap();
+        }
+        assert_eq!(a.recycled_count, 1);
+        assert_eq!(a.recycle_capacity(), MAX_RECYCLED - 1);
+        assert_eq!(a.recycled_frames(), count);
+        assert_eq!(a.remaining_frames(), count);
+        for i in 1..=count {
+            assert_eq!(a.allocate().unwrap().start(), i * 4096);
+        }
+        assert_eq!(a.reused_frames(), count);
+        assert_eq!(a.recycled_frames(), 0);
+        assert_eq!(a.recycle_capacity(), MAX_RECYCLED);
         assert_eq!(a.allocate(), Err(Exhausted));
     }
     #[test]
@@ -257,6 +405,42 @@ mod tests {
         assert_eq!(a.allocate(), Err(Exhausted));
         assert_eq!(a.remaining_frames(), 1);
         assert_eq!(a.recycled_count, 1);
+    }
+    #[test]
+    fn overlapping_return_preserves_the_rejected_token_and_entire_run() {
+        let mut a = BootstrapFrames::new(MemoryMap::validate([usable(4096, 16384)]).unwrap());
+        let mut frames: Vec<_> = (0..3).map(|_| a.allocate().unwrap()).collect();
+        // Private adversarial fabrication is unavailable to production callers.
+        let duplicate = PhysicalFrame {
+            start: frames[1].start,
+            allocator: frames[1].allocator,
+        };
+        while let Some(frame) = frames.pop() {
+            a.reclaim(frame).unwrap();
+        }
+        let before = (
+            a.remaining_frames(),
+            a.recycled_frames(),
+            a.reused_frames(),
+            a.recycle_capacity(),
+        );
+        let (error, rejected) = a.reclaim(duplicate).unwrap_err();
+        assert_eq!(error, ReclaimError::Overlap);
+        assert_eq!(rejected.start, 8192);
+        assert_eq!(rejected.allocator, a.identity);
+        assert_eq!(
+            (
+                a.remaining_frames(),
+                a.recycled_frames(),
+                a.reused_frames(),
+                a.recycle_capacity(),
+            ),
+            before
+        );
+        for expected in [4096, 8192, 12288] {
+            assert_eq!(a.allocate().unwrap().start(), expected);
+        }
+        assert_eq!(a.allocate(), Err(Exhausted));
     }
     #[test]
     fn skips_reserved_regions_holes_and_sorts_the_handoff() {

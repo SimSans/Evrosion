@@ -1,0 +1,34 @@
+{
+  "scope": "Public historical crypto fixture, NOT a currently fresh challenge or a qualified guest clock. No private keys or Go implementation.",
+  "captured_utc": "2026-11-12T17:00:15Z",
+  "midpoint_unix_seconds": 1794502815,
+  "radius_seconds": 1,
+  "protocol": "Cloudflare IETF draft11 0x8000000b, NOT RFC10049v1",
+  "authority_endpoint": "roughtime.cloudflare.com:2003",
+  "independent_key_source": "https://developers.cloudflare.com/time-services/roughtime/usage/",
+  "key_base64": "0GD7c3yP8xEc4Zl2zeuN2SlLvDVVocjsPSL8/Rl/7zg=",
+  "verification_reference": "https://github.com/cloudflare/roughtime/tree/d09eb37366a1861d0c53711ad035d1defa7e3a6a",
+  "actual_response_verified": true,
+  "reference_limits": [
+    "Current reference expects absent outer NONC echo",
+    "Historical reference ignores residual unsigned index bits; native verifier rejects",
+    "Whole historical generator-vector tests fail; no blanket suite PASS"
+  ],
+  "files": [
+    {
+      "path": "nonce.bin",
+      "bytes": 32,
+      "sha256": "1e7e8c829595c72e8038ebd399486ea0b5f549effa637c6340d2a8083141b378"
+    },
+    {
+      "path": "response.bin",
+      "bytes": 352,
+      "sha256": "4b00528b19ec05dc9aa0c6adf2f588779f9890472279eea4bf4d9b6b9c408b6f"
+    },
+    {
+      "path": "request.bin",
+      "bytes": 1024,
+      "sha256": "21fd83c9af2ce70e8ea327484610bff6f34c73d02924901c65c213f734123c43"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 //! Owned privileged Display mapping. Scratch integration draft: kernel only
 //! discovers/maps the aperture; all pixel copying/painting stays in userspace.
-use crate::executable_runtime::LoadedRoot;
+use crate::executable_runtime::PrivateLoadedRoot;
 use core::{arch::asm, ptr};
 use ev_boot_contract::Framebuffer;
 use ev_kernel::{
@@ -249,9 +249,9 @@ impl OwnedDisplayTables {
     /// that Registry, never decoded from userspace. The graphics wrapper retains
     /// this owner and private root until actual process/reference quiescence.
     #[allow(clippy::too_many_arguments, clippy::result_large_err)]
-    pub(crate) unsafe fn install(
+    pub(crate) unsafe fn install<const N: usize>(
         mut self,
-        root: &mut LoadedRoot,
+        root: &mut PrivateLoadedRoot<N>,
         device: &DisplayObject<DisplayAperture>,
         authority: &Authority,
         plan: &Image<'_>,
@@ -394,9 +394,9 @@ impl OwnedDisplayTables {
     /// controller CR3 restored, IF0/APs quiescent, PCID off/no global user leaves.
     /// Source/lease revocation does not excuse or prevent exact physical cleanup.
     #[allow(clippy::result_large_err)]
-    pub(crate) unsafe fn detach(
+    pub(crate) unsafe fn detach<const N: usize>(
         mut self,
-        root: &mut LoadedRoot,
+        root: &mut PrivateLoadedRoot<N>,
         scheduler: &Scheduler,
         metadata: Metadata,
     ) -> Result<Self, RejectedDisplayTables> {

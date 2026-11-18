@@ -88,6 +88,7 @@ pub fn build(spec: &Spec<'_>, executable: &[u8], resources: &[Resource<'_>]) -> 
             Capability::OwnSurfacePresent => 3,
             Capability::FocusedInput => 4,
             Capability::Diagnostics => 5,
+            Capability::SelectedFileEdit => 6,
             Capability::UnknownOptional(n) => n,
         };
         row[..2].copy_from_slice(&code.to_le_bytes());

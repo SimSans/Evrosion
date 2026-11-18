@@ -1,0 +1,101 @@
+{
+  "scope": "PUBLIC TEST ONLY actual signed development packets/Zion; cfg(test), never runtime/Kernel image bank",
+  "artifact_source_sha256": "830a8086d41da2267623083f785edbe2c915a5fce97c386ffa7464cd4b6a3c6b",
+  "public_rom_root_sha256": "3d41b2402fcde61e047585759d3bfa489033100d7bd2fe2661d7653c15ef5ed8",
+  "phase_receipt_sha256": "c05725aa9fe67bb263846a2b6168c4c2489df4b4e13a6820ba418db234c30b2b",
+  "phase_proof_sha256": "653790d9daa7816947e2c53a4100979f5ceebf785fe7bad777e3f6d14d955cdc",
+  "private_material": false,
+  "actual_qualified_time_or_health": false,
+  "files": [
+    {
+      "path": "phase-b/hello.zion",
+      "sha256": "16d099f0c470f10468ff883bbd51eb16056ab74dce1672e0908788beb0125458",
+      "bytes": 97967
+    },
+    {
+      "path": "phase-b/phase.json",
+      "sha256": "a9f60d6e2b7c6494e674b31e10b9ff57bd0439b8c870a2ffe30395c07ce6674a",
+      "bytes": 3296
+    },
+    {
+      "path": "phase-b/root.bin",
+      "sha256": "3d41b2402fcde61e047585759d3bfa489033100d7bd2fe2661d7653c15ef5ed8",
+      "bytes": 672
+    },
+    {
+      "path": "phase-b/snapshot.bin",
+      "sha256": "998f4dad9866aa6d2edae7d767228f0a309197f33bbd01bba213535b5791519b",
+      "bytes": 336
+    },
+    {
+      "path": "phase-b/targets.bin",
+      "sha256": "677d510c2f869cb728a619f71e73f9433f6dca64c6bbf87230376b8ac452a23d",
+      "bytes": 576
+    },
+    {
+      "path": "phase-b/timestamp.bin",
+      "sha256": "0397649e27a9c14fb86cd49c624976f7c72eafda1a9b10f63adb9474d1bc914c",
+      "bytes": 336
+    },
+    {
+      "path": "phase-c/hello.zion",
+      "sha256": "23e9cb2784ee34eaa41d603cdb9693e2451a19c2873279c427221053c8801953",
+      "bytes": 23751
+    },
+    {
+      "path": "phase-c/phase.json",
+      "sha256": "a16cda9dbf123e0bcf76284c2ff222d6a738285e5dff6d12b65d8571bd1a723f",
+      "bytes": 3285
+    },
+    {
+      "path": "phase-c/root.bin",
+      "sha256": "3d41b2402fcde61e047585759d3bfa489033100d7bd2fe2661d7653c15ef5ed8",
+      "bytes": 672
+    },
+    {
+      "path": "phase-c/snapshot.bin",
+      "sha256": "6a0855879646b9e04600c5899928a4e6d8a8548ae557d3a3fc152830ffe69e6f",
+      "bytes": 336
+    },
+    {
+      "path": "phase-c/targets.bin",
+      "sha256": "bece3b04fc7fbdb4948a836cb565b741ec938299348270fe59c680ef5d108915",
+      "bytes": 576
+    },
+    {
+      "path": "phase-c/timestamp.bin",
+      "sha256": "496a507afec60db15dae6215f449dff2fadb29d46c2dbe15d1075354c4ba2a3f",
+      "bytes": 336
+    },
+    {
+      "path": "old-b-fresh-metadata/hello.zion",
+      "sha256": "16d099f0c470f10468ff883bbd51eb16056ab74dce1672e0908788beb0125458",
+      "bytes": 97967
+    },
+    {
+      "path": "old-b-fresh-metadata/phase.json",
+      "sha256": "99974a21ce8a45b13ac8d845a4a6460f15cebbe485fd8ce6dda7dd454557cfa7",
+      "bytes": 3296
+    },
+    {
+      "path": "old-b-fresh-metadata/root.bin",
+      "sha256": "3d41b2402fcde61e047585759d3bfa489033100d7bd2fe2661d7653c15ef5ed8",
+      "bytes": 672
+    },
+    {
+      "path": "old-b-fresh-metadata/snapshot.bin",
+      "sha256": "96039a21b1e6822c884f965c8a64099635bcbc1f016ae4ff6334535b6e80d09e",
+      "bytes": 336
+    },
+    {
+      "path": "old-b-fresh-metadata/targets.bin",
+      "sha256": "99a05911fb45fd0db3ae86796bbdaee05c3b2edeb094aba2ae6b4fb035c0418c",
+      "bytes": 576
+    },
+    {
+      "path": "old-b-fresh-metadata/timestamp.bin",
+      "sha256": "598d0a1eb73a5338b4771c82a6383932b855f189c6479265e5e2c4dfbb9fe9ec",
+      "bytes": 336
+    }
+  ]
+}

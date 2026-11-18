@@ -140,9 +140,17 @@ class ArchitectureChecks(unittest.TestCase):
         self.assertIn("source inventory checksum mismatch", self.errors())
 
     def test_dependency_alias_cannot_escape_boot_adapter(self):
-        self.append(
-            "tools/ev/Cargo.toml",
-            '\n[dev-dependencies]\nrenamed = { package = "bootloader_api", version = "=0.11.17" }\n',
+        manifest = self.root / "tools/ev/Cargo.toml"
+        text = manifest.read_text(encoding="utf-8")
+        section = "[dev-dependencies]"
+        alias = 'renamed = { package = "bootloader_api", version = "=0.11.17" }\n'
+        if section in text:
+            manifest.write_text(text.replace(section, section + "\n" + alias, 1), encoding="utf-8")
+        else:
+            self.append("tools/ev/Cargo.toml", "\n" + section + "\n" + alias)
+        self.assertEqual(
+            tomllib.loads(manifest.read_text(encoding="utf-8"))["dev-dependencies"]["renamed"],
+            {"package": "bootloader_api", "version": "=0.11.17"},
         )
         self.assertIn("bootloader_api exceeds EXC-0001 scope", self.errors())
 

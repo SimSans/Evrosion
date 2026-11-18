@@ -1,0 +1,140 @@
+diff --git a/kernel/src/present_trace.rs b/kernel/src/present_trace.rs
+--- a/kernel/src/present_trace.rs
++++ b/kernel/src/present_trace.rs
+@@ -62,41 +62,21 @@
+     pub last_denied_at: u64,
+     pub last_denied_status: u64,
+ }
+-#[derive(Clone, Copy)]
+-struct Offer {
+-    frame: u64,
+-    deadline: u64,
+-    first: u64,
+-}
+ pub struct Trace {
+     rows: [Row; CAPACITY],
+     counts: [Counts; ACTORS],
+-    offers: [Option<Offer>; ACTORS],
+ }
+ impl Default for Trace {
+     fn default() -> Self {
+         Self {
+             rows: [Row::default(); CAPACITY],
+             counts: [Counts::default(); ACTORS],
+-            offers: [None; ACTORS],
+         }
+     }
+ }
+ impl Trace {
+-    pub fn offer(&mut self, caller: usize, frame: u64, deadline: u64, now: u64) {
++    pub fn offer(&mut self, caller: usize) {
+         self.counts[caller].offers += 1;
+-        if self.offers[caller].is_none_or(|o| o.frame != frame || o.deadline != deadline) {
+-            self.offers[caller] = Some(Offer {
+-                frame,
+-                deadline,
+-                first: now,
+-            });
+-        }
+-    }
+-    pub fn offered(&self, caller: usize, frame: u64, deadline: u64) -> Option<u64> {
+-        self.offers[caller]
+-            .filter(|o| o.frame == frame && o.deadline == deadline)
+-            .map(|o| o.first)
+     }
+     pub fn denied(&mut self, caller: usize, status: u64, now: u64) {
+         let c = &mut self.counts[caller];
+@@ -105,7 +85,6 @@
+         c.last_denied_status = status;
+     }
+     pub fn accept(&mut self, mut row: Row) -> Option<usize> {
+-        self.offers[row.caller] = None;
+         let c = &mut self.counts[row.caller];
+         let ordinal = c.accepted;
+         c.accepted += 1;
+@@ -186,33 +165,9 @@
+         }
+     }
+     #[test]
+-    fn busy_same_request_keeps_first_offer_without_renewing_cut() {
+-        let mut t = Trace::default();
+-        t.offer(9, 2, 6261, 5237);
+-        t.denied(9, 2, 5237);
+-        t.offer(9, 2, 6261, 5800);
+-        assert_eq!(t.offered(9, 2, 6261), Some(5237));
+-        assert_eq!(t.offered(9, 2, 6262), None);
+-        let mut r = row(9, 151);
+-        r.offered = t.offered(9, 2, 6261).unwrap();
+-        r.accepted = 6000;
+-        let slot = t.accept(r);
+-        assert_eq!(t.offered(9, 2, 6261), None);
+-        t.delivered(slot, 6001);
+-        t.complete(slot, 0, Some(2), 6259, true);
+-        let end = t.pop_dirty().unwrap();
+-        assert_eq!(
+-            (end.offered, end.accepted, end.delivered, end.deadline),
+-            (5237, 6000, 6001, 6261)
+-        );
+-        t.offer(9, 3, 7000, 6300);
+-        assert_eq!(t.offered(9, 3, 7000), Some(6300));
+-        assert_eq!(t.counts(9).offers, 3);
+-    }
+-    #[test]
+     fn expired_delivered_credit_keeps_identity_reply_and_original_cut() {
+         let mut t = Trace::default();
+-        t.offer(9, 2, 6261, 5237);
++        t.offer(9);
+         let slot = t.accept(row(9, 151));
+         assert!(t.pop_dirty().is_none());
+         t.delivered(slot, 6000);
+@@ -244,12 +199,12 @@
+     fn independent_actor_prefixes_never_replace_and_omissions_are_counted() {
+         let mut t = Trace::default();
+         for n in 0..7 {
+-            t.offer(9, 2, 6261, 5237);
++            t.offer(9);
+             let s = t.accept(row(9, n + 1));
+             assert_eq!(s.is_some(), n < 4);
+             t.complete(s, 0, Some(2), 6001, true);
+         }
+-        t.offer(10, 2, 6261, 5237);
++        t.offer(10);
+         let s = t.accept(row(10, 99));
+         t.complete(s, 0, Some(2), 6001, true);
+         let mut rows = 0;
+@@ -274,9 +229,9 @@
+     #[test]
+     fn preaccept_denials_and_undelivered_withdrawal_are_not_successful_replies() {
+         let mut t = Trace::default();
+-        t.offer(9, 2, 6261, 5237);
++        t.offer(9);
+         t.denied(9, 2, 100);
+-        t.offer(9, 2, 6261, 5237);
++        t.offer(9);
+         let slot = t.accept(row(9, 2));
+         t.terminal(slot, 4, 6261);
+         t.complete(slot, 4, None, 6261, true);
+diff --git a/kernel/src/workspace_runtime/transport.rs b/kernel/src/workspace_runtime/transport.rs
+--- a/kernel/src/workspace_runtime/transport.rs
++++ b/kernel/src/workspace_runtime/transport.rs
+@@ -144,7 +144,7 @@
+             return false;
+         };
+         if w == Channel::DisplayPresent.index() {
+-            self.present_trace.offer(index, value, absolute, now);
++            self.present_trace.offer(index);
+         }
+         if w == Channel::WorkspaceBlock.index() {
+             let parent = self.core.rpc.serving(meta.thread);
+@@ -279,10 +279,7 @@
+                 endpoint: self.core.rpc.accepted_snapshot(id).unwrap().endpoint(),
+                 frame: value,
+                 deadline: absolute,
+-                offered: self
+-                    .present_trace
+-                    .offered(index, value, absolute)
+-                    .unwrap_or(now),
++                offered: now,
+                 accepted: crate::timer::now(),
+                 ..ev_kernel::present_trace::Row::default()
+             })

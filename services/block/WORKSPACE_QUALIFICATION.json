@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "status": "PASS scoped host and linked driver checks; native admission/VM pending",
+  "date": "2026-11-15",
+  "host_library_tests_passed": 59,
+  "source_files": [
+    {
+      "path": "services/block/Cargo.toml",
+      "sha256": "568e6cabb90ca07e9352e80b6caf2bb052d0cbee0ca8c0022f9343293ba660d9"
+    },
+    {
+      "path": "services/block/src/lib.rs",
+      "sha256": "15893401386d59aa95a12bd8f1d6ede7f99d293772f32424ba5e2089ef4c1d30"
+    },
+    {
+      "path": "services/block/src/ata.rs",
+      "sha256": "7d85a3f915b3d156460d8d8bcb886aabd9b8228530fd942034f04abd7e8bc41d"
+    },
+    {
+      "path": "services/block/src/ata/session.rs",
+      "sha256": "779e1ffb3f3996127dddf56b586bb1323eeb2c2a7b93a6ecc5d681d2f3148146"
+    },
+    {
+      "path": "services/block/src/main.rs",
+      "sha256": "d3dff36b6d5b399c7eb622913e54a0d628f3de79a4826229d88a487d0ae22e4e"
+    },
+    {
+      "path": "services/block/src/rpc_actor.rs",
+      "sha256": "b6bab7582857c42489b09ca820b758399eb4732c4176dbc16ca632f6f5cd253c"
+    },
+    {
+      "path": "services/block/src/workspace.rs",
+      "sha256": "fd5e564d8ba8b2793ca81fb1479bd1879550c30c4db722ac1a12b429d0382e06"
+    },
+    {
+      "path": "services/block/src/workspace_actor.rs",
+      "sha256": "c034cbc76e5d09de8d78da289b3179b61c1fb8d72c759f3de2d6dc49726bb2ca"
+    },
+    {
+      "path": "services/block/src/workspace_tests.rs",
+      "sha256": "668e52be18050e55b4710e8fadbeb3860f0269a6e3aa9d95728e8d7504f61a4b"
+    },
+    {
+      "path": "services/block/src/ata/tests/workspace_tests.rs",
+      "sha256": "a6a200cf78a2be5e9b6440691411d61a0c17fe121c2630cb91eac83b30bfbbcd"
+    },
+    {
+      "path": "services/block/qualify_workspace.py",
+      "sha256": "656aa7fbd41beb69cf92f6936627de58e18bd552c8262d87b104c5d143ecc295"
+    },
+    {
+      "path": "services/block/WORKSPACE_PROFILE.md",
+      "sha256": "11f1746992b6e191a3fa0708260e56c5ac94fa2ab5695d8d3a4ae6f582fa8297"
+    }
+  ],
+  "receipts": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-block-tests-01.json",
+      "sha256": "5f111701f1bea103a96c269981ca0cc5e3708e2472bcec315163823cbfa95bcd",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-block-clippy-01.json",
+      "sha256": "26cc21c6efb9b17ff0fe647c66df132caeda258093c5270c5ab4140c04a14efb",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-block-bare-clippy-01.json",
+      "sha256": "744d4e84b4c2986ac1f6dd8aa8e919401642269ca8a3128353f44ac3e5a23cc0",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-block-client-check-01.json",
+      "sha256": "51a086f986c5fd6c86b1a7110195c7e1609809ed08368427c4a9daa610845546",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-block-link-01.json",
+      "sha256": "e23ea8afb9eb0452ef624b55780015f48aa1893ad7938b88630a242a9d02406e",
+      "passed": false
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-block-link-02.json",
+      "sha256": "2f9b3c8fefd47a162789c238b75606084595a34ec2faaf608ad44f22d436b47d",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-block-link-03.json",
+      "sha256": "d6dec9b9b362530c1bd3606af7219fac2ea19768ba4973a6e0b80a67c1ce4fdb",
+      "passed": true
+    }
+  ],
+  "linked": {
+    "scope": "Actual linked single driver; no VM or frame-admission claim",
+    "elf": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/target/retained-workspace-block-03/workspace-block.elf",
+    "sha256": "588fcb30bb0e973f2994e02d713e5ceee5fb49eabad1f9cf03e089f8de141ffc",
+    "unstripped_elf": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/target/retained-workspace-block-03/workspace-block.unstripped.elf",
+    "unstripped_sha256": "2af215326ef2c0b0bea0fce703e0573442e73ada7d8e4f0a8f4118964f309f1f",
+    "debug_separation_loaded_identity_equal": true,
+    "bytes": 41144,
+    "entry": 549755817984,
+    "segments": [
+      {
+        "flags": 5,
+        "virtual": 549755817984,
+        "file_bytes": 21221,
+        "memory_bytes": 21221,
+        "pages": 6,
+        "align": 4096,
+        "offset": 4096
+      },
+      {
+        "flags": 4,
+        "virtual": 549755842560,
+        "file_bytes": 871,
+        "memory_bytes": 871,
+        "pages": 1,
+        "align": 4096,
+        "offset": 28672
+      },
+      {
+        "flags": 6,
+        "virtual": 549755846656,
+        "file_bytes": 48,
+        "memory_bytes": 48,
+        "pages": 1,
+        "align": 4096,
+        "offset": 32768
+      },
+      {
+        "flags": 6,
+        "virtual": 549756862464,
+        "file_bytes": 0,
+        "memory_bytes": 16384,
+        "pages": 4,
+        "align": 4096,
+        "offset": 36864
+      }
+    ],
+    "loaded_segment_pages": 12,
+    "declared_cpu_frames_process_thread": [
+      16384,
+      32,
+      1,
+      1
+    ],
+    "Cargo.lock.sha256": "786ba5c20144b6c880fbd3bb93de2355dde96d8e894695171dcccc3477b81803",
+    "free_bytes_after": 3683483648
+  },
+  "stack_audit": {
+    "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/target/retained-workspace-block-03/STACK_AUDIT.json",
+    "sha256": "ce2c398d2d658cdf111fd6c732e2f7b667099b95de8043cfb0266f04db59660d",
+    "census_bytes": 2280,
+    "declared_stack": 16384
+  },
+  "scope_limits": [
+    "No actual VM/provisioning/grant identity/frame admission/physical power-loss claim",
+    "Old4MiB device profile and original volumes retained; new96MiB copy is a distinct container",
+    "First kernel-code-model direct link failure retained; corrected userspace flags and debug separation validated"
+  ],
+  "disk_free_bytes": 3726385152,
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

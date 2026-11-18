@@ -1,6 +1,15 @@
 //! Native Hello identity-independent view helpers; no storage authority here.
 #![no_std]
 #![forbid(unsafe_code)]
+pub mod document;
+pub mod document_control;
+#[cfg(feature = "native-session")]
+pub mod editor;
+/// Stable identity shared by the source package producer and this App's note
+/// client. It never identifies or selects another App's namespace on the wire.
+pub const APP_ID: [u8; 16] = [
+    0x62, 0xc0, 0x76, 0x7e, 0x6c, 0x18, 0x45, 0x9c, 0x91, 0xe6, 0xeb, 0x8b, 0x94, 0x89, 0x58, 0xf2,
+];
 use ev_userspace_contract::file::{ErrorCode, Payload, Response};
 pub const INITIAL_VALUE: u32 = 1001;
 pub const UPDATED_VALUE: u32 = 2026;
@@ -23,14 +32,20 @@ pub fn startup(bytes: &[u8]) -> Result<ev_userspace_contract::Bootstrap<'_>, Sta
         }
     }
     let expected = graph::grants(Child::App);
-    if bootstrap.grants().count() != expected.len() {
+    let count = bootstrap.grants().count();
+    let dedicated = cfg!(feature = "native-session") && count == 7;
+    if count != expected.len() && !dedicated {
         return Err(StartupError::Roles);
     }
-    let mut handles = [0; 6];
-    for (index, (actual, role)) in bootstrap.grants().zip(expected).enumerate() {
+    let mut handles = [0; 7];
+    for (index, actual) in bootstrap.grants().enumerate() {
+        let (kind, rights) = expected
+            .get(index)
+            .map(|role| (role.kind, role.rights))
+            .unwrap_or((1, 7));
         if actual.selector != (index + 1) as u64
-            || actual.kind != role.kind
-            || actual.rights != role.rights
+            || actual.kind != kind
+            || actual.rights != rights
             || handles[..index].contains(&actual.handle)
         {
             return Err(StartupError::Roles);

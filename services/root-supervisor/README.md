@@ -18,7 +18,13 @@ after timeout. The sustained variant replaces one faulting service 64 times whil
 another responds, retaining Root identity and accumulated Job CPU charges. Each
 artifact is built and measured separately; test injections are explicit features.
 
-Whole Root graph reconstitution, production epoch/generation authentication and
-independent recovery remain open. See
+Device-free whole Root graph reconstitution and independent recovery passed the
+bounded M2 gate. Production boot authentication and general reconstruction of
+the later device-bearing shared Root/storage base remain separate. See
 [ADR-0035](../../architecture/adr/ADR-0035-supervisor-created-service-graphs.md)
-and [M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+and M2 readiness.
+
+Later native/data and connected/update controllers retain explicit capabilities,
+separate durable state, genuine health and protected offline recovery within
+M6's declared scope. Startup Ready is still
+distinct from cohort health, Known Good and milestone acceptance.

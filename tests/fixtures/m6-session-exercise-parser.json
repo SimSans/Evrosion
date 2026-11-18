@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "purpose": "Exact actual serial bytes retained solely for Host parser regression. Original overall controlled14 command was FAIL after valid guest completion because Host expected one padding observation; no successful cold/fullM6 acceptance is claimed by this fixture.",
+  "sha256": "10c49bb5ec3c16bcdd4b47049231213e1ea687f8836dec4931e6620e3e361939",
+  "bytes": 80485,
+  "actual_source_sha256": "a6f45576ce0ec1d88b428aaa664ee2c8d272ca9b040ee163637e3feab2a83566",
+  "actual_build_id": "516ee25d352eb7e572b4c9bf5ac90738637f4f1dc6d1c92e60a3b021eb14761e",
+  "origin_serial": "build/test-tmp/m6-session-integration-2026-11-12-14/build/m6/evidence/session-conformance-4125685-1794504959125595340/boot/run-001/serial.log",
+  "origin_result": "build/test-tmp/m6-session-vm14-run-2026-11-12-01/result.json",
+  "origin_result_sha256": "f2847a638b11253171275890943dd87ae26cb3431c111dd4388347aa95e45d27",
+  "original_error": "duplicate/out-of-order App padding observation",
+  "scripted_input": true,
+  "human_consent_claim": false,
+  "cold_VM": false,
+  "full_conformance_pass": false,
+  "whole_M6_pass": false,
+  "padding_observations": 2,
+  "session_log": {
+    "observed": 210,
+    "retained": 210,
+    "omitted": 0
+  },
+  "fixture_immutable_original_bytes": true
+}

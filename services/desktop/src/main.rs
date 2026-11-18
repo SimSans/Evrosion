@@ -2,6 +2,16 @@
 #![no_main]
 use core::{arch::global_asm, panic::PanicInfo};
 use ev_userspace_runtime as rt;
+#[cfg(all(
+    feature = "workspace-input",
+    any(
+        feature = "display",
+        feature = "shell",
+        feature = "interactive",
+        feature = "native-bad-shell"
+    )
+))]
+compile_error!("workspace-input is a distinct measured M8 Input actor");
 #[cfg(not(any(
     feature = "display",
     feature = "input",
@@ -68,11 +78,21 @@ pub(crate) fn yield_now() {
 }
 #[cfg(all(
     not(feature = "native-bad-shell"),
-    any(feature = "display", not(feature = "input"))
+    any(feature = "display", not(feature = "input")),
+    not(all(
+        feature = "native-session",
+        feature = "shell",
+        not(feature = "display")
+    ))
 ))]
 pub(crate) fn event(cap: u64, bytes: [u8; 8], stop: u64) {
+    let retry_stop = if stop == 0 {
+        rt::execution::deadline(stop, now(), 512).unwrap_or_else(|_| rt::exit(702))
+    } else {
+        stop
+    };
     loop {
-        require(now() < stop, 702);
+        require(now() < retry_stop, 702);
         let r = rt::send(cap, bytes);
         require(r.value == 0 && r.capability == 0, 708);
         match r.status {
@@ -84,6 +104,7 @@ pub(crate) fn event(cap: u64, bytes: [u8; 8], stop: u64) {
         }
     }
 }
+#[cfg(not(feature = "workspace-input"))]
 pub(crate) fn grant(
     b: &ev_userspace_contract::Bootstrap<'_>,
     selector: u64,
@@ -112,7 +133,13 @@ extern "C" fn ev_desktop_main(record: u64, length: u64, stop: u64) -> ! {
     let bytes = unsafe { core::slice::from_raw_parts(record as *const u8, length as usize) };
     let bootstrap =
         ev_userspace_contract::Bootstrap::parse(bytes).unwrap_or_else(|_| rt::exit(706));
-    require(stop > now(), 707);
+    #[cfg(feature = "workspace-input")]
+    let _selected =
+        ev_desktop::workspace_input::Profile::parse(bytes).unwrap_or_else(|_| rt::exit(760));
+    require(
+        rt::execution::validate(stop, now(), cfg!(feature = "native-session")).is_ok(),
+        707,
+    );
     #[cfg(feature = "native-bad-shell")]
     {
         // Validate the real ordinary Shell ABI/roles before this measured bad

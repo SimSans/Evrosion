@@ -1,8 +1,8 @@
 # M2 acceptance contract
 
 Status: **PASS — verified 2026-10-27**, within the bounded Internal profile below.
-[Final 71-check evidence](../docs/release/0.1-preview.md#validation-and-provenance) and
-[readiness](../docs/release/0.1-preview.md#validation-and-provenance).
+Final 71-check evidence (local engineering archive) and
+readiness.
 
 Scope is the union of [E-025.25–33](plans/roadmap/E-025-initial-scope.md),
 [R-011.15](plans/release-project/Evrosion_R-007_to_R-011_Superfile_v1.md),
@@ -13,11 +13,11 @@ Run `python3 tools/m2/binding.py` for the cumulative mechanism gate.
 
 ## Evidence boundaries
 
-E71 means the [final 71-check acceptance](../docs/release/0.1-preview.md#validation-and-provenance):
+E71 means the final 71-check acceptance (local engineering archive):
 262 kernel host tests, 150 matched recorded source hashes, complete boot snapshots,
 repeated one/two-CPU execution, negative images and host/target/governance checks.
-E68 is the preserved [68-check checkpoint](../docs/release/0.1-preview.md#validation-and-provenance).
-E57 is the [eleven recovery cases](../docs/release/0.1-preview.md#validation-and-provenance).
+E68 is the preserved 68-check checkpoint (local engineering archive).
+E57 is the eleven recovery cases (local engineering archive).
 All earlier behaviors below are rerun by E71; historical JSON remains unchanged.
 
 ## Capability-native userspace exit
@@ -27,7 +27,7 @@ All earlier behaviors below are rerun by E71; historical JSON remains unchanged.
 | E-025.25–26: Root creates Jobs/processes, delegates, starts/routes/observes/restarts | E68 `supervisor_bootstrap`, `service_launch`, `service_restart`: separate source-built CPL3 Root and service images; exact grants and held admission |
 | E-025.27–28/33: denial and attenuation; no ambient universal authority | Cumulative capability tests; actual READ success/WRITE and forged-handle denial; service images admit only measured role rights; Root/service control escalation is denied |
 | E-025.29/33: capability transfer, timeouts and failure | E68 `capability_rpc`:8 waits, 6 deliveries, 4 returns, 2 queued refunds, 2 delivered no-refund failures; actual server faults before/after delivery |
-| E-025.29: Memory Object sharing | Retained [M1 shared-memory hardware proof](../docs/release/0.1-preview.md#validation-and-provenance), rerun in E68; cap-RPC handle probes do not claim mapped-data access |
+| E-025.29: Memory Object sharing | Retained M1 shared-memory hardware proof (local engineering archive), rerun in E68; cap-RPC handle probes do not claim mapped-data access |
 | E-025.30–31/33: typed userspace IPC and early IDL | Generated separate `ev.test.echo@1` and `ev.test.cap_echo@1` Rust client/server codecs, closed schemas, version/shape validation and actual executing callers/handlers |
 | E-025.32–33: crash detection/restart and unrelated-service survival | E68 `service_restart`:64 victim faults/replacements, 128 healthy peer replies, 64 victim replies, 66 starts, stable Root and balanced backing/metadata |
 | E-025.33: address-space isolation | Retained [M1 acceptance](M1_ACCEPTANCE.md), private measured executable roots, denied kernel/foreign access and final W^X/guard permissions in cumulative boots |

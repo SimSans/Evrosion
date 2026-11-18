@@ -55,6 +55,8 @@ pub struct Routes {
     system: u64,
     files: u64,
     native_system: bool,
+    session_system: bool,
+    network_system: bool,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -68,6 +70,14 @@ pub struct Operation {
     pub physical: Request,
     pub reply: Response,
 }
+impl Operation {
+    /// Validate completion in the physical device namespace, then return the
+    /// original caller-scoped acknowledgement. A physical sector is never an
+    /// authorized logical sector or a wire reply to the scoped client.
+    pub fn complete(self, physical: Response) -> Option<Response> {
+        (physical == self.physical.success()).then_some(self.reply)
+    }
+}
 impl Routes {
     pub fn new(system: u64, files: u64) -> Option<Self> {
         if system == 0 || files == 0 || system == files {
@@ -77,6 +87,8 @@ impl Routes {
                 system,
                 files,
                 native_system: false,
+                session_system: false,
+                network_system: false,
             })
         }
     }
@@ -88,8 +100,27 @@ impl Routes {
             routes
         })
     }
+    pub fn new_session(system: u64, files: u64) -> Option<Self> {
+        Self::new_native(system, files).map(|mut routes| {
+            routes.session_system = true;
+            routes
+        })
+    }
+    /// Only the measured network driver build selects this additive Root route.
+    /// It adds no endpoint or child authority and cannot be selected by packets.
+    #[cfg(feature = "native-network")]
+    pub fn new_network(system: u64, files: u64) -> Option<Self> {
+        Self::new_session(system, files).map(|mut routes| {
+            routes.network_system = true;
+            routes
+        })
+    }
     fn physical_sector(&self, client: Client, logical: u32) -> Option<u32> {
-        if self.native_system && client == Client::System {
+        if self.network_system && client == Client::System {
+            ev_store::network::physical_sector(logical)
+        } else if self.session_system && client == Client::System {
+            ev_store::native::session_physical_sector(logical)
+        } else if self.native_system && client == Client::System {
             ev_store::native::physical_sector(logical)
         } else {
             client.physical_sector(logical)
@@ -294,5 +325,79 @@ mod native_grant_tests {
                 Err(Error::Bounds)
             );
         }
+    }
+}
+#[cfg(all(test, feature = "native-network"))]
+mod network_tests {
+    use super::*;
+    #[test]
+    fn only_network_root_receiver_exposes_exact_content_spans_and_returns_logical_acks() {
+        let routes = Routes::new_network(900, 901).unwrap();
+        let old = [
+            Routes::new(900, 901).unwrap(),
+            Routes::new_native(900, 901).unwrap(),
+            Routes::new_session(900, 901).unwrap(),
+        ];
+        for area in [
+            ev_store::network::Area::Checkpoint,
+            ev_store::network::Area::Objects,
+        ] {
+            for local in 0..area.sectors() {
+                let logical = area.wire_sector(local).unwrap();
+                let physical = area.physical_start() + local as u32;
+                for request in [
+                    Request::Read { sector: logical },
+                    Request::Write { sector: logical },
+                ] {
+                    let op = routes.resolve(900, request.encode()).unwrap();
+                    assert_eq!(op.client, Client::System);
+                    let expected = match request {
+                        Request::Read { .. } => Request::Read { sector: physical },
+                        _ => Request::Write { sector: physical },
+                    };
+                    assert_eq!(op.physical, expected);
+                    assert_eq!(op.complete(expected.success()), Some(request.success()));
+                    assert_eq!(op.complete(request.success()), None);
+                    assert_eq!(routes.resolve(901, request.encode()), Err(Error::Bounds));
+                    assert_eq!(
+                        routes.resolve(902, request.encode()),
+                        Err(Error::UnknownEndpoint)
+                    );
+                    for route in old {
+                        assert_eq!(route.resolve(900, request.encode()), Err(Error::Bounds));
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn every_guard_and_old_file_mapping_remains_closed_and_bad_physical_reply_never_acknowledges() {
+        let routes = Routes::new_network(900, 901).unwrap();
+        for sector in 0..=8192 {
+            let req = Request::Read { sector };
+            match ev_store::network::physical_sector(sector) {
+                Some(p) => {
+                    let op = routes.resolve(900, req.encode()).unwrap();
+                    assert_eq!(op.physical, Request::Read { sector: p });
+                    assert_eq!(op.complete(Response::Read { sector: p + 1 }), None);
+                }
+                None => assert_eq!(routes.resolve(900, req.encode()), Err(Error::Bounds)),
+            }
+            assert_eq!(
+                routes.resolve(901, req.encode()).ok().map(|o| o.physical),
+                Client::Files
+                    .physical_sector(sector)
+                    .map(|sector| Request::Read { sector })
+            );
+        }
+        assert_eq!(
+            routes.resolve(900, Request::Read { sector: u32::MAX }.encode()),
+            Err(Error::Bounds)
+        );
+        assert_eq!(routes.resolve(0, [0; 8]), Err(Error::UnknownEndpoint));
+        assert_eq!(
+            routes.resolve(900, [0; 8]),
+            Err(Error::Malformed(DecodeError::Magic))
+        );
     }
 }

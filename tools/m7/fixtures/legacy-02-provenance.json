@@ -1,0 +1,36 @@
+{
+  "schema": 1,
+  "kind": "exact-retained-legacy-0.2-immutable-package-input",
+  "source_sha256": "6ea4596434c178a379b74fc402f718c44e37559592b14714161ad83e3f5c8437",
+  "source_manifest": "local-engineering-archive/build/test-tmp/m6-stabilization-2026-11-15-01/manual-host-fix/build/m6/network-session/boot-set/m6-network-owner/manifest.json",
+  "source_manifest_sha256": "9b38e7c23438e5bf27e1ebadd0683decb81d4bf2ad28eb1fd12fb68e7f3121ec",
+  "source_pin": "local-engineering-archive/build/test-tmp/m6-stabilization-2026-11-15-01/MANUAL_HOST_PIN.json",
+  "saved_private_note": "s02",
+  "saved_volume_sha256": "3607de397ba89439af03a8775a0ac3c67636cf6cbb4b747aa712fa1fdf0d3eb2",
+  "original_data_untouched": true,
+  "authority_claim": false,
+  "scope": "Exact complete immutable package and executable bytes retained for legitimate registry reference resolution and unchanged executable admission. Not current System health, release authority, or data migration.",
+  "files": [
+    {
+      "source": "local-engineering-archive/build/test-tmp/m6-stabilization-2026-11-15-01/manual-host-fix/build/m0/artifacts/34c12bc035726bec-3194080-1794738572457113826/m5-native-Hello-A.zion",
+      "source_artifact": {
+        "path": "artifacts/34c12bc035726bec-3194080-1794738572457113826/m5-native-Hello-A.zion",
+        "sha256": "a295bc75b9ee0b7f186a4d716a668a8c9d3e2de16151aadecbe839dbd218fc71"
+      },
+      "destination": "tools/m7/fixtures/legacy-02-Hello-A.zion",
+      "bytes": 97926,
+      "sha256": "a295bc75b9ee0b7f186a4d716a668a8c9d3e2de16151aadecbe839dbd218fc71"
+    },
+    {
+      "source": "local-engineering-archive/build/test-tmp/m6-stabilization-2026-11-15-01/manual-host-fix/build/m0/artifacts/34c12bc035726bec-3194080-1794738572457113826/m5-native-app-a.elf",
+      "source_artifact": {
+        "path": "artifacts/34c12bc035726bec-3194080-1794738572457113826/m5-native-app-a.elf",
+        "sha256": "b518bd4eb7d5cfd057f55d86d06a82f3d62d7d6a9a58b9d475e2bcc35ff34f3e"
+      },
+      "destination": "tools/m7/fixtures/legacy-02-app-a.elf",
+      "bytes": 96904,
+      "sha256": "b518bd4eb7d5cfd057f55d86d06a82f3d62d7d6a9a58b9d475e2bcc35ff34f3e"
+    }
+  ],
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

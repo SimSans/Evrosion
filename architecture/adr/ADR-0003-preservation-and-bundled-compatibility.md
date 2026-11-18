@@ -8,9 +8,8 @@ Related: E-010, E-012, E-016, E-019, E-022, E-025, E-026, R-011, INV-LIFE-002, I
 ## Context
 
 The owner accepted and supplied the 2026-09-21
-[product amendment](../plans/amendments/Evrosion_Data_Migration_and_Windows_Compatibility_Amendment_v1.md),
-and requested technical integration. The initial development
-version and M0 acceptance now have separate executed evidence.
+[product amendment](../plans/amendments/Evrosion_Data_Migration_and_Windows_Compatibility_Amendment_v1.md).
+Its installation and compatibility requirements are separate from M0 boot acceptance.
 
 The source's A-001/A-002 labels overlap the established audit-action namespace.
 They do not replace A-001 Root Authority Custody or A-002 in the audit register.

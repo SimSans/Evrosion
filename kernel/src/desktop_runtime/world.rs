@@ -9,16 +9,20 @@ struct Outcome {
 enum Selected {
     #[cfg(not(feature = "test-m5-native"))]
     Desktop(ev_kernel::root_manifest_v2::CurrentRoot<'static>),
-    #[cfg(feature = "test-m5-native")]
+    #[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
     Native(ev_kernel::root_manifest_v2::NativeRoot<'static>),
+    #[cfg(feature = "test-m6-network")]
+    Network(ev_kernel::root_manifest_v4::CurrentRoot<'static>),
 }
 impl Selected {
     fn manifest(&self) -> &ev_kernel::root_manifest_v2::Manifest<'static> {
         match self {
             #[cfg(not(feature = "test-m5-native"))]
             Self::Desktop(root) => root.manifest(),
-            #[cfg(feature = "test-m5-native")]
+            #[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
             Self::Native(root) => root.manifest(),
+            #[cfg(feature = "test-m6-network")]
+            Self::Network(root) => root.manifest(),
         }
     }
 }
@@ -44,7 +48,13 @@ pub(crate) unsafe fn prove_native(
     assets: &crate::native_runtime::Assets,
     observe: impl FnMut(Observation),
 ) -> crate::native_runtime::Proof {
+    #[cfg(not(feature = "test-m6-network"))]
     assert!(matches!(assets.common.profile, AssetProfile::Native));
+    #[cfg(feature = "test-m6-network")]
+    assert!(matches!(
+        assets.common.profile,
+        AssetProfile::Network { .. }
+    ));
     // SAFETY: explicit Native selection goes through the same actual owners/gates.
     let outcome = unsafe { run(offset, frames, fb, &assets.common, Some(assets), observe) };
     let mut proof = outcome.native.expect("actual native graph proof");
@@ -82,27 +92,60 @@ unsafe fn run(
         bits: (core::arch::x86_64::__cpuid(0x80000008).eax & 255) as u8,
         original,
     };
+    #[cfg(not(feature = "test-m6-network"))]
     let measured = ev_kernel::root_manifest_v2::verify(
         assets.root_manifest,
         assets.root_measurement,
         assets.root_image,
     )
     .unwrap();
+    #[cfg(not(feature = "test-m6-network"))]
     let profile = match assets.profile {
         #[cfg(not(feature = "test-m5-native"))]
         AssetProfile::Desktop => Selected::Desktop(measured.current_profile().unwrap()),
         #[cfg(feature = "test-m5-native")]
         AssetProfile::Native => Selected::Native(measured.native_profile().unwrap()),
     };
+    #[cfg(feature = "test-m6-network")]
+    let profile = Selected::Network(
+        ev_kernel::root_manifest_v4::verify(
+            assets.root_manifest,
+            assets.root_measurement,
+            assets.root_image,
+        )
+        .unwrap(),
+    );
     let mut a = Authority::new();
     let mut s = Scheduler::new();
     let domains = ev_kernel::root_factory_v2::RootDomains::allocate(&mut a).unwrap();
     let boot = s
-        .create_job_with_limits(Limits::new(262_144, 1024, 8, 8))
+        .create_job_with_limits(Limits::new(
+            262_144,
+            1024,
+            if cfg!(feature = "test-m6-network") {
+                10
+            } else {
+                8
+            },
+            if cfg!(feature = "test-m6-network") {
+                10
+            } else {
+                8
+            },
+        ))
         .unwrap();
     let root_job = s
         .create_child_job(boot, profile.manifest().limits())
         .unwrap();
+    #[cfg(feature = "test-m6-session")]
+    {
+        // Trusted boot-profile policy only. Cumulative sampled usage remains
+        // retained; these caps renew without replacing Job identities/history.
+        s.configure_cpu_budget(boot, SESSION_CPU_PERIOD, SESSION_CPU_PERIOD)
+            .unwrap();
+        s.configure_cpu_budget(root_job, SESSION_CPU_PERIOD, SESSION_CPU_PERIOD)
+            .unwrap();
+    }
     // SAFETY: all18 immutable roots created once before any managed graph.
     let mut backing = unsafe {
         #[cfg(feature = "test-m5-native")]
@@ -136,7 +179,7 @@ unsafe fn run(
     assert_eq!(backing.source(root_v2::Role::Events), backing.sources[7]);
     #[cfg(feature = "test-m5-native")]
     let mut native_backing = if let Some(extra) = native_assets {
-        let catalogue = root_v2::native::catalogue::Catalogue::decode(assets.catalogue).unwrap();
+        let catalogue = NativeCatalogue::decode(assets.catalogue).unwrap();
         // SAFETY: common18 finished first; actual validated immutable extra sources.
         Some(
             unsafe {
@@ -161,11 +204,16 @@ unsafe fn run(
     } else {
         None
     };
+    #[cfg(feature = "test-m6-network")]
+    // SAFETY: original22 sources are complete; no process can access RAM/ports.
+    unsafe {
+        backing.append_network(&mut a, &mut s, frames)
+    };
     let mut catalog = [CatalogEntry {
         selector: 0,
         root: Handle(0),
         kind: Kind::Memory,
-    }; root_v2::MAX_GRANTS];
+    }; ROOT_GRANTS];
     for (i, spec) in root_v2::ROLES.into_iter().enumerate() {
         catalog[i] = CatalogEntry {
             selector: spec.role.selector(),
@@ -175,8 +223,10 @@ unsafe fn run(
     }
     #[cfg(not(feature = "test-m5-native"))]
     let catalog_count = 18;
-    #[cfg(feature = "test-m5-native")]
+    #[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
     let mut catalog_count = 18;
+    #[cfg(feature = "test-m6-network")]
+    let catalog_count = root_abi::CURRENT_GRANTS;
     #[cfg(feature = "test-m5-native")]
     if let Some(extra) = &native_backing {
         for (i, root) in extra.sources().into_iter().enumerate() {
@@ -186,20 +236,73 @@ unsafe fn run(
                 kind: Kind::Memory,
             };
         }
-        catalog_count = root_v2::native::CURRENT_GRANTS;
+        #[cfg(not(feature = "test-m6-network"))]
+        {
+            catalog_count = root_v2::native::CURRENT_GRANTS;
+        }
+    }
+    #[cfg(feature = "test-m6-network")]
+    {
+        for (i, root) in backing
+            .network
+            .as_ref()
+            .unwrap()
+            .sources
+            .into_iter()
+            .enumerate()
+        {
+            catalog[22 + i] = CatalogEntry {
+                selector: 23 + i as u64,
+                root,
+                kind: if matches!(i, 2 | 6) {
+                    Kind::IoPorts
+                } else {
+                    Kind::Memory
+                },
+            };
+        }
     }
     let catalog = &catalog[..catalog_count];
+    #[cfg(not(feature = "test-m6-network"))]
     let mut registry =
         Registry::with_service_limits(NonZeroU64::new(1).unwrap(), CHILD_LIMITS).unwrap();
+    #[cfg(feature = "test-m6-network")]
+    let mut registry = {
+        let ordinary = ev_userspace_contract::root_v4::JOB_TEMPLATE_LIMITS[0];
+        let network = ev_userspace_contract::root_v4::JOB_TEMPLATE_LIMITS[1];
+        Registry::with_service_templates(
+            NonZeroU64::new(1).unwrap(),
+            Limits::new(ordinary[0], ordinary[1], ordinary[2], ordinary[3]),
+            Limits::new(network[0], network[1], network[2], network[3]),
+        )
+        .unwrap()
+    };
     registry
         .register_job(&a, backing.custody, backing.sources[6], boot)
         .unwrap();
+    #[cfg(not(feature = "test-m6-network"))]
     let images = assets.images;
+    #[cfg(feature = "test-m6-network")]
+    let images = {
+        let AssetProfile::Network { images: network } = assets.profile;
+        core::array::from_fn::<_, 8, _>(|i| {
+            if i < 6 {
+                assets.images[i]
+            } else {
+                network[i - 6]
+            }
+        })
+    };
+    #[cfg(not(feature = "test-m6-network"))]
     let base_catalogue =
         root_v2::catalogue::Catalogue::decode(&assets.catalogue[..root_v2::catalogue::SIZE])
             .unwrap();
+    #[cfg(feature = "test-m6-network")]
+    let network_catalogue = NativeCatalogue::decode(assets.catalogue).unwrap();
+    #[cfg(feature = "test-m6-network")]
+    let base_catalogue = network_catalogue.base();
     for child in CHILDREN {
-        let grants = root_v2::graph::grants(child);
+        let grants = graph::grants(child);
         let mut roles = [Role {
             selector: 0,
             kind: Kind::Memory,
@@ -218,24 +321,67 @@ unsafe fn run(
         } else {
             ev_kernel::executable::LayoutReservation::Legacy
         };
-        let image =
-            ServiceImage::verify_layout(bytes, sha, CHILD_LIMITS, &roles[..grants.len()], layout)
-                .unwrap();
+        let image = ServiceImage::verify_layout(
+            bytes,
+            sha,
+            graph::child_limits(child),
+            &roles[..grants.len()],
+            layout,
+        )
+        .unwrap();
+        #[cfg(not(feature = "test-m6-network"))]
         let declared = base_catalogue.images().nth(child.index()).unwrap();
-        assert_eq!(declared.descriptor, image.digest());
-        assert_eq!(declared.roles, roles_measurement(child));
-        assert_eq!(declared.grants as usize, grants.len());
-        assert_eq!(declared.abi, ev_userspace_contract::ABI);
+        #[cfg(feature = "test-m6-network")]
+        let declared = if child.index() < 6 {
+            let d = base_catalogue.images().nth(child.index()).unwrap();
+            (d.descriptor, d.roles, d.grants, d.abi)
+        } else {
+            let d = if child == Child::NetDriver {
+                network_catalogue.net_driver()
+            } else {
+                network_catalogue.net_service()
+            };
+            (d.descriptor, d.roles, grants.len() as u8, d.abi)
+        };
+        #[cfg(feature = "test-m6-network")]
+        let (descriptor, roles_digest, grant_count, abi) = declared;
+        #[cfg(not(feature = "test-m6-network"))]
+        let (descriptor, roles_digest, grant_count, abi) = (
+            declared.descriptor,
+            declared.roles,
+            declared.grants,
+            declared.abi,
+        );
+        assert_eq!(descriptor, image.digest());
+        assert_eq!(roles_digest, roles_measurement(child));
+        assert_eq!(grant_count as usize, grants.len());
+        assert_eq!(abi, ev_userspace_contract::ABI);
+        let source = if child.index() < 6 {
+            backing.sources[child.index()]
+        } else {
+            #[cfg(feature = "test-m6-network")]
+            {
+                backing.network.as_ref().unwrap().sources[child.index() - 6]
+            }
+            #[cfg(not(feature = "test-m6-network"))]
+            {
+                unreachable!()
+            }
+        };
         registry
-            .register_image(&a, backing.custody, backing.sources[child.index()], image)
+            .register_image(&a, backing.custody, source, image)
             .unwrap();
     }
     #[cfg(feature = "test-m5-native")]
     if let (Some(extra), Some(physical)) = (native_assets, native_backing.as_ref()) {
-        let catalogue = root_v2::native::catalogue::Catalogue::decode(assets.catalogue).unwrap();
+        let catalogue = NativeCatalogue::decode(assets.catalogue).unwrap();
         let spec = catalogue.app_b();
-        let grants = root_v2::graph::grants(Child::App);
-        let roles: [Role; 6] = core::array::from_fn(|i| Role {
+        let grants = graph::grants(Child::App);
+        let roles: [Role; if cfg!(feature = "test-m6-network") {
+            7
+        } else {
+            6
+        }] = core::array::from_fn(|i| Role {
             selector: i as u64 + 1,
             kind: kind(grants[i].kind),
             rights: Rights::from_bits(grants[i].rights).unwrap(),
@@ -252,9 +398,9 @@ unsafe fn run(
     }
     #[cfg(feature = "test-m5-native")]
     if let (Some(extra), Some(physical)) = (native_assets, native_backing.as_ref()) {
-        let catalogue = root_v2::native::catalogue::Catalogue::decode(assets.catalogue).unwrap();
+        let catalogue = NativeCatalogue::decode(assets.catalogue).unwrap();
         let spec = catalogue.bad_shell();
-        let grants = root_v2::graph::grants(Child::Shell);
+        let grants = graph::grants(Child::Shell);
         let roles: [Role; 8] = core::array::from_fn(|i| Role {
             selector: i as u64 + 1,
             kind: kind(grants[i].kind),
@@ -278,20 +424,24 @@ unsafe fn run(
     let mut custodian = match &profile {
         #[cfg(not(feature = "test-m5-native"))]
         Selected::Desktop(root) => Custodian::new_root_v2(EPOCH, root, backing.custody, catalog),
-        #[cfg(feature = "test-m5-native")]
+        #[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
         Selected::Native(root) => Custodian::new_native_root(EPOCH, root, backing.custody, catalog),
+        #[cfg(feature = "test-m6-network")]
+        Selected::Network(root) => Custodian::new_root_v4(EPOCH, root, backing.custody, catalog),
     };
     let attempt = custodian.begin(crate::timer::now()).unwrap();
     let (mut binding, token) = custodian.prepare(attempt, &mut a, &s, target).unwrap();
     let root_grants = binding.grants(token).unwrap();
-    let mut handles = [Handle(0); root_v2::MAX_GRANTS];
+    let mut handles = [Handle(0); ROOT_GRANTS];
     handles[..root_grants.len()].copy_from_slice(root_grants);
     let root_grants = &handles[..root_grants.len()];
     let startup = match &profile {
         #[cfg(not(feature = "test-m5-native"))]
         Selected::Desktop(_) => binding.bootstrap_record_v2(token).unwrap(),
-        #[cfg(feature = "test-m5-native")]
+        #[cfg(all(feature = "test-m5-native", not(feature = "test-m6-network")))]
         Selected::Native(_) => binding.bootstrap_record_native(token).unwrap(),
+        #[cfg(feature = "test-m6-network")]
+        Selected::Network(_) => binding.bootstrap_record_v4(token).unwrap(),
     };
     let plan = binding.executable(token).unwrap();
     s.charge_frames(root_job, plan.required_frames()).unwrap();
@@ -340,7 +490,7 @@ unsafe fn run(
             })
         }
         #[cfg(feature = "test-m5-native")]
-        Selected::Native(_) => {
+        _ => {
             // SAFETY: named profile2 loader plus measured guarded bank reservations.
             unsafe {
                 native_slot.load_private(
@@ -391,21 +541,26 @@ unsafe fn run(
         .authorize(meta.domain, root_grants[7], Kind::Endpoint, RECEIVE)
         .unwrap()
         .identity();
-    let mut slots: [GraphicsImage; 6] = core::array::from_fn(|_| GraphicsImage::empty());
+    let mut slots: [GraphicsImage; ACTORS] = core::array::from_fn(|_| GraphicsImage::empty());
     let mut context = active.initial_context().unwrap();
     let start = crate::timer::now();
     #[cfg(not(feature = "test-m5-native"))]
     let world_ticks = WORLD_TICKS;
     #[cfg(feature = "test-m5-native")]
-    let world_ticks = root_v2::native::world_ticks(
-        root_v2::native::catalogue::Catalogue::decode(assets.catalogue)
-            .unwrap()
-            .boot_mode(),
-    );
+    let world_ticks = root_v2::native::world_ticks(graph::boot_mode(assets.catalogue));
     let stop = Deadline::after(start, world_ticks).unwrap();
     context.registers[11] = stop.tick();
-    let mut wires: [Option<Wire>; 16] = core::array::from_fn(|_| None);
-    wires[15] = Some(Wire::new(event_object, meta.domain, event));
+    #[cfg(feature = "test-m6-session")]
+    {
+        context.registers[11] = 0;
+    }
+    let mut wires: [Option<Wire>; WIRES] = core::array::from_fn(|_| None);
+    wires[15] = Some(Wire::new(
+        event_object,
+        meta.domain,
+        event,
+        graph::DeliveryMode::Async,
+    ));
     #[cfg(feature = "test-m5-native")]
     let mut native_proof = None;
     #[cfg(feature = "test-m5-native")]
@@ -430,8 +585,21 @@ unsafe fn run(
         .unwrap()
         .identity()
     });
+    #[cfg(feature = "test-m6-network")]
+    let mut dynamic_scope = crate::native_runtime::dynamic::scope();
+    #[cfg(feature = "test-m6-network")]
+    let dynamic = crate::native_runtime::dynamic::State::claim(&mut dynamic_scope)
+        .expect("sole scoped dynamic owner");
     let mut proof = {
         let mut runtime = Runtime {
+            #[cfg(feature = "test-m6-network")]
+            dynamic,
+            #[cfg(feature = "test-m6-network")]
+            network_fault: network_fault::Latch::default(),
+            #[cfg(feature = "test-m6-network-negative")]
+            network_negative: network_negative::Probe::new(),
+            #[cfg(feature = "test-m6-network")]
+            startup_trace: ev_kernel::startup_trace::Retained::default(),
             a: &mut a,
             s: &mut s,
             registry: &mut registry,
@@ -449,6 +617,16 @@ unsafe fn run(
             slots: slots.each_mut().map(Some),
             wires,
             pending: [None; 8],
+            #[cfg(feature = "test-m6-session")]
+            rpc_trace: [0; 2],
+            #[cfg(feature = "test-m6-network")]
+            rpc_rejection_seen: [false; ACTORS + 1],
+            #[cfg(feature = "test-m6-session")]
+            async_expired: 0,
+            #[cfg(feature = "test-m6-session")]
+            async_swept_at: None,
+            #[cfg(feature = "test-m6-session")]
+            session_ui: [0; 5],
             stop,
             dimensions: (fb.width as u32, fb.height as u32),
             facts: Facts {
@@ -457,6 +635,8 @@ unsafe fn run(
                     #[cfg(feature = "test-m5-native")]
                     {
                         2 + bank_maps
+                            + u64::from(cfg!(feature = "test-m6-session"))
+                            + u64::from(cfg!(feature = "test-m6-network"))
                     }
                     #[cfg(not(feature = "test-m5-native"))]
                     {
@@ -468,11 +648,15 @@ unsafe fn run(
             observations: &mut observe,
             last_present: [None; 2],
             picker: None,
-            old: [None; 6],
+            old: [None; ACTORS],
             barrier: None,
             request: 0,
             open: None,
             awaiting_open: None,
+            #[cfg(feature = "test-m7-document")]
+            document_request: None,
+            #[cfg(feature = "test-m7-document-observe")]
+            document_samples: 0,
             selection: None,
             snapshots: [observation::Snapshot::default(); 2],
             grants: grant::Grants::new(),
@@ -498,9 +682,7 @@ unsafe fn run(
                     self_identity_queries: 0,
                     bad_shell_object: native_bad_object.unwrap(),
                     bad_shell_sha: native_assets.unwrap().bad_shell.1,
-                    boot_mode: root_v2::native::catalogue::Catalogue::decode(assets.catalogue)
-                        .unwrap()
-                        .boot_mode(),
+                    boot_mode: graph::boot_mode(assets.catalogue),
                     image_shas: [images[4].1, native_assets.unwrap().app_b.1],
                     backing: physical,
                     app_starts: [0; 2],
@@ -515,14 +697,18 @@ unsafe fn run(
                     readonly_rejections: 0,
                     shell_starts: 0,
                     readonly_denial: None,
-                    report: root_v2::native::report::Decoder::new(),
+                    report: if cfg!(feature = "test-m6-network") {
+                        root_v2::native::report::Decoder::new_v4()
+                    } else {
+                        root_v2::native::report::Decoder::new()
+                    },
                     report_origin: None,
                     report_error: false,
                     diagnostics: ev_diagnostics::framing::Decoder::new(),
                     diagnostic_origin: None,
                     diagnostic_error: false,
                     diagnostic_queries: 0,
-                    last_syscall: [None; 7],
+                    last_syscall: [None; SLOTS],
                     profile: crate::native_runtime::profile::Profile::new(crate::timer::now()),
                 }),
         };
@@ -551,7 +737,10 @@ unsafe fn run(
                 if let Some(native) = &runtime.native {
                     assert_eq!(
                         runtime.facts.mapped,
-                        2 + native.bank_maps + native.started_mappings
+                        2 + native.bank_maps
+                            + native.started_mappings
+                            + u64::from(cfg!(feature = "test-m6-session"))
+                            + u64::from(cfg!(feature = "test-m6-network"))
                     );
                 }
                 #[cfg(feature = "test-m5-native")]
@@ -576,13 +765,16 @@ unsafe fn run(
             }));
         }
         custodian.begin_revocation(token).unwrap();
-        // SAFETY: observed scenario complete, every accepted operation replied;
-        // shutdown returns every actual image/map/table owner before physical free.
+        // SAFETY: all accepted calls/windows are genuinely quiescent through
+        // replies or canonical returned guards. Strict outstanding/Pending
+        // checks precede returning each image/map/table owner for physical free.
         unsafe { runtime.shutdown(frames) };
         #[cfg(feature = "test-m5-native")]
         if let Some(native) = &runtime.native {
             native_proof = Some(crate::native_runtime::Proof {
                 graph: Proof::default(),
+                #[cfg(feature = "test-m6-network-negative")]
+                network_no_ack_returns: runtime.negative_no_ack_returns(),
                 common_prefix: native.common_prefix,
                 app_starts: native.app_starts,
                 app_stops: native.app_stops,
@@ -665,21 +857,42 @@ unsafe fn map_root_scalars<const N: usize>(
         };
         result.unwrap_or_else(|r| panic!("Root scalar map: {:?}", r.error));
     }
+    #[cfg(feature = "test-m6-session")]
+    {
+        #[cfg(not(feature = "test-m6-network"))]
+        let (which, selector) = (Scalar::Application, 11);
+        #[cfg(feature = "test-m6-network")]
+        let (which, selector) = (Scalar::Note, 27);
+        let object = backing.scalar_mut(which);
+        let lease = object.map(a, domain, grants[selector], true).unwrap();
+        // SAFETY: same actual held Root and retained initialized AppFile owner;
+        // separate fixed506 has an independently retained mapping claim.
+        unsafe { loaded.root.map_session_note_inactive(a, object, lease) }
+            .unwrap_or_else(|r| panic!("Root session note map: {:?}", r.error));
+    }
+    #[cfg(feature = "test-m6-network")]
+    {
+        let object = backing.scalar_mut(Scalar::NetClient);
+        let lease = object.map(a, domain, grants[26], true).unwrap();
+        // SAFETY: actual held V4 Root, distinct initialized client window505.
+        unsafe { loaded.root.map_network_client_inactive(a, object, lease) }
+            .unwrap_or_else(|r| panic!("Root network client map: {:?}", r.error));
+    }
 }
 fn roles_measurement(child: Child) -> [u8; 32] {
     let mut hash = Sha256::new();
     hash.update(b"evrosion.desktop.roles.v1\0");
     hash.update([child.index() as u8]);
-    for (i, grant) in root_v2::graph::grants(child).iter().enumerate() {
+    for (i, grant) in graph::grants(child).iter().enumerate() {
         hash.update((i as u64 + 1).to_le_bytes());
         hash.update([grant.kind]);
         hash.update(grant.rights.to_le_bytes());
         match grant.source {
-            root_v2::graph::Source::Root(role) => {
+            graph::Source::Root(role) => {
                 hash.update([1]);
                 hash.update(role.selector().to_le_bytes());
             }
-            root_v2::graph::Source::Endpoint(channel) => {
+            graph::Source::Endpoint(channel) => {
                 hash.update([2]);
                 hash.update((channel.index() as u64 + 1).to_le_bytes());
             }

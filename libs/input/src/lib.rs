@@ -2,18 +2,16 @@
 //! bytes; it neither grants input authority nor selects a focused recipient.
 #![no_std]
 #![deny(unsafe_code)]
+pub mod pointer;
 pub mod protocol;
 pub mod ps2;
 pub mod stream;
-pub use protocol::{BarrierReply, BarrierRequest, EnterState, KeyEvent};
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Key {
-    Tab,
-    Enter,
-    Escape,
-    Up,
-    Down,
-}
+pub mod text;
+pub use ev_userspace_contract::focused_input::Key;
+pub use protocol::{
+    BarrierReply, BarrierRequest, EnterState, KeyEvent, PointerState, SessionBarrierReply,
+    SessionBarrierRequest,
+};
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InputError {
     Controller,
@@ -106,6 +104,8 @@ impl Keyboard {
             (false, 0x01) => (Key::Escape, 4),
             (true, 0x48) => (Key::Up, 8),
             (true, 0x50) => (Key::Down, 16),
+            (true, 0x4b) => (Key::Left, 64),
+            (true, 0x4d) => (Key::Right, 128),
             _ => return Ok(None),
         };
         if release {
@@ -180,6 +180,22 @@ mod tests {
             assert_eq!(k.feed(1, b), Ok(None));
         }
         assert_eq!(k.feed(1, 0x1c), Ok(Some(Key::Enter)));
+    }
+    #[test]
+    fn horizontal_keys_require_extended_make_and_distinct_break() {
+        let mut k = Keyboard::default();
+        for (scan, key) in [(0x4b, Key::Left), (0x4d, Key::Right)] {
+            assert_eq!(k.feed(1, scan), Ok(None));
+            assert_eq!(k.feed(1, 0xe0), Ok(None));
+            assert_eq!(k.feed(1, scan), Ok(Some(key)));
+            k.feed(1, 0xe0).unwrap();
+            assert_eq!(k.feed(1, scan), Ok(None));
+            k.feed(1, 0xe0).unwrap();
+            k.feed(1, scan | 0x80).unwrap();
+            k.feed(1, 0xe0).unwrap();
+            assert_eq!(k.feed(1, scan), Ok(Some(key)));
+        }
+        assert_eq!(k.enter_state(), EnterState::default());
     }
     #[test]
     fn corrupt_controller_input_and_unsupported_set2_refuse() {

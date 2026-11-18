@@ -1,9 +1,9 @@
 [package]
+license.workspace = true
 name = "ev-kernel"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
 
 [[bin]]
 name = "evrosion-kernel"
@@ -12,6 +12,16 @@ test = false
 bench = false
 
 [features]
+# Internal mechanism storage selected only by the measured M8 profile.
+workspace-authority = []
+test-m8-workspace = ["workspace-authority", "test-m7-document", "test-m6-network"]
+# Physical selected runner requires an explicit measured V5 producer bundle.
+test-m8-workspace-run = ["test-m8-workspace"]
+test-m7-document = ["test-m6-session"]
+test-m7-document-observe = ["test-m7-document"]
+test-m6-session = ["test-m5-native"]
+test-m6-network = ["test-m6-session"]
+test-m6-network-negative = ["test-m6-network"]
 qemu-test-exit = []
 test-m4-display = ["qemu-test-exit"]
 test-m4-desktop = ["qemu-test-exit"]

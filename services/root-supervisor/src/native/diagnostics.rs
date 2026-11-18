@@ -1,13 +1,22 @@
 //! Source collection under actual retained Process/Job controls. Every report
 //! uses the ordinary bounded Events mailbox; partial output never completes.
 use super::*;
+#[cfg(feature = "native-network")]
+use collect::network_service_provenance as service_provenance;
+#[cfg(not(feature = "native-network"))]
+use collect::service_provenance;
 use ev_diagnostics::{
-    framing::{CrashArchive, Kind, Outbox},
+    framing::{Kind, Outbox},
     live::{Role as JobRole, Row},
 };
 use ev_root_supervisor::native_diagnostics::{
     self as collect, Collector, JobAuthority, StoppedTarget, Syscalls,
 };
+
+#[cfg(not(feature = "native-session"))]
+use ev_diagnostics::framing::CrashArchive;
+#[cfg(feature = "native-session")]
+use ev_root_supervisor::native_diagnostics::session::History as CrashArchive;
 
 pub(super) struct Diagnostics {
     outbox: Outbox,
@@ -42,9 +51,35 @@ fn role(child: Child) -> JobRole {
         Child::Block => JobRole::Block,
         Child::App => JobRole::Application,
         Child::Display => JobRole::Display,
+        #[cfg(feature = "native-network")]
+        Child::NetDriver => JobRole::NetDriver,
+        #[cfg(feature = "native-network")]
+        Child::NetService => JobRole::NetService,
     }
 }
 impl Root<'_> {
+    fn native_diagnostic_image(&self, child: Child) -> Option<[u8; 32]> {
+        #[cfg(feature = "native-network")]
+        {
+            self.native_child_digest(child)
+        }
+        #[cfg(not(feature = "native-network"))]
+        {
+            self.native_system_image_digest(child)
+        }
+    }
+    #[cfg(feature = "native-session")]
+    pub(super) fn native_diagnostic_flush_only(&mut self) {
+        let events = self.bootstrap.handle(Role::Events);
+        let d = &mut self.native.as_mut().unwrap().diagnostics;
+        if d.outbox.pending()
+            && collect::tick(&mut d.outbox, &mut Syscalls, events).unwrap_or_else(|_| fail(977))
+                == collect::Progress::Finished
+        {
+            d.completed = d.serial;
+        }
+    }
+
     pub(in crate::desktop) fn native_diagnostic_stopped(&mut self, child: Child) -> bool {
         let n = self.native.as_mut().unwrap();
         if child == Child::App {
@@ -58,17 +93,20 @@ impl Root<'_> {
         let old = self.child(child);
         let context = self.bootstrap.context();
         let mut provenance = if child == Child::App {
-            let n = self.native.as_ref().unwrap();
+            let n = self.native.as_mut().unwrap();
             let slot = n.running.unwrap_or_else(|| fail(972));
-            collect::application_provenance(
-                n.packages.checked(slot).unwrap_or_else(|_| fail(973)),
-                context.epoch,
-                context.incarnation,
-            )
+            n.with_sources(|_, sources| {
+                collect::application_provenance(
+                    sources.checked_source(slot).unwrap_or_else(|_| fail(973)),
+                    context.epoch,
+                    context.incarnation,
+                )
+            })
+            .unwrap_or_else(|_| fail(973))
         } else {
-            collect::service_provenance(
+            service_provenance(
                 child,
-                self.native_system_image_digest(child)
+                self.native_diagnostic_image(child)
                     .unwrap_or_else(|| self.catalogue.images().nth(child.index()).unwrap().image),
                 self.catalogue.kernel_input(),
                 context.epoch,
@@ -79,7 +117,11 @@ impl Root<'_> {
         provenance.generation = self.native_system_provenance();
         let target = StoppedTarget {
             process_control: old.control,
-            job_control: old.job,
+            job_authority: if old.job == 0 {
+                JobAuthority::ProcessControl(old.control)
+            } else {
+                JobAuthority::Delegated(old.job)
+            },
             identity: collect::Identity {
                 process: old.identity.process,
                 thread: old.identity.thread,
@@ -90,7 +132,13 @@ impl Root<'_> {
             .unwrap_or_else(|_| fail(975))
         {
             let d = &mut self.native.as_mut().unwrap().diagnostics;
+            #[cfg(not(feature = "native-session"))]
             let slot = d.archive.push(captured.crash).unwrap_or_else(|_| fail(976));
+            #[cfg(feature = "native-session")]
+            let slot = d
+                .archive
+                .push_after_output(captured.crash, d.outbox.pending())
+                .unwrap_or_else(|_| fail(976));
             // Archive retains both bounded App+Shell capsules. The outbox owns
             // an independent byte copy before the physical child can be reaped.
             d.serial = d.serial.checked_add(1).unwrap_or_else(|| fail(970));
@@ -115,21 +163,29 @@ impl Root<'_> {
             return false;
         };
         d.inspect_next = Some(index + 1);
-        if index < 8 {
+        if index < (COUNT + 2) as u8 {
             self.native_job_row(index);
-        } else if index == 8 {
+        } else if index == (COUNT + 2) as u8 {
             self.native_queue_system_snapshot();
         } else {
             self.native.as_mut().unwrap().diagnostics.inspect_next = None;
             // This completion is ordered after every requested actual Job row
             // and read-only System result has been accepted in full.
-            self.native_report("inspect", "ok");
+            #[cfg(feature = "native-session")]
+            let result = if self.delivery_degraded() {
+                "refused"
+            } else {
+                "ok"
+            };
+            #[cfg(not(feature = "native-session"))]
+            let result = "ok";
+            self.native_report("inspect", result);
         }
         true
     }
     pub(super) fn native_queue_system_snapshot(&mut self) {
         let first = now();
-        let deadline = self.deadline();
+        let deadline = self.storage_deadline();
         let state = self.native.as_mut().unwrap().state.inspect_system(deadline);
         let mut snapshot = state.snapshot(first, now());
         snapshot.current = self.native_system_snapshot();
@@ -198,13 +254,16 @@ impl Root<'_> {
                 return;
             };
             let (image, package) = if child == Child::App {
-                let n = self.native.as_ref().unwrap();
+                let n = self.native.as_mut().unwrap();
                 let slot = n.preparing.or(n.running).unwrap_or_else(|| fail(980));
-                let p = n.packages.checked(slot).unwrap_or_else(|_| fail(981));
-                (p.executable().digest, Some(p.id().bytes()))
+                n.with_sources(|_, sources| {
+                    let p = sources.checked_source(slot).unwrap_or_else(|_| fail(981));
+                    (p.executable().digest, Some(p.id().bytes()))
+                })
+                .unwrap_or_else(|_| fail(981))
             } else {
                 (
-                    self.native_system_image_digest(child).unwrap_or_else(|| {
+                    self.native_diagnostic_image(child).unwrap_or_else(|| {
                         self.catalogue.images().nth(child.index()).unwrap().image
                     }),
                     None,
@@ -219,7 +278,11 @@ impl Root<'_> {
                 actor.identity.process != 0,
                 image,
                 package,
-                JobAuthority::Delegated(actor.job),
+                if actor.job == 0 {
+                    JobAuthority::ProcessControl(actor.control)
+                } else {
+                    JobAuthority::Delegated(actor.job)
+                },
             )
         };
         let job = Collector::new(Syscalls)

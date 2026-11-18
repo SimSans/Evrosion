@@ -1,4 +1,4 @@
-# Reference keyboard Input core
+# Reference Input core
 
 Safe `no_std`/no-allocation set1 decoding, strict eight-byte freshness frames,
 one pending key and bounded userspace PS/2 controller initialization. The actual
@@ -57,3 +57,35 @@ acceptance; no extra hardware bytes are consumed while it is pending. Controller
 drains for barriers still run first and explicitly discard it. Any Input failure
 refuses the operation and requires supervised lifetime handling, rather than
 claiming device repair, focus or successful approval.
+
+The explicit `native-session` service opts into `Stream::with_pointer()`;
+the default finite profile remains action-key only. The session stream shares
+one pending credit and one nonwrapping sequence among keys, printable text and
+complete pointer packets. A barrier discards pending output while consuming real
+bytes through the same keyboard/text/pointer decoders, retaining modifier and
+button state. A partial pointer packet cannot cross a successful drain.
+
+Before its first poll/drain, `Driver::enable_mouse()` performs one cold reset:
+the actual AUX replies must be `FA AA 00`, establishing the three-byte format,
+followed by an acknowledged `F4`. QEMU10.2.1 `F6` resets defaults without resetting
+the negotiated mouse type; it is deliberately insufficient. IRQ1/12 stay masked,
+and initialization never expands the port claim beyond `0x60`/`0x64`. A running
+Input cannot call this cold path to satisfy a UI barrier.
+
+`SessionBarrierRequest` is `KBR2` plus the diagnostic nonce. Its eight-byte reply
+is `['B',2,enterFlags,pointerFlags,sequenceLE32]`: pointer bits0..2 are actual held
+buttons, bits3..5 record releases observed in complete actual packets, and high
+bits are zero. Initial/reset/quiet state alone establishes no button release.
+Legacy `KBR1`/`B1` requests, replies and golden bytes remain unchanged.
+
+`pointer::FreshGate` is armed only after actual trusted UI Present and the
+authenticated session barrier. A held or release-unknown button needs a real
+release followed by a new post-barrier make. Pointer clicks never become Enter
+events. Shell forwards absolute logical positions as `PositionEvent`: `M`,
+`0x20|buttons|(xHigh<<3)|(freshLeftPress<<4)`, `xLow`, `y`, `sequenceLE32`.
+Coordinates are bounded to320x200; a fresh press must also report left held.
+This explicit trusted-Shell freshness result avoids inventing a down edge when
+an App missed pointer movement/releases while obscured. The actual fixed Shell
+sender and current App admission remain mandatory; these bytes grant no focus,
+File authority or durable consent by themselves. Integrated manual VM acceptance
+is separate from the decoder/controller and policy tests.

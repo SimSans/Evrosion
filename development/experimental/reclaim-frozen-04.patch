@@ -1,0 +1,2894 @@
+diff --git a/architecture/adr/ADR-0127-root-owned-single-object-reclamation.md b/architecture/adr/ADR-0127-root-owned-single-object-reclamation.md
+new file mode 100644
+--- /dev/null
++++ b/architecture/adr/ADR-0127-root-owned-single-object-reclamation.md
+@@ -0,0 +1,61 @@
++# ADR-0127 — Root-owned single-object reclamation
++
++Status: Draft implementation and qualification; Internal M8 scope.
++
++## Decision
++
++Expose permanent removal through an independently presented Root chooser and
++physical confirmation. Ordinary Files namespace authority continues to offer
++reversible Trash/Restore only. There is no new public File privilege, Kernel
++authority, mapping, capability, resource budget or global privilege toggle.
++
++Root lists the actual Workspace Dataset through its held role16 control route.
++The decision freezes the exact dataset, object generation/revision, namespace
++revision and name. Normal presentation shows name, size/location, retirement of
++existing access and permanent loss of Restore; L3 exposes diagnostic identities.
++Directory removal is limited to one directly trashed empty directory. No subtree
++is recursively collected. Original volumes, Root/private namespaces and raw
++storage selectors are outside this operation.
++
++## Custody and admission
++
++Before confirmation, Root drains its own Inspector metadata stream under one
++retained drain cut. An external semantic session, pending owner action, queued
++controls or uncertain Display owner refuses entry. App/semantic messages cannot
++confirm this workflow. A real completed protected frame, actual Input barrier
++and fresh physical gesture produce the single-use scoped effect.
++
++After confirmation, one original absolute cut covers the entire workflow. Root
++blocks new binding and ordinary controls while preserving the sole accepted
++owner. For each matching installed File lease, it uses the independently held
++ProcessCONTROL and exact issued44 nonce with Kernel61. Only actual Drained or
++the exact existing never-enqueued receipt permits service reconciliation.
++Logical revoke, release ACK and a timer do not return an accepted loan. Unrelated
++leases and private application copies remain owned by their existing owners.
++
++One additive Root-only Purge command uses the existing role16/window503 control
++transport. Its fields are descriptive correlation, not a ReclaimFence proof.
++The service independently rejects active or unretired matching File routes,
++namespace bindings fixed to the target, pending requests, transfer/staging or
++verification, poisoned or unmirrored storage, shutdown seals and uncertain
++transport. It rechecks the complete object/name/revision/namespace CAS before
++assigning its own durable operation ID and retaining the original request.
++
++The existing Dataset purge publishes and verifies mirrored metadata. Applied is
++returned only with the exact Purged receipt and actual allocation counts. Root
++also validates the exact response and original cut. A timeout, malformed reply,
++late actual result or unknown I/O retains the request, old facts and owners;
++it does not retry, renew the cut, advertise free space or silently clear debt.
++There is no use of terminal shutdown Quiesce, which would prohibit later reuse.
++
++Vacant slots retain generation; later Create increments it. A stale object cannot
++address a replacement. Trash and other retained catalog entries remain allocation
++roots until an independently authorized permanent removal. Cold orphan-stage
++cleanup and general compaction remain separate unsupported operations.
++
++## Qualification
++
++Retain host refusal/cut/publication tests, strict host and native checks, actual
++linked ELF/census and source pins, then owned native UI purge/Create/reuse and
++cold exact-byte evidence. Model checks or a supplied fence epoch alone do not
++establish native retirement, persistence, eligible free space or M8 acceptance.
+diff --git a/architecture/adr/README.md b/architecture/adr/README.md
+--- a/architecture/adr/README.md
++++ b/architecture/adr/README.md
+@@ -299,3 +299,5 @@
+ - [ADR-0124 — Checked reference restart](ADR-0124-checked-reference-restart.md)
+ - [ADR-0125 — Measured nonexecuting external package ingress](ADR-0125-measured-nonexecuting-external-package-ingress.md)
+ - [ADR-0126 — Protected local development install and run](ADR-0126-protected-local-development-install-and-run.md)
++
++- [ADR-0127: Root-owned single-object reclamation](ADR-0127-root-owned-single-object-reclamation.md) records the scoped physical Root decision, actual File lease retirement and durable purge/reuse boundary.
+diff --git a/libs/workspace-shell/src/protected.rs b/libs/workspace-shell/src/protected.rs
+--- a/libs/workspace-shell/src/protected.rs
++++ b/libs/workspace-shell/src/protected.rs
+@@ -37,6 +37,7 @@
+     Revoke,
+     InstallLocalDevelopment,
+     RunLocalDevelopment,
++    Reclaim,
+ }
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub enum ActionTarget {
+@@ -450,6 +451,7 @@
+                 ProtectedKind::Revoke => "Confirm authority revocation",
+                 ProtectedKind::InstallLocalDevelopment => "Confirm local development installation",
+                 ProtectedKind::RunLocalDevelopment => "Confirm local development application run",
++                ProtectedKind::Reclaim => "Confirm permanent removal; Restore ends",
+             },
+             confirm_requires_adapter_witness: true,
+         })
+diff --git a/services/workspace-root/src/lib.rs b/services/workspace-root/src/lib.rs
+--- a/services/workspace-root/src/lib.rs
++++ b/services/workspace-root/src/lib.rs
+@@ -10,6 +10,7 @@
+ pub mod outbox;
+ pub mod picker;
+ pub mod policy;
++pub mod reclaim;
+ pub mod render;
+ pub mod requirements;
+ pub mod retirement;
+diff --git a/services/workspace-root/src/native/development.rs b/services/workspace-root/src/native/development.rs
+--- a/services/workspace-root/src/native/development.rs
++++ b/services/workspace-root/src/native/development.rs
+@@ -321,6 +321,7 @@
+     }
+     pub(super) fn development_request(&mut self, intent: Intent, serial: u32) {
+         if self.development.active()
++            || self.reclaim.active()
+             || self.shutdown.active()
+             || self.owner.pending.is_some()
+             || self.grant.is_some()
+diff --git a/services/workspace-root/src/native/display.rs b/services/workspace-root/src/native/display.rs
+--- a/services/workspace-root/src/native/display.rs
++++ b/services/workspace-root/src/native/display.rs
+@@ -27,6 +27,9 @@
+     pending_body: Option<Body>,
+ }
+ impl Protected {
++    pub(super) fn is_fenced(&self) -> bool {
++        self.fenced
++    }
+     pub fn new(identity: Identity) -> Self {
+         Self {
+             identity,
+@@ -181,8 +184,9 @@
+             .checked_add(1)
+             .filter(|v| *v != u64::MAX)
+             .ok_or(1634u64)?;
+-        let cut =
+-            deadline(v5::resources::RPC_TICKS).min(self.development.cut().unwrap_or(u64::MAX));
++        let cut = deadline(v5::resources::RPC_TICKS)
++            .min(self.development.cut().unwrap_or(u64::MAX))
++            .min(self.reclaim.cut().unwrap_or(u64::MAX));
+         self.protected
+             .control(
+                 self.channel(Channel::DisplayControl),
+@@ -378,6 +382,7 @@
+         // its single-use witness is armed. A target change first cancels it.
+         if self.shutdown.armed()
+             || self.development.armed()
++            || self.reclaim.armed()
+             || self.owner.challenge.is_some() && self.owner.witness.is_some() && !self.owner.rearm
+         {
+             self.owner.dirty = false;
+@@ -385,6 +390,7 @@
+         }
+         let shutdown_view = self.shutdown.view();
+         let development_view = self.development.view();
++        let reclaim_view = self.reclaim.view();
+         let (mode, title, entry, writable) = if let Some((title, _)) = shutdown_view {
+             (
+                 if self.shutdown.dialog() {
+@@ -409,6 +415,17 @@
+                     b"Confirm local development Run in Editor2".as_slice()
+                 },
+                 None,
++                false,
++            )
++        } else if let Some((mode, entry, _, _)) = reclaim_view {
++            (
++                mode,
++                if mode == render::Mode::ReclaimPicker {
++                    b"Select one trashed object for permanent removal".as_slice()
++                } else {
++                    b"Confirm permanent removal: no Restore".as_slice()
++                },
++                entry,
+                 false,
+             )
+         } else if let Some(grant) = self.grant.as_ref().filter(|g| g.modal()) {
+@@ -430,19 +447,22 @@
+                     nonce: self.owner.nonce(),
+                 })
+             });
+-        let dataset = self
+-            .grant
+-            .as_ref()
+-            .filter(|g| g.modal() && g.revoking())
+-            .map(|g| g.dataset())
+-            .or_else(|| {
+-                self.owner
+-                    .pending
+-                    .filter(|p| p.purpose == filegrant::Purpose::Revoke)
+-                    .and_then(|p| self.revoke_dataset(p))
+-                    .map(|d| d.0)
+-            })
+-            .unwrap_or([0; 16]);
++        let dataset = reclaim_view
++            .map(|(_, _, dataset, _)| dataset)
++            .unwrap_or_else(|| {
++                self.grant
++                    .as_ref()
++                    .filter(|g| g.modal() && g.revoking())
++                    .map(|g| g.dataset())
++                    .or_else(|| {
++                        self.owner
++                            .pending
++                            .filter(|p| p.purpose == filegrant::Purpose::Revoke)
++                            .and_then(|p| self.revoke_dataset(p))
++                            .map(|d| d.0)
++                    })
++                    .unwrap_or([0; 16])
++            });
+         let layer = match self.policy.as_ref().unwrap().desktop.view().layer {
+             Layer::Simple => 1,
+             Layer::Advanced => 2,
+@@ -471,6 +491,7 @@
+                 } else {
+                     None
+                 },
++                reclaim: reclaim_view.map(|(_, _, _, view)| view),
+             })
+         };
+         match body {
+@@ -488,11 +509,14 @@
+             self.shutdown.nonce()
+         } else if self.development.active() {
+             self.development.nonce()
++        } else if self.reclaim.active() {
++            self.reclaim.nonce()
+         } else {
+             self.owner.nonce()
+         };
+-        let cut =
+-            deadline(v5::resources::RPC_TICKS).min(self.development.cut().unwrap_or(u64::MAX));
++        let cut = deadline(v5::resources::RPC_TICKS)
++            .min(self.development.cut().unwrap_or(u64::MAX))
++            .min(self.reclaim.cut().unwrap_or(u64::MAX));
+         self.protected.pending_body = Some(body);
+         let frame = self
+             .protected
+@@ -508,6 +532,8 @@
+             self.shutdown_presented(frame);
+         } else if self.development.needs_barrier() {
+             self.development_presented(frame);
++        } else if self.reclaim.needs_barrier() {
++            self.reclaim_presented(frame);
+         } else if self.owner.needs_barrier() {
+             self.arm_owner_after_present(frame);
+         }
+diff --git a/services/workspace-root/src/native/filegrant.rs b/services/workspace-root/src/native/filegrant.rs
+--- a/services/workspace-root/src/native/filegrant.rs
++++ b/services/workspace-root/src/native/filegrant.rs
+@@ -415,6 +415,79 @@
+             _ => Err(()),
+         }
+     }
++    /// One-object reclaim uses held facts, actual61 and independent service
++    /// reconciliation without closing the application or its private copy.
++    pub(super) fn reclaim_retire_file(
++        &mut self,
++        index: usize,
++        target: ev_workspace_root::reclaim::Facts,
++        cut: u64,
++    ) -> Result<bool, ()> {
++        if !matches!(index, 1 | 2)
++            || now() >= cut
++            || self.grant.is_some()
++            || self.owner.pending.is_some()
++        {
++            return Err(());
++        }
++        let Some(lease) = self.leases[index].as_ref() else {
++            return Ok(true);
++        };
++        if lease.dataset.0 != target.dataset
++            || lease.selection.entry.map(|e| e.object) != Some(target.entry.object)
++        {
++            return Ok(true);
++        }
++        let facts = lease.facts;
++        let actor = self.actor(app_child(index).ok_or(())?);
++        if actor.identity != facts.identity || actor.control != facts.held_control {
++            return Err(());
++        }
++        if !lease
++            .receipt
++            .as_ref()
++            .is_some_and(|r| r.facts == facts && r.held_control == actor.control)
++        {
++            self.reclaim.admit(now())?;
++            let info = rt::call4(s::MANAGED_SEND_RETIRE_INFO, 0, 0, 0, 0);
++            self.reclaim.admit(now())?;
++            if info.status != 0
++                || info.value != s::MANAGED_SEND_RETIRE_V1
++                || info.capability != 0
++                || info.serial != 0
++            {
++                return Err(());
++            }
++            let actual = rt::call4(
++                s::MANAGED_SEND_RETIRE,
++                actor.control,
++                u64::from(facts.nonce),
++                0,
++                0,
++            );
++            self.reclaim.last_retire = Some((actor.control, facts.nonce, actual));
++            if actual.status != 0 || actual.capability != 0 || actual.serial != 0 {
++                return Err(());
++            }
++            match actual.value {
++                0 => {
++                    self.leases[index].as_mut().unwrap().receipt = Some(Receipt {
++                        facts,
++                        held_control: actor.control,
++                        _kind: ReceiptKind::Drained,
++                    });
++                    self.lease_rights[index] = 0;
++                }
++                1 => {
++                    self.lease_rights[index] = 0;
++                    return if now() < cut { Ok(false) } else { Err(()) };
++                }
++                _ => return Err(()),
++            }
++            self.reclaim.admit(now())?;
++        }
++        self.reconcile_file(index, actor, facts, cut)
++    }
+     /// Checked shutdown only: callers have frozen new Root effects and retain
+     /// one original aggregate cut. An actual stopped process, exact installed
+     /// facts, Kernel61 Drained and service reconciliation remain independent
+diff --git a/services/workspace-root/src/native/input.rs b/services/workspace-root/src/native/input.rs
+--- a/services/workspace-root/src/native/input.rs
++++ b/services/workspace-root/src/native/input.rs
+@@ -55,6 +55,10 @@
+             self.development_input(bytes);
+             return;
+         }
++        if self.reclaim.active() {
++            self.reclaim_input(bytes);
++            return;
++        }
+         if let Ok(event) = PointerEvent::decode(bytes) {
+             self.pointer_event(event);
+             return;
+@@ -335,6 +339,10 @@
+         {
+             return;
+         }
++        if (70..80).contains(&self.input.y) && (320..480).contains(&self.input.x) {
++            self.reclaim_request();
++            return;
++        }
+         if self.input.y >= 462 {
+             let slot = ev_userspace_contract::root_v5::display_control::Slot::Shell;
+             if self.actor(Child::Shell).ready
+@@ -470,6 +478,89 @@
+             self.queue(app_child(index).unwrap(), Command::Activate(part));
+         }
+     }
++    fn reclaim_input(&mut self, bytes: [u8; 8]) {
++        if let Ok(event) = PointerEvent::decode(bytes) {
++            if event.sequence <= self.input.last {
++                return;
++            }
++            self.input.last = event.sequence;
++            self.input.x = (self.input.x + i32::from(event.dx)).clamp(0, 639);
++            self.input.y = (self.input.y - i32::from(event.dy)).clamp(0, 479);
++            let press = event.buttons & LEFT != 0 && self.input.buttons & LEFT == 0;
++            self.input.buttons = event.buttons;
++            // Track releases/position while accepted work owns Display; no
++            // cursor RPC, ordinary action, or fresh confirmation is issued.
++            if !self.reclaim.browsing() && !self.reclaim.dialog() {
++                return;
++            }
++            self.update_cursor();
++            if press && (70..80).contains(&self.input.y) && self.input.x >= 500 {
++                self.reclaim_cancel();
++                return;
++            }
++            if self.reclaim.browsing() {
++                if press && (70..80).contains(&self.input.y) {
++                    let action = match self.input.x {
++                        0..50 => Some(0),
++                        50..100 => Some(1),
++                        100..150 => Some(2),
++                        300..500 => Some(3),
++                        _ => None,
++                    };
++                    if let Some(action) = action {
++                        self.reclaim_browse(action, event.sequence);
++                    }
++                }
++            } else {
++                let fresh = self
++                    .input
++                    .pointer
++                    .as_mut()
++                    .and_then(|g| g.observe(event).ok())
++                    .unwrap_or(0);
++                if fresh & LEFT != 0
++                    && (70..80).contains(&self.input.y)
++                    && (300..500).contains(&self.input.x)
++                {
++                    self.reclaim_confirm(event.sequence);
++                }
++            }
++            return;
++        }
++        if let Ok(event) = KeyEvent::decode(bytes) {
++            if event.sequence <= self.input.last {
++                return;
++            }
++            self.input.last = event.sequence;
++            if !self.reclaim.browsing() && !self.reclaim.dialog() {
++                return;
++            }
++            if event.key == Key::Escape {
++                self.reclaim_cancel();
++                return;
++            }
++            if self.reclaim.browsing() {
++                let action = match event.key {
++                    Key::Left => Some(0),
++                    Key::Right => Some(1),
++                    Key::Up => Some(2),
++                    Key::Enter => Some(3),
++                    _ => None,
++                };
++                if let Some(action) = action {
++                    self.reclaim_browse(action, event.sequence);
++                }
++            } else if self
++                .input
++                .keys
++                .as_mut()
++                .and_then(|g| g.observe(event).ok().flatten())
++                == Some(Key::Enter)
++            {
++                self.reclaim_confirm(event.sequence);
++            }
++        }
++    }
+     fn development_input(&mut self, bytes: [u8; 8]) {
+         if !self.development.dialog() {
+             return;
+diff --git a/services/workspace-root/src/native/inspector.rs b/services/workspace-root/src/native/inspector.rs
+--- a/services/workspace-root/src/native/inspector.rs
++++ b/services/workspace-root/src/native/inspector.rs
+@@ -136,6 +136,9 @@
+         let Some(gesture) = self.inspector.gesture.take() else {
+             return;
+         };
++        if self.reclaim.active() {
++            return;
++        }
+         if self.inspector.active || view != self.inspector.nonce {
+             return;
+         }
+diff --git a/services/workspace-root/src/native/mod.rs b/services/workspace-root/src/native/mod.rs
+--- a/services/workspace-root/src/native/mod.rs
++++ b/services/workspace-root/src/native/mod.rs
+@@ -23,6 +23,7 @@
+ mod inspector_self;
+ mod owner;
+ mod packages;
++mod reclaim;
+ mod recovery;
+ mod resident;
+ mod semantic;
+@@ -95,6 +96,7 @@
+     shutdown: shutdown::Controller,
+     private_data: app_data::State,
+     development: development::Controller,
++    reclaim: reclaim::Controller,
+     recovery: recovery::State,
+     shell_gesture: Option<(u8, Identity, u64, u64)>,
+     outbox: ev_workspace_root::outbox::Outbox,
+@@ -430,6 +432,9 @@
+         if self.development_tick() {
+             return;
+         }
++        if self.reclaim_tick() {
++            return;
++        }
+         for _ in 0..32 {
+             if !self.receive() {
+                 break;
+diff --git a/services/workspace-root/src/native/owner.rs b/services/workspace-root/src/native/owner.rs
+--- a/services/workspace-root/src/native/owner.rs
++++ b/services/workspace-root/src/native/owner.rs
+@@ -165,6 +165,9 @@
+         self.request_file(index, Purpose::SaveAs);
+     }
+     fn request_file(&mut self, index: usize, purpose: Purpose) {
++        if self.reclaim.active() {
++            return;
++        }
+         if self.owner.pending.is_some() || self.grant.is_some() || !matches!(index, 1 | 2) {
+             return;
+         }
+diff --git a/services/workspace-root/src/native/reclaim.rs b/services/workspace-root/src/native/reclaim.rs
+new file mode 100644
+--- /dev/null
++++ b/services/workspace-root/src/native/reclaim.rs
+@@ -0,0 +1,604 @@
++//! Root-only permanent single-object removal. Every accepted owner, exact
++//! lease retirement, original cut and unknown transport remains retained.
++use super::*;
++use ev_userspace_contract::workspace::{
++    Entry, EntryState, Kind, Name, ObjectId, Operation, Outcome,
++};
++use ev_workspace_root::reclaim::{Approval, Facts};
++use ev_workspace_root::render;
++use ev_workspace_service::control;
++use ev_workspace_shell::{Challenge, ConfirmationSource, PresentedWitness};
++const ROOT: ObjectId = ObjectId {
++    slot: 0,
++    generation: 1,
++};
++
++struct Dialog {
++    facts: Facts,
++    challenge: Challenge,
++    witness: Option<PresentedWitness>,
++    rearm: bool,
++    cut: u64,
++    drained: bool,
++}
++#[derive(Clone, Copy, PartialEq, Eq)]
++enum Phase {
++    Retire(usize),
++    Purge,
++    Complete,
++    Fenced,
++}
++struct Pending {
++    approval: Approval,
++    phase: Phase,
++    reply: Option<control::PurgeResponse>,
++}
++pub(super) struct Controller {
++    browsing: bool,
++    directory: ObjectId,
++    cursor: u16,
++    next: Option<u16>,
++    entry: Option<Entry>,
++    dataset: [u8; 16],
++    namespace: u64,
++    location: Name,
++    drain_cut: u64,
++    drained: bool,
++    dialog: Option<Dialog>,
++    pending: Option<Pending>,
++    status: &'static [u8],
++    pub last_retire: Option<(u64, u32, rt::CapReply)>,
++}
++impl Controller {
++    pub const fn new() -> Self {
++        Self {
++            browsing: false,
++            directory: ROOT,
++            cursor: 0,
++            next: None,
++            entry: None,
++            dataset: [0; 16],
++            namespace: 0,
++            location: Name::root(),
++            drain_cut: 0,
++            drained: false,
++            dialog: None,
++            pending: None,
++            status: b"Choose one trashed file or empty directory",
++            last_retire: None,
++        }
++    }
++    pub fn active(&self) -> bool {
++        self.browsing || self.dialog.is_some() || self.pending.is_some()
++    }
++    pub fn dialog(&self) -> bool {
++        self.dialog.is_some()
++    }
++    pub fn browsing(&self) -> bool {
++        self.browsing
++    }
++    pub fn armed(&self) -> bool {
++        self.dialog
++            .as_ref()
++            .is_some_and(|d| d.witness.is_some() && !d.rearm)
++    }
++    pub fn needs_barrier(&self) -> bool {
++        self.dialog.as_ref().is_some_and(|d| d.rearm && d.drained)
++    }
++    pub fn nonce(&self) -> u64 {
++        self.dialog.as_ref().map_or_else(
++            || self.pending.as_ref().map_or(0, |p| p.approval.nonce()),
++            |d| d.challenge.nonce,
++        )
++    }
++    pub fn cut(&self) -> Option<u64> {
++        self.pending
++            .as_ref()
++            .filter(|p| p.phase != Phase::Fenced)
++            .map(|p| p.approval.cut())
++    }
++    pub fn admit(&mut self, now: u64) -> Result<(), ()> {
++        self.pending
++            .as_mut()
++            .ok_or(())?
++            .approval
++            .admit(now)
++            .map_err(|_| ())
++    }
++    pub fn view(&self) -> Option<(render::Mode, Option<Entry>, [u8; 16], render::ReclaimView)> {
++        if !self.active() {
++            return None;
++        }
++        let (mode, entry, dataset, namespace) = if let Some(d) = &self.dialog {
++            (
++                render::Mode::ReclaimConfirm,
++                Some(d.facts.entry),
++                d.facts.dataset,
++                d.facts.namespace,
++            )
++        } else if let Some(p) = &self.pending {
++            let f = p.approval.facts();
++            (
++                render::Mode::ReclaimPending,
++                Some(f.entry),
++                f.dataset,
++                f.namespace,
++            )
++        } else {
++            (
++                render::Mode::ReclaimPicker,
++                self.entry,
++                self.dataset,
++                self.namespace,
++            )
++        };
++        Some((
++            mode,
++            entry,
++            dataset,
++            render::ReclaimView {
++                namespace,
++                nonce: self.nonce(),
++                location: self.location,
++                status: self.status,
++            },
++        ))
++    }
++}
++impl Root<'_> {
++    pub(super) fn reclaim_request(&mut self) {
++        if self.reclaim.active()
++            || self.shutdown.active()
++            || self.development.active()
++            || self.owner.pending.is_some()
++            || self.grant.is_some()
++            || self.semantic.active()
++            || self.outbox.has_pending()
++            || self.protected.is_fenced()
++            || !self.app_data_can_stop()
++        {
++            return;
++        }
++        self.reclaim.browsing = true;
++        self.reclaim.drain_cut = deadline(v5::resources::FILE_TRANSACTION_TICKS);
++        self.reclaim.drained = false;
++        self.reclaim.directory = ROOT;
++        self.reclaim.cursor = 0;
++        self.reclaim_refresh();
++    }
++    fn reclaim_refresh(&mut self) {
++        if !self.reclaim.browsing {
++            return;
++        }
++        let cut = deadline(v5::resources::FILE_TRANSACTION_TICKS);
++        let result = self
++            .workspace
++            .namespace_until(
++                self.channel(Channel::RootWorkspaceControl),
++                Operation::Inspect {
++                    object: self.reclaim.directory,
++                },
++                cut,
++            )
++            .and_then(|inspected| {
++                let query = ev_workspace_root::picker::after_inspect(
++                    self.reclaim.directory,
++                    self.reclaim.cursor,
++                    None,
++                    inspected,
++                )
++                .ok_or(())?;
++                self.reclaim.location = inspected.entry.ok_or(())?.name;
++                self.workspace.namespace_until(
++                    self.channel(Channel::RootWorkspaceControl),
++                    query.operation,
++                    cut,
++                )
++            });
++        match result {
++            Ok(r) if matches!(r.outcome, Outcome::Completed | Outcome::End) => {
++                self.reclaim.entry = r.entry;
++                self.reclaim.next = r.next_cursor;
++                self.reclaim.dataset = r.dataset.0;
++                self.reclaim.namespace = r.namespace_revision;
++            }
++            _ => {
++                self.reclaim.browsing = false;
++                self.status = b"Reclaim listing unavailable; no storage was reclaimed";
++            }
++        }
++        self.owner.dirty = true;
++    }
++    pub(super) fn reclaim_browse(&mut self, action: u8, serial: u32) {
++        if !self.reclaim.browsing {
++            return;
++        }
++        match action {
++            0 => self.reclaim.cursor = 0,
++            1 => {
++                if let Some(next) = self.reclaim.next {
++                    self.reclaim.cursor = next;
++                } else {
++                    return;
++                }
++            }
++            2 => {
++                if self.reclaim.directory == ROOT {
++                    return;
++                }
++                let r = self.workspace.namespace(
++                    self.channel(Channel::RootWorkspaceControl),
++                    Operation::Inspect {
++                        object: self.reclaim.directory,
++                    },
++                );
++                let Some(parent) = r
++                    .ok()
++                    .filter(|r| r.outcome == Outcome::Completed)
++                    .and_then(|r| r.entry)
++                    .map(|e| e.parent)
++                else {
++                    return;
++                };
++                self.reclaim.directory = parent;
++                self.reclaim.cursor = 0;
++            }
++            3 => {
++                let Some(entry) = self.reclaim.entry else {
++                    return;
++                };
++                if entry.state == EntryState::Live && entry.kind == Kind::Directory {
++                    self.reclaim.directory = entry.object;
++                    self.reclaim.cursor = 0;
++                } else {
++                    self.reclaim_challenge(serial);
++                    return;
++                }
++            }
++            _ => return,
++        }
++        self.reclaim_refresh();
++    }
++    fn reclaim_facts_current(&mut self, facts: Facts, cut: u64) -> bool {
++        if !facts.valid() || facts.root != self.protected.identity || now() >= cut {
++            return false;
++        }
++        let exact = self
++            .workspace
++            .namespace_until(
++                self.channel(Channel::RootWorkspaceControl),
++                Operation::Inspect {
++                    object: facts.entry.object,
++                },
++                cut,
++            )
++            .is_ok_and(|r| {
++                r.outcome == Outcome::Completed
++                    && r.dataset.0 == facts.dataset
++                    && r.namespace_revision == facts.namespace
++                    && r.entry == Some(facts.entry)
++            })
++            && now() < cut;
++        if !exact {
++            return false;
++        }
++        if facts.entry.kind == Kind::Directory {
++            self.workspace
++                .namespace_until(
++                    self.channel(Channel::RootWorkspaceControl),
++                    Operation::List {
++                        directory: facts.entry.object,
++                        cursor: 0,
++                        expected_namespace_revision: facts.namespace,
++                    },
++                    cut,
++                )
++                .is_ok_and(|r| {
++                    r.outcome == Outcome::End
++                        && r.entry.is_none()
++                        && r.dataset.0 == facts.dataset
++                        && r.namespace_revision == facts.namespace
++                })
++                && now() < cut
++        } else {
++            true
++        }
++    }
++    fn reclaim_challenge(&mut self, serial: u32) {
++        let Some(entry) = self.reclaim.entry else {
++            return;
++        };
++        let facts = Facts {
++            root: self.protected.identity,
++            dataset: self.reclaim.dataset,
++            namespace: self.reclaim.namespace,
++            entry,
++        };
++        let cut = deadline(v5::resources::FILE_TRANSACTION_TICKS);
++        if !self.reclaim_facts_current(facts, cut) {
++            self.reclaim.status = b"Only a current trashed file or empty directory is eligible";
++            self.owner.dirty = true;
++            return;
++        }
++        let policy = self.policy.as_mut().unwrap();
++        let Ok(attention) = policy
++            .trusted
++            .attest_attention(&mut policy.desktop, self.input.serial(serial))
++        else {
++            return;
++        };
++        let Ok(challenge) = policy
++            .trusted
++            .challenge(&mut policy.desktop, attention, facts.scope())
++        else {
++            return;
++        };
++        self.reclaim.browsing = false;
++        self.reclaim.dialog = Some(Dialog {
++            facts,
++            challenge,
++            witness: None,
++            rearm: true,
++            cut,
++            drained: self.reclaim.drained,
++        });
++        self.reclaim.status =
++            b"Permanent removal ends Restore for this exact object; private copies remain";
++        self.owner.dirty = true;
++    }
++    pub(super) fn reclaim_cancel(&mut self) {
++        if self.reclaim.pending.is_some() {
++            return;
++        }
++        self.reclaim.browsing = false;
++        self.reclaim.dialog = None;
++        let policy = self.policy.as_mut().unwrap();
++        let _ = policy.trusted.cancel(&mut policy.desktop);
++        self.input.cancel();
++        self.owner.dirty = true;
++    }
++    pub(super) fn reclaim_presented(&mut self, frame: u64) {
++        if !self.reclaim.needs_barrier() {
++            return;
++        }
++        let (facts, cut) = self
++            .reclaim
++            .dialog
++            .as_ref()
++            .map(|d| (d.facts, d.cut))
++            .unwrap();
++        if !self.reclaim_facts_current(facts, cut) {
++            self.reclaim_cancel();
++            return;
++        }
++        let Some(nonce) = self
++            .owner
++            .input_nonce
++            .checked_add(1)
++            .filter(|v| *v != u32::MAX)
++        else {
++            self.reclaim_cancel();
++            return;
++        };
++        self.owner.input_nonce = nonce;
++        let request = ev_input::SessionBarrierRequest::new(nonce).unwrap();
++        let barrier = rt::rpc::call(
++            self.channel(Channel::InputBarrier),
++            request.encode(),
++            deadline(v5::resources::RPC_TICKS).min(cut),
++        )
++        .ok()
++        .and_then(|r| ev_input::SessionBarrierReply::decode(r).ok());
++        let Some(barrier) = barrier else {
++            self.reclaim_cancel();
++            return;
++        };
++        if now() >= cut {
++            self.reclaim_cancel();
++            return;
++        }
++        self.input.arm(barrier);
++        let d = self.reclaim.dialog.as_mut().unwrap();
++        let policy = self.policy.as_mut().unwrap();
++        match policy.trusted.attest_presented(
++            &mut policy.desktop,
++            d.challenge,
++            facts.scope(),
++            frame,
++            self.input.serial(barrier.sequence),
++        ) {
++            Ok(w) => {
++                d.witness = Some(w);
++                d.rearm = false;
++            }
++            Err(_) => self.reclaim_cancel(),
++        }
++    }
++    pub(super) fn reclaim_confirm(&mut self, serial: u32) {
++        let Some(mut d) = self.reclaim.dialog.take() else {
++            return;
++        };
++        if !d.drained || d.witness.is_none() {
++            self.reclaim.dialog = Some(d);
++            return;
++        }
++        if !self.reclaim_facts_current(d.facts, d.cut)
++            || self.grant.is_some()
++            || self.owner.pending.is_some()
++        {
++            self.reclaim.dialog = Some(d);
++            self.reclaim_cancel();
++            self.status = b"Reclaim scope changed; request a fresh decision";
++            return;
++        }
++        let policy = self.policy.as_mut().unwrap();
++        let effect = policy.trusted.attest_confirmation(
++            &mut policy.desktop,
++            d.witness.take().unwrap(),
++            d.facts.scope(),
++            self.input.serial(serial),
++            ConfirmationSource::Physical,
++        );
++        let Ok(effect) = effect else {
++            d.rearm = true;
++            self.reclaim.dialog = Some(d);
++            self.owner.dirty = true;
++            return;
++        };
++        let start = now();
++        let Some(cut) = start
++            .checked_add(v5::resources::FILE_TRANSACTION_TICKS)
++            .filter(|v| *v != u64::MAX)
++        else {
++            return;
++        };
++        let Ok(approval) = Approval::new(d.facts, effect, start, cut) else {
++            return;
++        };
++        self.reclaim.pending = Some(Pending {
++            approval,
++            phase: Phase::Retire(1),
++            reply: None,
++        });
++        self.reclaim.status =
++            b"Confirmed permanent removal: exact grants and storage ownership must settle";
++        self.owner.dirty = true;
++    }
++    pub(super) fn reclaim_tick(&mut self) -> bool {
++        if !self.reclaim.active() {
++            return false;
++        }
++        for _ in 0..32 {
++            if !self.receive() {
++                break;
++            }
++        }
++        self.app_data_flush();
++        if !self.reclaim.drained {
++            let cut = self.reclaim.drain_cut;
++            if now() >= cut {
++                self.reclaim_cancel();
++            } else if !self.outbox.has_pending() {
++                match self.inspector_self_shutdown(cut) {
++                    Ok(true) => {
++                        self.reclaim.drained = true;
++                        if let Some(dialog) = self.reclaim.dialog.as_mut() {
++                            dialog.drained = true;
++                        }
++                        self.owner.dirty = true;
++                    }
++                    Ok(false) => (),
++                    Err(_) => self.reclaim_cancel(),
++                }
++            }
++        }
++        if self.reclaim.pending.is_some() {
++            // The sole pending owner remains resident while helpers perform
++            // calls. No ordinary Root effect, grant or scene commit runs here.
++            let (phase, facts, cut) = self
++                .reclaim
++                .pending
++                .as_ref()
++                .map(|p| (p.phase, p.approval.facts(), p.approval.cut()))
++                .unwrap();
++            let live = self
++                .reclaim
++                .pending
++                .as_mut()
++                .unwrap()
++                .approval
++                .admit(now())
++                .is_ok();
++            if !live {
++                self.reclaim.pending.as_mut().unwrap().phase = Phase::Fenced;
++            } else if phase != Phase::Fenced {
++                let next = match phase {
++                    Phase::Retire(index) => match self.reclaim_retire_file(index, facts, cut) {
++                        Ok(true) => Some(if index == 2 {
++                            Phase::Purge
++                        } else {
++                            Phase::Retire(index + 1)
++                        }),
++                        Ok(false) => None,
++                        Err(_) => Some(Phase::Fenced),
++                    },
++                    Phase::Purge => {
++                        let result = self.workspace.purge_until(
++                            self.channel(Channel::RootWorkspaceControl),
++                            control::Command::Purge {
++                                token: self.reclaim.nonce(),
++                                dataset: facts.dataset,
++                                object: facts.entry.object,
++                                expected_revision: facts.entry.revision,
++                                namespace_revision: facts.namespace,
++                                name: facts.entry.name,
++                            },
++                            cut,
++                        );
++                        match result {
++                            Ok(reply) => {
++                                let success = reply.status == control::Status::Applied
++                                    && reply.receipt.is_some_and(|r| {
++                                        r.namespace_revision == facts.namespace + 1
++                                            && r.allocated_before.checked_sub(r.allocated_after)
++                                                == facts.released_bytes()
++                                    });
++                                self.reclaim.pending.as_mut().unwrap().reply = Some(reply);
++                                Some(if success {
++                                    Phase::Complete
++                                } else {
++                                    Phase::Fenced
++                                })
++                            }
++                            Err(_) => Some(Phase::Fenced),
++                        }
++                    }
++                    Phase::Complete | Phase::Fenced => None,
++                };
++                let p = self.reclaim.pending.as_mut().unwrap();
++                if let Some(next) = next {
++                    p.phase = next;
++                    self.owner.dirty = true;
++                }
++                if p.approval.admit(now()).is_err() {
++                    p.phase = Phase::Fenced;
++                }
++            }
++        }
++        if self
++            .reclaim
++            .pending
++            .as_ref()
++            .is_some_and(|p| p.phase == Phase::Fenced)
++        {
++            self.reclaim.status =
++                b"Permanent removal incomplete; exact accepted work and owners remain retained";
++        }
++        if self.owner.dirty && self.try_present_owner().is_err() {
++            if let Some(p) = self.reclaim.pending.as_mut() {
++                p.phase = Phase::Fenced;
++            } else {
++                self.reclaim_cancel();
++            }
++            self.owner.dirty = false;
++        }
++        if self
++            .reclaim
++            .pending
++            .as_ref()
++            .is_some_and(|p| p.phase == Phase::Complete)
++        {
++            let p = self.reclaim.pending.as_mut().unwrap();
++            if p.approval.admit(now()).is_err() {
++                p.phase = Phase::Fenced;
++            } else {
++                self.reclaim.pending = None;
++                self.status =
++                    b"Exact trashed object permanently removed; Restore ended; refresh Files";
++                self.owner.dirty = true;
++            }
++        }
++        let _ = rt::yield_now();
++        true
++    }
++}
+diff --git a/services/workspace-root/src/native/resident.rs b/services/workspace-root/src/native/resident.rs
+--- a/services/workspace-root/src/native/resident.rs
++++ b/services/workspace-root/src/native/resident.rs
+@@ -37,6 +37,7 @@
+         ptr::addr_of_mut!((*slot).shutdown).write(shutdown::Controller::new());
+         ptr::addr_of_mut!((*slot).private_data).write(app_data::State::new());
+         ptr::addr_of_mut!((*slot).development).write(development::Controller::new());
++        ptr::addr_of_mut!((*slot).reclaim).write(reclaim::Controller::new());
+         ptr::addr_of_mut!((*slot).recovery).write(recovery::State::new());
+         ptr::addr_of_mut!((*slot).shell_gesture).write(None);
+         ptr::addr_of_mut!((*slot).outbox).write(ev_workspace_root::outbox::Outbox::new());
+diff --git a/services/workspace-root/src/native/semantic.rs b/services/workspace-root/src/native/semantic.rs
+--- a/services/workspace-root/src/native/semantic.rs
++++ b/services/workspace-root/src/native/semantic.rs
+@@ -175,7 +175,8 @@
+         &self,
+     ) -> Option<ev_workspace_root::inspector_self::Context> {
+         use ev_workspace_root::inspector_self::Context;
+-        if self.development.active()
++        if self.reclaim.active()
++            || self.development.active()
+             || self.semantic.active() && !self.development_semantic_available(self.semantic.target)
+         {
+             return None;
+@@ -291,7 +292,8 @@
+         self.semantic.context_pending = true;
+     }
+     pub(super) fn semantic_request_attention(&mut self) {
+-        if self.semantic.phase != Phase::Off
++        if self.reclaim.active()
++            || self.semantic.phase != Phase::Off
+             || self.policy.is_none()
+             || self.actor(Child::Inspector).failed
+             || !self.actor(Child::Inspector).ready
+@@ -308,7 +310,10 @@
+         self.owner.dirty = true;
+     }
+     fn semantic_live(&self) -> bool {
+-        if self.development.active() || !self.development_semantic_available(self.semantic.target) {
++        if self.reclaim.active()
++            || self.development.active()
++            || !self.development_semantic_available(self.semantic.target)
++        {
+             return false;
+         }
+         let Some(lease) = self.semantic.lease else {
+@@ -1005,7 +1010,10 @@
+ 
+ impl Root<'_> {
+     fn semantic_scope(&self) -> Option<ev_workspace_shell::ActionScope> {
+-        if self.development.active() || !self.development_semantic_available(self.semantic.target) {
++        if self.reclaim.active()
++            || self.development.active()
++            || !self.development_semantic_available(self.semantic.target)
++        {
+             return None;
+         }
+         use ev_workspace_shell::{ActionScope, ActionTarget, ProtectedKind};
+@@ -1250,6 +1258,9 @@
+                 | ev_workspace_root::render::Mode::ShutdownPending
+                 | ev_workspace_root::render::Mode::Development
+                 | ev_workspace_root::render::Mode::DevelopmentPending
++                | ev_workspace_root::render::Mode::ReclaimPicker
++                | ev_workspace_root::render::Mode::ReclaimConfirm
++                | ev_workspace_root::render::Mode::ReclaimPending
+         );
+         let dialog = !matches!(mode, ev_workspace_root::render::Mode::Desktop);
+         let root = a1::Node {
+@@ -2136,7 +2147,7 @@
+     /// Called only by the actual authenticated Input path after FreshGate has
+     /// accepted this deliberate press following the exact protected barrier.
+     pub(super) fn semantic_confirm_input(&mut self, serial: u32) -> bool {
+-        if self.shutdown.active() {
++        if self.reclaim.active() || self.shutdown.active() {
+             return false;
+         }
+         let Some(lease) = self.semantic.lease else {
+@@ -2182,7 +2193,7 @@
+         true
+     }
+     fn semantic_confirm_intent(&mut self, intent: Intent) {
+-        if self.shutdown.active() {
++        if self.reclaim.active() || self.shutdown.active() {
+             self.semantic.confirm = None;
+             return;
+         }
+@@ -2233,7 +2244,7 @@
+ }
+ impl Root<'_> {
+     fn semantic_root_activate(&mut self, node: a1::Node) {
+-        if self.shutdown.active() {
++        if self.reclaim.active() || self.shutdown.active() {
+             return;
+         }
+         let lease = self.semantic.lease.unwrap();
+diff --git a/services/workspace-root/src/native/shutdown.rs b/services/workspace-root/src/native/shutdown.rs
+--- a/services/workspace-root/src/native/shutdown.rs
++++ b/services/workspace-root/src/native/shutdown.rs
+@@ -166,6 +166,7 @@
+     /// Activate cannot enter or confirm this private controller.
+     pub(super) fn shutdown_request(&mut self, intent: Intent, serial: u32) {
+         if self.shutdown.active()
++            || self.reclaim.active()
+             || self.development.active()
+             || self.grant.is_some()
+             || self.owner.pending.is_some()
+diff --git a/services/workspace-root/src/native/workspace.rs b/services/workspace-root/src/native/workspace.rs
+--- a/services/workspace-root/src/native/workspace.rs
++++ b/services/workspace-root/src/native/workspace.rs
+@@ -10,6 +10,7 @@
+     request: u64,
+     cut: u64,
+     frame: [u8; 256],
++    reply: Option<[u8; 256]>,
+ }
+ pub(super) struct Workspace {
+     request: u64,
+@@ -58,6 +59,7 @@
+             request,
+             cut,
+             frame: bytes,
++            reply: None,
+         });
+         for (i, byte) in bytes
+             .into_iter()
+@@ -86,10 +88,12 @@
+             self.fenced = true;
+             return Err(());
+         }
+-        Ok(core::array::from_fn(|i| {
++        let reply = core::array::from_fn(|i| {
+             // SAFETY: exact correlated RPC returned real server access credit.
+             unsafe { ((ADDRESS + i) as *const u8).read_volatile() }
+-        }))
++        });
++        self.retained.as_mut().unwrap().reply = Some(reply);
++        Ok(reply)
+     }
+     pub fn namespace(&mut self, endpoint: u64, operation: Operation) -> Result<Response, ()> {
+         self.namespace_until(
+@@ -201,6 +205,7 @@
+             control::Command::LegacyInspect { .. }
+                 | control::Command::FileContract { .. }
+                 | control::Command::BindContract { .. }
++                | control::Command::Purge { .. }
+         ) {
+             return Err(());
+         }
+@@ -223,11 +228,50 @@
+             .map_err(|_| {
+                 self.fenced = true;
+             })?;
+-        if response.status == control::Status::Uncertain {
+-            self.fenced = true;
++        if response.status == control::Status::Uncertain || now() >= cut {
++            self.fenced = true;
++            if now() >= cut {
++                return Err(());
++            }
+         } else {
+             self.retained = None;
+         }
++        Ok(response)
++    }
++    pub fn purge_until(
++        &mut self,
++        endpoint: u64,
++        command: control::Command,
++        cut: u64,
++    ) -> Result<control::PurgeResponse, ()> {
++        if !matches!(command, control::Command::Purge { .. }) || now() >= cut {
++            return Err(());
++        }
++        let request = control::Request {
++            request_id: self.next()?,
++            deadline: Deadline::new(cut).map_err(|_| ())?,
++            command,
++        };
++        let bytes = self.exchange(
++            endpoint,
++            request.request_id,
++            cut,
++            request.encode().map_err(|_| ())?,
++        )?;
++        let response = control::PurgeResponse::decode(&bytes)
++            .and_then(|r| r.matches(request))
++            .map_err(|_| {
++                self.fenced = true;
++            })?;
++        if now() >= cut || response.status == control::Status::Uncertain {
++            self.fenced = true;
++            return Err(());
++        }
++        if self.retained.as_ref().and_then(|r| r.reply) != Some(bytes) {
++            self.fenced = true;
++            return Err(());
++        }
++        self.retained = None;
+         Ok(response)
+     }
+     pub fn file_support_for(
+diff --git a/services/workspace-root/src/reclaim.rs b/services/workspace-root/src/reclaim.rs
+new file mode 100644
+--- /dev/null
++++ b/services/workspace-root/src/reclaim.rs
+@@ -0,0 +1,189 @@
++//! Exact single-object irreversible intent. This model supplies neither a
++//! Kernel retirement receipt nor permission to reclaim storage by itself.
++use crate::{
++    Identity,
++    development::{Cut, Error},
++    policy::owner,
++};
++use ev_userspace_contract::workspace::{Entry, EntryState};
++use ev_workspace_shell::{ActionScope, ActionTarget, Effect, ProtectedKind, Rights};
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct Facts {
++    pub root: Identity,
++    pub dataset: [u8; 16],
++    pub namespace: u64,
++    pub entry: Entry,
++}
++impl Facts {
++    pub fn valid(self) -> bool {
++        self.root.valid()
++            && self.dataset != [0; 16]
++            && !matches!(self.namespace, 0 | u64::MAX)
++            && self.entry.object.slot != 0
++            && self.entry.object.validate().is_ok()
++            && !matches!(self.entry.revision, 0 | u64::MAX)
++            && self.entry.state == EntryState::Trashed
++    }
++    pub fn scope(self) -> ActionScope {
++        ActionScope {
++            kind: ProtectedKind::Reclaim,
++            requester: owner(self.root),
++            target: ActionTarget::Object {
++                dataset: self.dataset,
++                slot: self.entry.object.slot,
++                generation: self.entry.object.generation,
++                revision: self.entry.revision,
++            },
++            rights: Rights::REMOVE,
++        }
++    }
++    pub fn released_bytes(self) -> Option<u64> {
++        u64::from(self.entry.size)
++            .checked_add(4095)
++            .map(|n| n / 4096 * 4096)
++    }
++}
++pub struct Approval {
++    facts: Facts,
++    nonce: u64,
++    original: u64,
++    clock: Cut,
++}
++impl Approval {
++    pub fn new(facts: Facts, effect: Effect, now: u64, cut: u64) -> Result<Self, Error> {
++        if !facts.valid()
++            || effect.scope() != facts.scope()
++            || matches!(effect.nonce(), 0 | u64::MAX)
++        {
++            return Err(Error::Effect);
++        }
++        Ok(Self {
++            facts,
++            nonce: effect.nonce(),
++            original: cut,
++            clock: Cut::new(now, cut)?,
++        })
++    }
++    pub const fn facts(&self) -> Facts {
++        self.facts
++    }
++    pub const fn nonce(&self) -> u64 {
++        self.nonce
++    }
++    pub const fn cut(&self) -> u64 {
++        self.original
++    }
++    pub fn admit(&mut self, now: u64) -> Result<(), Error> {
++        self.clock.admit(now)
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use ev_userspace_contract::workspace::{Kind, Name, ObjectId};
++    fn facts() -> Facts {
++        Facts {
++            root: Identity {
++                process: 1,
++                thread: 2,
++                registered: 3,
++            },
++            dataset: [84; 16],
++            namespace: 4,
++            entry: Entry {
++                object: ObjectId {
++                    slot: 1,
++                    generation: 2,
++                },
++                parent: ObjectId {
++                    slot: 0,
++                    generation: 1,
++                },
++                kind: Kind::File,
++                state: EntryState::Trashed,
++                revision: 3,
++                size: 4097,
++                name: Name::new(b"removed").unwrap(),
++            },
++        }
++    }
++    fn effect(f: Facts) -> Effect {
++        let mut p = crate::policy::Policy::new(
++            Identity {
++                process: 5,
++                thread: 6,
++                registered: 3,
++            },
++            f.root,
++        )
++        .unwrap();
++        let scope = f.scope();
++        let a = p.trusted.attest_attention(&mut p.desktop, 10).unwrap();
++        let c = p.trusted.challenge(&mut p.desktop, a, scope).unwrap();
++        let w = p
++            .trusted
++            .attest_presented(&mut p.desktop, c, scope, 20, 11)
++            .unwrap();
++        p.trusted
++            .attest_confirmation(
++                &mut p.desktop,
++                w,
++                scope,
++                12,
++                ev_workspace_shell::ConfirmationSource::Physical,
++            )
++            .unwrap()
++    }
++    #[test]
++    fn exact_effect_and_one_original_cut_survive_expiry_or_clock_reversal() {
++        let f = facts();
++        let mut changed = f;
++        changed.entry.object.generation += 1;
++        assert!(matches!(
++            Approval::new(changed, effect(f), 100, 8000),
++            Err(Error::Effect)
++        ));
++        let mut a = Approval::new(f, effect(f), 100, 8000).unwrap();
++        assert_eq!(a.facts(), f);
++        assert_eq!(a.cut(), 8000);
++        assert!(a.admit(7999).is_ok());
++        assert_eq!(a.admit(8000), Err(Error::Deadline));
++        assert_eq!(a.admit(200), Err(Error::Deadline));
++        let mut a = Approval::new(f, effect(f), 100, 8000).unwrap();
++        assert!(a.admit(150).is_ok());
++        assert_eq!(a.admit(149), Err(Error::Deadline));
++        assert_eq!(a.admit(151), Err(Error::Deadline));
++    }
++    #[test]
++    fn permanent_scope_is_exact_and_never_targets_live_or_root_objects() {
++        let f = facts();
++        assert!(f.valid());
++        assert_eq!(f.released_bytes(), Some(8192));
++        let mut changed = f;
++        changed.entry.state = EntryState::Live;
++        assert!(!changed.valid());
++        changed = f;
++        changed.entry.object = ObjectId {
++            slot: 0,
++            generation: 1,
++        };
++        assert!(!changed.valid());
++        changed = f;
++        changed.dataset = [0; 16];
++        assert!(!changed.valid());
++        changed = f;
++        changed.entry.object.generation += 1;
++        assert_ne!(changed.scope(), f.scope());
++        changed = f;
++        changed.entry.revision += 1;
++        assert_ne!(changed.scope(), f.scope());
++        changed = f;
++        changed.namespace += 1;
++        assert_ne!(changed, f);
++        changed = f;
++        changed.entry.name = Name::new(b"other").unwrap();
++        assert_ne!(changed, f);
++    }
++}
+diff --git a/services/workspace-root/src/render.rs b/services/workspace-root/src/render.rs
+--- a/services/workspace-root/src/render.rs
++++ b/services/workspace-root/src/render.rs
+@@ -14,6 +14,9 @@
+     ShutdownPending,
+     Development,
+     DevelopmentPending,
++    ReclaimPicker,
++    ReclaimConfirm,
++    ReclaimPending,
+ }
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub struct Refusal {
+@@ -43,6 +46,14 @@
+     /// All-zero means no recorded scope; valid Dataset/legacy IDs are nonzero.
+     pub dataset: [u8; 16],
+     pub development: Option<DevelopmentView>,
++    pub reclaim: Option<ReclaimView>,
++}
++#[derive(Clone, Copy)]
++pub struct ReclaimView {
++    pub namespace: u64,
++    pub nonce: u64,
++    pub location: ev_userspace_contract::workspace::Name,
++    pub status: &'static [u8],
+ }
+ #[derive(Clone, Copy)]
+ pub struct DevelopmentView {
+@@ -93,6 +104,7 @@
+         return Err(Error::Geometry);
+     }
+     Canvas::new(pixels).fill(BACKGROUND)?;
++    let show_dataset = view.dataset != [0; 16] && (view.reclaim.is_none() || view.layer == 3);
+     for (x, label) in [
+         (2, b"L1".as_slice()),
+         (32, b"L2"),
+@@ -119,7 +131,7 @@
+         pixels,
+         2,
+         11,
+-        &view.title[..view.title.len().min(if view.dataset != [0; 16] {
++        &view.title[..view.title.len().min(if show_dataset {
+             50
+         } else if view.recipient.is_some() {
+             86
+@@ -132,7 +144,7 @@
+             ACCENT
+         },
+     )?;
+-    if view.dataset != [0; 16] {
++    if show_dataset {
+         text(pixels, 306, 11, &dataset_text(view.dataset), ACCENT)?;
+     }
+     if let Some(recipient) = view.recipient {
+@@ -166,7 +178,39 @@
+         }
+         hex(&mut meta[23..39], entry.object.generation);
+         hex(&mut meta[49..65], entry.revision);
+-        text(pixels, 2, 21, &meta, MUTED)?;
++        if view.reclaim.is_some() && view.layer < 3 {
++            if entry.kind == ev_userspace_contract::workspace::Kind::Directory {
++                text(
++                    pixels,
++                    2,
++                    21,
++                    b"Folder; service must verify it is empty",
++                    MUTED,
++                )?;
++            } else {
++                let mut line = [b' '; 80];
++                line[..5].copy_from_slice(b"Size ");
++                let mut digits = [0; 10];
++                let mut n = entry.size;
++                let mut count = 0;
++                loop {
++                    digits[count] = b'0' + (n % 10) as u8;
++                    count += 1;
++                    n /= 10;
++                    if n == 0 {
++                        break;
++                    }
++                }
++                for i in 0..count {
++                    line[5 + i] = digits[count - 1 - i];
++                }
++                let suffix = b" bytes; existing access will be retired";
++                line[5 + count..5 + count + suffix.len()].copy_from_slice(suffix);
++                text(pixels, 2, 21, &line[..5 + count + suffix.len()], MUTED)?;
++            }
++        } else {
++            text(pixels, 2, 21, &meta, MUTED)?;
++        }
+         let mut escaped = [0u8; 384];
+         let mut at = 0;
+         for byte in entry.name.as_bytes().iter().copied() {
+@@ -239,6 +283,56 @@
+         } else if view.mode == Mode::Desktop {
+             text(pixels, 2, 71, b"Install local .zion", ACCENT)?;
+             text(pixels, 152, 71, b"Run installed app", ACCENT)?;
++        }
++    } else if let Some(reclaim) = view.reclaim {
++        Canvas::new(pixels).rect(0, 0, 640, 10, BACKGROUND)?;
++        if view.layer == 3 {
++            let mut namespace = *b"Namespace 0000000000000000";
++            hex(&mut namespace[10..26], reclaim.namespace);
++            text(pixels, 2, 1, &namespace, MUTED)?;
++        } else {
++            text(pixels, 2, 1, b"In Workspace", MUTED)?;
++            if !reclaim.location.as_bytes().is_empty() {
++                let mut escaped = [0; 384];
++                let mut at = 0;
++                let digits = b"0123456789abcdef";
++                for byte in reclaim.location.as_bytes().iter().copied() {
++                    if byte.is_ascii_graphic() && byte != b'\\' || byte == b' ' {
++                        escaped[at] = byte;
++                        at += 1;
++                    } else {
++                        escaped[at..at + 2].copy_from_slice(b"\\x");
++                        escaped[at + 2] = digits[usize::from(byte >> 4)];
++                        escaped[at + 3] = digits[usize::from(byte & 15)];
++                        at += 4;
++                    }
++                }
++                text(pixels, 80, 1, b"/", MUTED)?;
++                text(pixels, 92, 1, &escaped[..at.min(70)], MUTED)?;
++            }
++        }
++        let mut nonce = *b"n=0000000000000000";
++        hex(&mut nonce[2..18], reclaim.nonce);
++        text(pixels, 520, 1, &nonce, ACCENT)?;
++        match view.mode {
++            Mode::ReclaimPicker => {
++                for (x, label) in [
++                    (2, b"First".as_slice()),
++                    (52, b"Next"),
++                    (102, b"Up"),
++                    (302, b"Choose [Enter]"),
++                    (502, b"Cancel [Esc]"),
++                ] {
++                    text(pixels, x, 71, label, ACCENT)?;
++                }
++            }
++            Mode::ReclaimConfirm => {
++                text(pixels, 2, 71, b"Permanent; no Restore", DANGER)?;
++                text(pixels, 302, 71, b"Confirm [Enter]", ACCENT)?;
++                text(pixels, 502, 71, b"Cancel [Esc]", ACCENT)?;
++            }
++            Mode::ReclaimPending => text(pixels, 2, 71, reclaim.status, MUTED)?,
++            _ => (),
+         }
+     } else if view.mode == Mode::Shutdown {
+         text(pixels, 302, 71, b"Confirm [Enter]", ACCENT)?;
+@@ -297,6 +391,9 @@
+         )?;
+         text(pixels, 502, 71, b"Cancel binding [Esc]", ACCENT)?;
+     }
++    if view.mode == Mode::Desktop {
++        text(pixels, 322, 71, b"Purge trash", ACCENT)?;
++    }
+     Ok(())
+ }
+ 
+@@ -326,6 +423,7 @@
+             recipient: None,
+             dataset: [0; 16],
+             development: None,
++            reclaim: None,
+         },
+     )?;
+     Canvas::new(pixels).rect(0, 21, 640, 59, BACKGROUND)?;
+diff --git a/services/workspace-root/src/tests.rs b/services/workspace-root/src/tests.rs
+--- a/services/workspace-root/src/tests.rs
++++ b/services/workspace-root/src/tests.rs
+@@ -164,6 +164,7 @@
+             layer: 3,
+             dataset: [0; 16],
+             development: None,
++            reclaim: None,
+         },
+     )
+     .unwrap();
+@@ -186,6 +187,7 @@
+         layer: 1,
+         dataset: [1; 16],
+         development: None,
++        reclaim: None,
+     };
+     render::render(&mut sink, revoke).unwrap();
+     let first = sink.data.clone();
+@@ -224,6 +226,46 @@
+             .any(|c| *c != ev_graphics::BACKGROUND)
+     );
+     assert!(sink.data[1 + 71 * 640..1 + 78 * 640].contains(&ev_graphics::ACCENT));
++    for layer in [1, 3] {
++        for mode in [
++            render::Mode::ReclaimPicker,
++            render::Mode::ReclaimConfirm,
++            render::Mode::ReclaimPending,
++        ] {
++            render::render(
++                &mut sink,
++                render::View {
++                    mode,
++                    title: b"Permanently remove this trashed object?",
++                    status: b"Private copies remain",
++                    entry: Some(Entry {
++                        state: EntryState::Trashed,
++                        ..entry
++                    }),
++                    recipient: None,
++                    writable: false,
++                    layer,
++                    refusal: None,
++                    dataset: [84; 16],
++                    development: None,
++                    reclaim: Some(render::ReclaimView {
++                        namespace: u64::MAX - 1,
++                        nonce: 12,
++                        location: entry.name,
++                        status: b"Exact accepted work remains retained",
++                    }),
++                },
++            )
++            .unwrap();
++            assert_eq!(sink.data[0], Color(0xabcdef));
++            assert_eq!(*sink.data.last().unwrap(), Color(0xabcdef));
++            assert!(
++                sink.data[1 + 61 * 640..1 + 68 * 640]
++                    .iter()
++                    .any(|c| *c != ev_graphics::BACKGROUND)
++            );
++        }
++    }
+     render::render(
+         &mut sink,
+         render::View {
+@@ -243,6 +285,7 @@
+             layer: 1,
+             dataset: [0; 16],
+             development: None,
++            reclaim: None,
+         },
+     )
+     .unwrap();
+diff --git a/services/workspace/src/admin.rs b/services/workspace/src/admin.rs
+new file mode 100644
+--- /dev/null
++++ b/services/workspace/src/admin.rs
+@@ -0,0 +1,226 @@
++//! Trusted Root-only single-object reclamation. Wire IDs and ReclaimFence are
++//! descriptive integration assertions, never evidence of actual grant retirement.
++//! Only the native role16 adapter may invoke this after authenticating Root.
++use crate::control::{self, Command, PurgeReceipt, PurgeResponse, Status};
++use crate::*;
++use ev_workspace_store::ReclaimFence;
++
++// One exact bounded control frame; native stack census includes this result.
++#[allow(clippy::large_enum_variant)]
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum PurgeDispatch {
++    Complete { frame: [u8; 256] },
++    Retained,
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct PurgePending {
++    pub request: control::Request,
++    pub fingerprint: [u8; 32],
++    pub operation: OperationId,
++    pub allocated_before: u64,
++}
++#[derive(Clone, Copy)]
++pub(crate) struct State {
++    pending: PurgePending,
++    response: Option<PurgeResponse>,
++}
++fn refusal(request: control::Request, status: Status) -> PurgeDispatch {
++    // Malformed commands have no valid purge acknowledgement. Native framing
++    // rejects them before calling this trusted method; no storage was touched.
++    let frame = PurgeResponse::for_request(request, status, None)
++        .and_then(PurgeResponse::encode)
++        .unwrap_or([0; 256]);
++    PurgeDispatch::Complete { frame }
++}
++impl<D: SectorIo> Gateway<'_, '_, D> {
++    pub fn purge_pending(&self) -> Option<PurgePending> {
++        self.purge
++            .filter(|p| p.response.is_none())
++            .map(|p| p.pending)
++    }
++    /// Existing authenticated Root control route only. Native retains its
++    /// actual serving origin/receiver/window through this call and quarantines
++    /// Retained without reply or frame overwrite. No general namespace opcode.
++    pub fn purge(
++        &mut self,
++        request: control::Request,
++        now: u64,
++        legacy_fenced: bool,
++    ) -> PurgeDispatch {
++        let Command::Purge {
++            token,
++            dataset,
++            object,
++            expected_revision,
++            namespace_revision,
++            name,
++        } = request.command
++        else {
++            return refusal(request, Status::Malformed);
++        };
++        let frame = match request.encode() {
++            Ok(frame) => frame,
++            Err(_) => return refusal(request, Status::Malformed),
++        };
++        let fingerprint = hash(&frame);
++        if let Some(previous) = self.purge {
++            if previous.response.is_none() {
++                return PurgeDispatch::Retained;
++            }
++            if request.request_id <= previous.pending.request.request_id {
++                return if previous.pending.request == request
++                    && previous.pending.fingerprint == fingerprint
++                {
++                    PurgeDispatch::Complete {
++                        frame: previous.response.unwrap().encode().unwrap(),
++                    }
++                } else {
++                    refusal(request, Status::Stale)
++                };
++            }
++        }
++        if !request.deadline.is_live(now) {
++            return refusal(request, Status::Deadline);
++        }
++        if self.seal.is_some()
++            || self.retirement_fenced
++            || legacy_fenced
++            || self.store.is_poisoned()
++            || self.store.needs_mirror_recovery()
++        {
++            return refusal(request, Status::Storage);
++        }
++        if self.pending.is_some()
++            || self.commit.is_some()
++            || self.namespace.pending().is_some()
++            || self.transfer.is_some()
++            || self.prepared.is_some()
++        {
++            return refusal(request, Status::Busy);
++        }
++        match self.store.pending_stage() {
++            Ok(None) => (),
++            Ok(Some(_)) => return refusal(request, Status::Busy),
++            Err(_) => return refusal(request, Status::Storage),
++        }
++        if self.store.dataset_id().bytes() != dataset
++            || self.store.namespace_revision() != namespace_revision
++        {
++            return refusal(request, Status::Stale);
++        }
++        let object = ObjectId {
++            slot: object.slot,
++            generation: object.generation,
++        };
++        if object == ObjectId::ROOT {
++            return refusal(request, Status::Scope);
++        }
++        let metadata = match self.store.metadata(object) {
++            Ok(m) => m,
++            Err(_) => return refusal(request, Status::Stale),
++        };
++        if metadata.revision != expected_revision
++            || self.store.name(object).ok() != Some(name.as_str())
++        {
++            return refusal(request, Status::Stale);
++        }
++        if !metadata.directly_trashed {
++            return refusal(request, Status::Scope);
++        }
++        // Presence is the independent guard: revoked rows still block until
++        // exact explicit service reconciliation actually removes the row.
++        if self
++            .routes
++            .iter()
++            .flatten()
++            .any(|r| r.binding.object == object)
++            || self.namespace.references(object)
++        {
++            return refusal(request, Status::Busy);
++        }
++        if metadata.kind == Kind::Directory {
++            match self.store.list(object, 0, true) {
++                Ok(None) => (),
++                Ok(Some(_)) => return refusal(request, Status::Busy),
++                Err(_) => return refusal(request, Status::Storage),
++            }
++        }
++        let allocated_before = match self.store.allocated_bytes() {
++            Ok(n) => n,
++            Err(_) => return refusal(request, Status::Storage),
++        };
++        let operation = match self.store.next_operation() {
++            Ok(op) => op,
++            Err(_) => return refusal(request, Status::Storage),
++        };
++        // Final cached CAS/eligibility checks and exclusive ownership precede
++        // the first possible I/O. The one owner cannot interleave another call.
++        self.purge = Some(State {
++            pending: PurgePending {
++                request,
++                fingerprint,
++                operation,
++                allocated_before,
++            },
++            response: None,
++        });
++        self.retirement_fenced = true;
++        let result = self.store.purge(
++            operation,
++            ReclaimFence {
++                object,
++                namespace_revision,
++                authority_epoch: token,
++            },
++            request.deadline.tick(),
++        );
++        let receipt = match result {
++            Ok(receipt) => receipt,
++            Err(_) => return PurgeDispatch::Retained,
++        };
++        let allocated_after = match self.store.allocated_bytes() {
++            Ok(n) => n,
++            Err(_) => return PurgeDispatch::Retained,
++        };
++        let reclaimed = if metadata.kind == Kind::File {
++            metadata.length.div_ceil(CHUNK_BYTES as u64) * CHUNK_BYTES as u64
++        } else {
++            0
++        };
++        if receipt.kind != ReceiptKind::Purged
++            || receipt.operation != operation
++            || receipt.object != object
++            || receipt.object_revision != expected_revision
++            || receipt.namespace_revision != namespace_revision.checked_add(1).unwrap_or(0)
++            || receipt.replayed
++            || self.store.namespace_revision() != receipt.namespace_revision
++            || self.store.last_receipt().ok() != Some(Some(receipt))
++            || self.store.metadata(object).is_ok()
++            || self.store.is_poisoned()
++            || self.store.needs_mirror_recovery()
++            || self.store.pending_stage().ok() != Some(None)
++            || allocated_before.checked_sub(allocated_after) != Some(reclaimed)
++        {
++            return PurgeDispatch::Retained;
++        }
++        let response = PurgeResponse::for_request(
++            request,
++            Status::Applied,
++            Some(PurgeReceipt {
++                operation: operation.get(),
++                sequence: receipt.sequence,
++                namespace_revision: receipt.namespace_revision,
++                allocated_before,
++                allocated_after,
++            }),
++        )
++        .unwrap();
++        let frame = match response.encode() {
++            Ok(frame) => frame,
++            Err(_) => return PurgeDispatch::Retained,
++        };
++        self.purge.as_mut().unwrap().response = Some(response);
++        self.retirement_fenced = false;
++        PurgeDispatch::Complete { frame }
++    }
++}
+diff --git a/services/workspace/src/control.rs b/services/workspace/src/control.rs
+--- a/services/workspace/src/control.rs
++++ b/services/workspace/src/control.rs
+@@ -11,6 +11,9 @@
+ #[path = "file_contract.rs"]
+ mod file_contract;
+ pub use file_contract::{BindContractResponse, FileContractResponse, FileRequirement};
++#[path = "purge_control.rs"]
++mod purge_control;
++pub use purge_control::{PurgeReceipt, PurgeResponse};
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub enum Error {
+     Length,
+@@ -95,6 +98,16 @@
+ }
+ #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+ pub enum Command {
++    /// Root-only exact single-object reclamation after independent grant retirement.
++    /// Neither this packet nor ReclaimFence establishes that retirement proof.
++    Purge {
++        token: u64,
++        dataset: [u8; 16],
++        object: ObjectId,
++        expected_revision: u64,
++        namespace_revision: u64,
++        name: ev_userspace_contract::workspace::Name,
++    },
+     Bind(Bind),
+     /// Read-only loaded File@2 compatibility probe, only on the actual Root
+     /// control route. Token correlates the reply and grants no authority.
+@@ -192,7 +205,9 @@
+         match self.command {
+             Command::Bind(b) => b.lease_epoch,
+             Command::BindContract { bind, .. } => bind.lease_epoch,
+-            Command::Quiesce { token } | Command::FileContract { token } => token,
++            Command::Quiesce { token }
++            | Command::FileContract { token }
++            | Command::Purge { token, .. } => token,
+             Command::BindLegacyReadOnly(b) => b.lease_epoch,
+             Command::LegacyInspect { lease_epoch, .. } => lease_epoch,
+             Command::Revoke { lease_epoch, .. } => lease_epoch,
+@@ -210,6 +225,7 @@
+         put(&mut b, 24, self.deadline.tick());
+         put(&mut b, 32, self.lease_epoch());
+         match self.command {
++            Command::Purge { .. } => purge_control::encode_request(&mut b, self.command)?,
+             Command::Quiesce { .. } => b[8] = 7,
+             Command::FileContract { .. } => b[8] = 8,
+             Command::Bind(bind) | Command::BindContract { bind, .. } => {
+@@ -389,6 +405,7 @@
+             }
+             7 => Command::Quiesce { token: word(b, 32) },
+             8 => Command::FileContract { token: word(b, 32) },
++            10 => purge_control::decode_command(b)?,
+             _ => return Err(Error::Opcode),
+         };
+         let value = Self {
+diff --git a/services/workspace/src/lib.rs b/services/workspace/src/lib.rs
+--- a/services/workspace/src/lib.rs
++++ b/services/workspace/src/lib.rs
+@@ -5,7 +5,9 @@
+ #![no_std]
+ #![forbid(unsafe_code)]
+ 
++pub mod admin;
+ pub mod backend;
++pub use admin::{PurgeDispatch, PurgePending};
+ pub mod control;
+ pub mod legacy;
+ #[cfg(feature = "native-actor")]
+@@ -231,6 +233,7 @@
+     namespace: namespace::State,
+     retirement_fenced: bool,
+     seal: Option<Seal>,
++    purge: Option<admin::State>,
+ }
+ impl<'store, 'scratch, D: SectorIo> Gateway<'store, 'scratch, D> {
+     pub fn new(store: Dataset<'store, D>, scratch: &'scratch mut Scratch) -> Self {
+@@ -247,6 +250,7 @@
+             namespace: namespace::State::new(),
+             retirement_fenced: false,
+             seal: None,
++            purge: None,
+         }
+     }
+     /// A terminal captured-Root seal attempt has no unseal/reset path. This
+diff --git a/services/workspace/src/namespace.rs b/services/workspace/src/namespace.rs
+--- a/services/workspace/src/namespace.rs
++++ b/services/workspace/src/namespace.rs
+@@ -79,6 +79,13 @@
+             generations: [0; MAX_NAMESPACE_ROUTES],
+             pending: None,
+         }
++    }
++    pub(crate) fn references(&self, object: ObjectId) -> bool {
++        // A revoked but not explicitly retired row remains a fixed binding.
++        self.routes
++            .iter()
++            .flatten()
++            .any(|r| r.binding.directory == object)
+     }
+     pub fn pending(&self) -> Option<NamespacePending> {
+         self.pending.map(|p| p.info)
+diff --git a/services/workspace/src/native/mod.rs b/services/workspace/src/native/mod.rs
+--- a/services/workspace/src/native/mod.rs
++++ b/services/workspace/src/native/mod.rs
+@@ -73,6 +73,9 @@
+     request: u64,
+     fingerprint: [u8; 32],
+     response: [u8; 256],
++    /// Actual dedicated Root serving call, not packet-supplied ownership.
++    /// Some means no response bytes are valid and the call must stay retained.
++    held: Option<Incoming>,
+ }
+ #[derive(Clone, Copy)]
+ struct Incoming {
+@@ -201,7 +204,12 @@
+     status: control::Status,
+     metadata: Option<original::Metadata>,
+ ) -> [u8; 256] {
+-    if matches!(request.command, control::Command::LegacyInspect { .. }) {
++    if matches!(request.command, control::Command::Purge { .. }) {
++        control::PurgeResponse::for_request(request, status, None)
++            .unwrap()
++            .encode()
++            .unwrap()
++    } else if matches!(request.command, control::Command::LegacyInspect { .. }) {
+         control::LegacyResponse {
+             request_id: request.request_id,
+             lease_epoch: request.lease_epoch(),
+@@ -329,6 +337,9 @@
+     lease_floors: &mut [u64; 4],
+     events: u64,
+ ) {
++    if cache.is_some_and(|row| row.held.is_some()) {
++        quarantine(); // Unknown is never a cached response or a new operation.
++    }
+     // Role16 is a different actual receiver from Files namespace10. Its only
+     // SEND is installed in Root, with no ordinary DERIVE/TRANSFER path. Origin
+     // is captured from this protected receiver/nonce, never a packet Root PID.
+@@ -377,16 +388,58 @@
+             )
+         && request.request_id <= last.request
+     {
++        let purge = matches!(request.command, control::Command::Purge { .. });
++        if purge {
++            last.held = Some(incoming);
++        }
++        confirm(incoming);
+         if request.request_id == last.request && fingerprint == last.fingerprint {
+             window.write(0, &last.response);
+         } else {
+             window.write(0, &control_response(request, control::Status::Stale, None));
+         }
+         reply(incoming);
++        if purge {
++            last.held = None;
++        }
+         return;
++    }
++    if matches!(request.command, control::Command::Purge { .. }) {
++        // The actual role16 Root session, immutable call nonce and original cut
++        // are revalidated before final CAS/retention and first possible I/O.
++        confirm(incoming);
++        *cache = Some(ControlCache {
++            process: incoming.origin.process,
++            thread: incoming.origin.thread,
++            token: incoming.origin.registered,
++            request: request.request_id,
++            fingerprint,
++            response: [0; 256], // Not a response; held forbids interpretation.
++            held: Some(incoming),
++        });
++        match gateway.purge(request, now(), legacy.is_fenced()) {
++            ev_workspace_service::PurgeDispatch::Complete { frame } => {
++                *cache = Some(ControlCache {
++                    process: incoming.origin.process,
++                    thread: incoming.origin.thread,
++                    token: incoming.origin.registered,
++                    request: request.request_id,
++                    fingerprint,
++                    response: frame,
++                    held: Some(incoming),
++                });
++                confirm(incoming);
++                window.write(0, &frame);
++                reply(incoming);
++                cache.as_mut().unwrap().held = None;
++                return;
++            }
++            ev_workspace_service::PurgeDispatch::Retained => quarantine(),
++        }
+     }
+     let mut original_metadata = None;
+     let status = match request.command {
++        control::Command::Purge { .. } => unreachable!("purge handled with its distinct response"),
+         // Dedicated role16 and the captured Root session are checked before
+         // this function. Compatibility is descriptive, never readiness/edit
+         // authority; answering does not bind, mutate or perform storage I/O.
+@@ -647,6 +700,7 @@
+         request: request.request_id,
+         fingerprint,
+         response,
++        held: None,
+     });
+     confirm(incoming);
+     window.write(0, &response);
+diff --git a/services/workspace/src/purge_control.rs b/services/workspace/src/purge_control.rs
+new file mode 100644
+--- /dev/null
++++ b/services/workspace/src/purge_control.rs
+@@ -0,0 +1,185 @@
++//! Exact Root-only purge codec. Descriptive CAS fields confer no authority.
++use super::*;
++use ev_userspace_contract::workspace::Name;
++
++pub(super) fn encode_request(b: &mut [u8; FRAME_BYTES], command: Command) -> Result<(), Error> {
++    let Command::Purge {
++        token: _,
++        dataset,
++        object,
++        expected_revision,
++        namespace_revision,
++        name,
++    } = command
++    else {
++        return Err(Error::Opcode);
++    };
++    if dataset == [0; 16]
++        || object.slot == 0
++        || object.validate().is_err()
++        || !finite(expected_revision)
++        || !finite(namespace_revision)
++    {
++        return Err(Error::Scope);
++    }
++    b[8] = 10;
++    b[40..56].copy_from_slice(&dataset);
++    b[56..58].copy_from_slice(&object.slot.to_le_bytes());
++    b[58..60].copy_from_slice(&(name.as_str().len() as u16).to_le_bytes());
++    put(b, 64, object.generation);
++    put(b, 72, expected_revision);
++    put(b, 80, namespace_revision);
++    b[128..128 + name.as_str().len()].copy_from_slice(name.as_str().as_bytes());
++    Ok(())
++}
++pub(super) fn decode_command(b: &[u8]) -> Result<Command, Error> {
++    let length = u16::from_le_bytes(b[58..60].try_into().unwrap()) as usize;
++    if length > 96 {
++        return Err(Error::Scope);
++    }
++    Ok(Command::Purge {
++        token: word(b, 32),
++        dataset: b[40..56].try_into().unwrap(),
++        object: ObjectId {
++            slot: u16::from_le_bytes(b[56..58].try_into().unwrap()),
++            generation: word(b, 64),
++        },
++        expected_revision: word(b, 72),
++        namespace_revision: word(b, 80),
++        name: Name::new(&b[128..128 + length]).map_err(|_| Error::Scope)?,
++    })
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct PurgeReceipt {
++    pub operation: u64,
++    pub sequence: u64,
++    pub namespace_revision: u64,
++    pub allocated_before: u64,
++    pub allocated_after: u64,
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct PurgeResponse {
++    pub request_id: u64,
++    pub token: u64,
++    pub status: Status,
++    pub dataset: [u8; 16],
++    pub object: ObjectId,
++    pub expected_revision: u64,
++    /// Exact pre-purge namespace CAS; receipt names the resulting namespace.
++    pub namespace_revision: u64,
++    pub name: Name,
++    pub receipt: Option<PurgeReceipt>,
++}
++impl PurgeResponse {
++    pub fn for_request(
++        request: Request,
++        status: Status,
++        receipt: Option<PurgeReceipt>,
++    ) -> Result<Self, Error> {
++        let Command::Purge {
++            token,
++            dataset,
++            object,
++            expected_revision,
++            namespace_revision,
++            name,
++        } = request.command
++        else {
++            return Err(Error::Opcode);
++        };
++        Ok(Self {
++            request_id: request.request_id,
++            token,
++            status,
++            dataset,
++            object,
++            expected_revision,
++            namespace_revision,
++            name,
++            receipt,
++        })
++    }
++    pub fn encode(self) -> Result<[u8; FRAME_BYTES], Error> {
++        let request = Request {
++            request_id: self.request_id,
++            deadline: Deadline::new(1).map_err(|_| Error::Identity)?,
++            command: Command::Purge {
++                token: self.token,
++                dataset: self.dataset,
++                object: self.object,
++                expected_revision: self.expected_revision,
++                namespace_revision: self.namespace_revision,
++                name: self.name,
++            },
++        };
++        let mut b = request.encode()?;
++        b[..8].copy_from_slice(b"EVWPGA01");
++        b[8] = self.status as u8;
++        put(&mut b, 24, 0);
++        if (self.status == Status::Applied) != self.receipt.is_some() {
++            return Err(Error::Scope);
++        }
++        if let Some(receipt) = self.receipt {
++            if !finite(receipt.operation)
++                || !finite(receipt.sequence)
++                || Some(receipt.namespace_revision) != self.namespace_revision.checked_add(1)
++                || receipt.allocated_after > receipt.allocated_before
++            {
++                return Err(Error::Scope);
++            }
++            put(&mut b, 88, receipt.namespace_revision);
++            put(&mut b, 96, receipt.operation);
++            put(&mut b, 104, receipt.sequence);
++            put(&mut b, 112, receipt.allocated_before);
++            put(&mut b, 120, receipt.allocated_after);
++        }
++        Ok(b)
++    }
++    pub fn decode(b: &[u8]) -> Result<Self, Error> {
++        if b.len() != FRAME_BYTES {
++            return Err(Error::Length);
++        }
++        if &b[..8] != b"EVWPGA01" {
++            return Err(Error::Magic);
++        }
++        let status = match b[8] {
++            0 => Status::Applied,
++            1 => Status::Denied,
++            2 => Status::Stale,
++            3 => Status::Busy,
++            4 => Status::Malformed,
++            5 => Status::Storage,
++            6 => Status::Scope,
++            7 => Status::Uncertain,
++            8 => Status::Unavailable,
++            9 => Status::Deadline,
++            _ => return Err(Error::Opcode),
++        };
++        let request = Request {
++            request_id: word(b, 16),
++            deadline: Deadline::new(1).map_err(|_| Error::Identity)?,
++            command: decode_command(b)?,
++        };
++        let receipt = (status == Status::Applied).then_some(PurgeReceipt {
++            operation: word(b, 96),
++            sequence: word(b, 104),
++            namespace_revision: word(b, 88),
++            allocated_before: word(b, 112),
++            allocated_after: word(b, 120),
++        });
++        let value = Self::for_request(request, status, receipt)?;
++        if value.encode()?.as_slice() != b {
++            return Err(Error::Reserved);
++        }
++        Ok(value)
++    }
++    pub fn matches(self, request: Request) -> Result<Self, Error> {
++        if self.request_id != request.request_id
++            || Self::for_request(request, self.status, self.receipt)? != self
++        {
++            return Err(Error::Correlation);
++        }
++        self.encode()?;
++        Ok(self)
++    }
++}
+diff --git a/services/workspace/src/purge_tests.rs b/services/workspace/src/purge_tests.rs
+new file mode 100644
+--- /dev/null
++++ b/services/workspace/src/purge_tests.rs
+@@ -0,0 +1,503 @@
++use super::*;
++use crate::control::{Command, PurgeReceipt, PurgeResponse, Status};
++use ev_userspace_contract::workspace as ns;
++
++fn purge_request(g: &Gateway<'_, '_, Memory>, object: ObjectId) -> control::Request {
++    control::Request {
++        request_id: 91,
++        deadline: Deadline::new(DEADLINE).unwrap(),
++        command: Command::Purge {
++            token: 71,
++            dataset: g.dataset_id(),
++            object: ns::ObjectId {
++                slot: object.slot,
++                generation: object.generation,
++            },
++            expected_revision: g.owner_metadata(object).unwrap().revision,
++            namespace_revision: g.namespace_revision(),
++            name: ns::Name::new(g.owner_name(object).unwrap().as_bytes()).unwrap(),
++        },
++    }
++}
++fn decoded(request: control::Request, dispatch: PurgeDispatch) -> PurgeResponse {
++    let PurgeDispatch::Complete { frame } = dispatch else {
++        panic!("retained")
++    };
++    PurgeResponse::decode(&frame)
++        .unwrap()
++        .matches(request)
++        .unwrap()
++}
++fn trash(g: &mut Gateway<'_, '_, Memory>, object: ObjectId) {
++    g.store
++        .trash(
++            g.store.next_operation().unwrap(),
++            g.store.namespace_revision(),
++            object,
++            DEADLINE,
++        )
++        .unwrap();
++}
++fn commit_text(g: &mut Gateway<'_, '_, Memory>, object: ObjectId) {
++    let text = b"exact reclaim bytes";
++    let stage = g
++        .store
++        .begin_write(
++            g.store.next_operation().unwrap(),
++            object,
++            1,
++            text.len() as u64,
++            hash(text),
++            DEADLINE,
++        )
++        .unwrap()
++        .stage;
++    g.store
++        .write_chunk(g.store.next_operation().unwrap(), stage, 0, text, DEADLINE)
++        .unwrap();
++    g.store
++        .commit(g.store.next_operation().unwrap(), stage, DEADLINE)
++        .unwrap();
++}
++#[test]
++fn purge_codec_exact_scope_and_no_ordinary_authority_or_forged_free_receipt() {
++    let request = control::Request {
++        request_id: 31,
++        deadline: Deadline::new(500).unwrap(),
++        command: Command::Purge {
++            token: 77,
++            dataset: [8; 16],
++            object: ns::ObjectId {
++                slot: 1,
++                generation: 9,
++            },
++            expected_revision: 3,
++            namespace_revision: 12,
++            name: ns::Name::new(b"exact.txt").unwrap(),
++        },
++    };
++    let frame = request.encode().unwrap();
++    assert_eq!(frame[8], 10);
++    assert_eq!(control::Request::decode(&frame), Ok(request));
++    assert!(ns::Request::decode(&frame).is_err());
++    assert!(wire::Request::decode(&frame).is_err());
++    for offset in [9, 15, 60, 63, 88, 95, 96, 104, 112, 120, 224, 255] {
++        let mut bad = frame;
++        bad[offset] ^= 1;
++        assert!(control::Request::decode(&bad).is_err(), "{offset}");
++    }
++    let receipt = PurgeReceipt {
++        operation: 81,
++        sequence: 91,
++        namespace_revision: 13,
++        allocated_before: 4096,
++        allocated_after: 0,
++    };
++    let response = PurgeResponse::for_request(request, Status::Applied, Some(receipt)).unwrap();
++    let bytes = response.encode().unwrap();
++    assert_eq!(
++        PurgeResponse::decode(&bytes).unwrap().matches(request),
++        Ok(response)
++    );
++    assert!(control::Response::decode(&bytes).is_err());
++    assert!(
++        PurgeResponse {
++            receipt: None,
++            ..response
++        }
++        .encode()
++        .is_err()
++    );
++    assert!(
++        PurgeResponse {
++            status: Status::Busy,
++            ..response
++        }
++        .encode()
++        .is_err()
++    );
++    assert!(
++        PurgeResponse {
++            receipt: Some(PurgeReceipt {
++                allocated_after: 4097,
++                ..receipt
++            }),
++            ..response
++        }
++        .encode()
++        .is_err()
++    );
++    assert!(
++        PurgeResponse {
++            token: 78,
++            ..response
++        }
++        .matches(request)
++        .is_err()
++    );
++    let refused = PurgeResponse::for_request(request, Status::Busy, None).unwrap();
++    assert_eq!(
++        PurgeResponse::decode(&refused.encode().unwrap()),
++        Ok(refused)
++    );
++    let mut forged = refused.encode().unwrap();
++    forged[112] = 1;
++    assert!(PurgeResponse::decode(&forged).is_err());
++}
++#[test]
++fn live_wrong_cas_cut_context_and_global_fences_refuse_before_any_io() {
++    let memory = Memory::new();
++    let mut ss = Box::new(StoreScratch::empty());
++    let mut gs = Box::new(Scratch::empty());
++    let (store, object, _) = dataset(memory.clone(), &mut ss);
++    let mut g = Gateway::new(store, &mut gs);
++    let request = purge_request(&g, object);
++    let before = memory.counts();
++    assert_eq!(
++        decoded(request, g.purge(request, 1, false)).status,
++        Status::Scope
++    );
++    assert_eq!(memory.counts(), before);
++    let wrong = control::Request {
++        command: Command::Quiesce { token: 9 },
++        ..request
++    };
++    let before = memory.counts();
++    let _ = g.purge(wrong, 1, false);
++    assert_eq!(memory.counts(), before);
++    trash(&mut g, object);
++    let good = purge_request(&g, object);
++    let Command::Purge {
++        token,
++        dataset,
++        object: wire_object,
++        expected_revision,
++        namespace_revision,
++        name,
++    } = good.command
++    else {
++        unreachable!()
++    };
++    let command = |dataset, object, expected_revision, namespace_revision, name| Command::Purge {
++        token,
++        dataset,
++        object,
++        expected_revision,
++        namespace_revision,
++        name,
++    };
++    let wrong_commands = [
++        command(
++            [9; 16],
++            wire_object,
++            expected_revision,
++            namespace_revision,
++            name,
++        ),
++        command(
++            dataset,
++            ns::ObjectId {
++                generation: 2,
++                ..wire_object
++            },
++            expected_revision,
++            namespace_revision,
++            name,
++        ),
++        command(
++            dataset,
++            wire_object,
++            expected_revision + 1,
++            namespace_revision,
++            name,
++        ),
++        command(
++            dataset,
++            wire_object,
++            expected_revision,
++            namespace_revision + 1,
++            name,
++        ),
++        command(
++            dataset,
++            wire_object,
++            expected_revision,
++            namespace_revision,
++            ns::Name::new(b"other.txt").unwrap(),
++        ),
++    ];
++    for command in wrong_commands {
++        let request = control::Request { command, ..good };
++        let before = memory.counts();
++        assert_eq!(
++            decoded(request, g.purge(request, 1, false)).status,
++            Status::Stale
++        );
++        assert_eq!(memory.counts(), before);
++    }
++    let before = memory.counts();
++    assert_eq!(
++        decoded(good, g.purge(good, DEADLINE, false)).status,
++        Status::Deadline
++    );
++    assert_eq!(memory.counts(), before);
++    let before = memory.counts();
++    assert_eq!(
++        decoded(good, g.purge(good, 1, true)).status,
++        Status::Storage
++    );
++    assert_eq!(memory.counts(), before);
++    g.retirement_fenced = true;
++    let before = memory.counts();
++    assert_eq!(
++        decoded(good, g.purge(good, 1, false)).status,
++        Status::Storage
++    );
++    assert_eq!(memory.counts(), before);
++    g.retirement_fenced = false;
++    g.seal = Some(Seal {
++        request: control::Request {
++            command: Command::Quiesce { token },
++            ..good
++        },
++        status: Status::Applied,
++    });
++    let before = memory.counts();
++    assert_eq!(
++        decoded(good, g.purge(good, 1, false)).status,
++        Status::Storage
++    );
++    assert_eq!(memory.counts(), before);
++    let _ = (dataset, name);
++}
++#[test]
++fn active_and_revoked_but_undrained_file_routes_and_fixed_namespace_rows_block() {
++    let memory = Memory::new();
++    let mut ss = Box::new(StoreScratch::empty());
++    let mut gs = Box::new(Scratch::empty());
++    let (store, object, _) = dataset(memory.clone(), &mut ss);
++    let mut g = Gateway::new(store, &mut gs);
++    let key = g.bind(binding(object, 71, Rights::ReadOnly)).unwrap();
++    trash(&mut g, object);
++    let request = purge_request(&g, object);
++    for revoke in [false, true] {
++        if revoke {
++            g.revoke(key).unwrap();
++        }
++        let before = memory.counts();
++        assert_eq!(
++            decoded(request, g.purge(request, 1, false)).status,
++            Status::Busy
++        );
++        assert_eq!(memory.counts(), before);
++    }
++    g.retire_quiescent(key, DEADLINE).unwrap();
++    assert_eq!(
++        decoded(request, g.purge(request, 1, false)).status,
++        Status::Applied
++    );
++    let folder = g
++        .store
++        .create(
++            g.store.next_operation().unwrap(),
++            g.namespace_revision(),
++            ObjectId::ROOT,
++            Name::new("empty").unwrap(),
++            Kind::Directory,
++            DEADLINE,
++        )
++        .unwrap()
++        .object;
++    let binding = NamespaceBinding {
++        endpoint: EndpointId::new(83, 1).unwrap(),
++        caller: Caller::new(84, 0).unwrap(),
++        lease_epoch: 1,
++        directory: folder,
++        rights: NamespaceRights::Manage,
++    };
++    let key = g.bind_namespace(binding).unwrap();
++    trash(&mut g, folder);
++    let request = control::Request {
++        request_id: 92,
++        ..purge_request(&g, folder)
++    };
++    g.revoke_namespace(key).unwrap();
++    let before = memory.counts();
++    assert_eq!(
++        decoded(request, g.purge(request, 1, false)).status,
++        Status::Busy
++    );
++    assert_eq!(memory.counts(), before);
++    g.retire_namespace_quiescent(key).unwrap();
++    assert_eq!(
++        decoded(request, g.purge(request, 1, false)).status,
++        Status::Applied
++    );
++}
++#[test]
++fn purge_exact_mirrored_receipt_frees_allocation_and_reuse_advances_generation() {
++    let memory = Memory::new();
++    let mut ss = Box::new(StoreScratch::empty());
++    let mut gs = Box::new(Scratch::empty());
++    let (store, object, _) = dataset(memory.clone(), &mut ss);
++    let mut g = Gateway::new(store, &mut gs);
++    commit_text(&mut g, object);
++    trash(&mut g, object);
++    let request = purge_request(&g, object);
++    let response = decoded(request, g.purge(request, 1, false));
++    assert_eq!(response.status, Status::Applied);
++    let receipt = response.receipt.unwrap();
++    assert_eq!(
++        (receipt.allocated_before, receipt.allocated_after),
++        (4096, 0)
++    );
++    assert!(g.owner_metadata(object).is_err());
++    assert_eq!(
++        g.backend_receipt().unwrap().unwrap().kind,
++        ReceiptKind::Purged
++    );
++    assert!(!g.store.needs_mirror_recovery());
++    assert!(g.purge_pending().is_none());
++    let before = memory.counts();
++    assert_eq!(
++        decoded(request, g.purge(request, DEADLINE + 1, false)),
++        response
++    );
++    assert_eq!(memory.counts(), before);
++    let replacement = g
++        .store
++        .create(
++            g.store.next_operation().unwrap(),
++            g.namespace_revision(),
++            ObjectId::ROOT,
++            Name::new("replacement.txt").unwrap(),
++            Kind::File,
++            DEADLINE,
++        )
++        .unwrap()
++        .object;
++    assert_eq!(replacement.slot, object.slot);
++    assert_eq!(replacement.generation, object.generation + 1);
++    assert!(g.owner_metadata(object).is_err());
++    assert!(g.bind(binding(object, 72, Rights::ReadOnly)).is_err());
++    drop(g);
++    let mut cold_ss = Box::new(StoreScratch::empty());
++    let cold = Dataset::open(Memory::image(memory.snapshot()), &mut cold_ss, DEADLINE)
++        .unwrap_or_else(|e| panic!("{:?}", e.error));
++    assert!(cold.metadata(object).is_err());
++    assert_eq!(cold.name(replacement).unwrap(), "replacement.txt");
++    assert!(!cold.needs_mirror_recovery());
++}
++#[test]
++fn pending_stage_on_another_object_is_a_pre_io_refusal() {
++    let memory = Memory::new();
++    let mut ss = Box::new(StoreScratch::empty());
++    let mut gs = Box::new(Scratch::empty());
++    let (store, object, _) = dataset(memory.clone(), &mut ss);
++    let mut g = Gateway::new(store, &mut gs);
++    trash(&mut g, object);
++    let other = g
++        .store
++        .create(
++            g.store.next_operation().unwrap(),
++            g.namespace_revision(),
++            ObjectId::ROOT,
++            Name::new("other").unwrap(),
++            Kind::File,
++            DEADLINE,
++        )
++        .unwrap()
++        .object;
++    g.store
++        .begin_write(
++            g.store.next_operation().unwrap(),
++            other,
++            1,
++            3,
++            hash(b"abc"),
++            DEADLINE,
++        )
++        .unwrap();
++    let request = purge_request(&g, object);
++    let before = memory.counts();
++    assert_eq!(
++        decoded(request, g.purge(request, 1, false)).status,
++        Status::Busy
++    );
++    assert_eq!(memory.counts(), before);
++}
++#[test]
++fn nonempty_trashed_directory_is_refused_before_any_io() {
++    let memory = Memory::new();
++    let mut ss = Box::new(StoreScratch::empty());
++    let mut gs = Box::new(Scratch::empty());
++    let (store, _, _) = dataset(memory.clone(), &mut ss);
++    let mut g = Gateway::new(store, &mut gs);
++    let folder = g
++        .store
++        .create(
++            g.store.next_operation().unwrap(),
++            g.namespace_revision(),
++            ObjectId::ROOT,
++            Name::new("parent").unwrap(),
++            Kind::Directory,
++            DEADLINE,
++        )
++        .unwrap()
++        .object;
++    g.store
++        .create(
++            g.store.next_operation().unwrap(),
++            g.namespace_revision(),
++            folder,
++            Name::new("child").unwrap(),
++            Kind::File,
++            DEADLINE,
++        )
++        .unwrap();
++    trash(&mut g, folder);
++    let request = purge_request(&g, folder);
++    let before = memory.counts();
++    assert_eq!(
++        decoded(request, g.purge(request, 1, false)).status,
++        Status::Busy
++    );
++    assert_eq!(memory.counts(), before);
++}
++#[test]
++fn interrupted_publication_retains_exact_request_op_and_cut_without_ack_or_retry() {
++    let memory = Memory::new();
++    let mut ss = Box::new(StoreScratch::empty());
++    let mut gs = Box::new(Scratch::empty());
++    let (store, object, _) = dataset(memory.clone(), &mut ss);
++    let mut g = Gateway::new(store, &mut gs);
++    commit_text(&mut g, object);
++    trash(&mut g, object);
++    let request = purge_request(&g, object);
++    memory.fail_next_flush_after_persist();
++    assert_eq!(g.purge(request, 1, false), PurgeDispatch::Retained);
++    let pending = g.purge_pending().unwrap();
++    assert_eq!(pending.request, request);
++    assert_eq!(pending.fingerprint, hash(&request.encode().unwrap()));
++    assert!(g.retirement_fenced);
++    let before = memory.counts();
++    assert_eq!(g.purge(request, 2, false), PurgeDispatch::Retained);
++    assert_eq!(
++        g.purge(
++            control::Request {
++                request_id: 92,
++                ..request
++            },
++            2,
++            false
++        ),
++        PurgeDispatch::Retained
++    );
++    assert_eq!(g.purge_pending(), Some(pending));
++    assert_eq!(memory.counts(), before);
++    assert_eq!(
++        g.bind(binding(object, 73, Rights::ReadOnly)),
++        Err(BindError::StorageFenced)
++    );
++    assert_eq!(memory.counts(), before);
++}
+diff --git a/services/workspace/src/tests.rs b/services/workspace/src/tests.rs
+--- a/services/workspace/src/tests.rs
++++ b/services/workspace/src/tests.rs
+@@ -4,6 +4,8 @@
+ use std::{boxed::Box, cell::RefCell, collections::BTreeMap, rc::Rc, vec};
+ #[path = "namespace_tests.rs"]
+ mod namespace_tests;
++#[path = "purge_tests.rs"]
++mod purge_tests;
+ #[path = "retirement_tests.rs"]
+ mod retirement_tests;
+ 

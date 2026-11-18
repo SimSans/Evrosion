@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "date": "2026-11-16",
+  "status": "PASS focused host/profile/render tests, strict lint, actual native link and ELF/stack preflight; actual Root/VM integration pending",
+  "scope": "No actual grant/backing/accepted-view, 39-source input/event, permission/owner approval, replacement, recovery or whole M8 PASS claim",
+  "host_tests": 2,
+  "source_files": [
+    {
+      "path": "services/workspace-shell-panel/Cargo.toml",
+      "bytes": 663,
+      "sha256": "fd97dac118f0b5c7302015830578e5f2f9871e0c36e5869fe380707c41f43462"
+    },
+    {
+      "path": "services/workspace-shell-panel/README.md",
+      "bytes": 2596,
+      "sha256": "db8ce61cfe42523d74815664094b12b4adfd3dd5f56576312d0ddb56545897c3"
+    },
+    {
+      "path": "services/workspace-shell-panel/build.rs",
+      "bytes": 386,
+      "sha256": "6f6c1b0e2ea0c7671fe2601e0a87c92fdb0b75b2ed7f159b2b5283619161b7f3"
+    },
+    {
+      "path": "services/workspace-shell-panel/linker.ld",
+      "bytes": 823,
+      "sha256": "a65d385e8ca7264e37b0b0ba3552a152199d197f189cfc6bb99c93539ffb9d25"
+    },
+    {
+      "path": "services/workspace-shell-panel/src/lib.rs",
+      "bytes": 4961,
+      "sha256": "dc4cdced619444fb745e80cc34a6cfb860df8da83f95ae5854c82c71e6b731ca"
+    },
+    {
+      "path": "services/workspace-shell-panel/src/main.rs",
+      "bytes": 9304,
+      "sha256": "0cc3c5fbffb6a603c33603384963c8852485492a5ca24bdf0c2bd1024486b657"
+    },
+    {
+      "path": "libs/workspace-client/src/ui.rs",
+      "bytes": 13419,
+      "sha256": "e69413d7e02ea996204d1c3a9ab264c0d8b568680e506a65113c4e78f75f8927"
+    }
+  ],
+  "command_receipts": [
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-final-checks-01.json",
+      "sha256": "1f40568f116d0bab0bb2b4e9e2c79fbdb143d9757aafbef9cc32a4b111635976",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-host-lint-01.json",
+      "sha256": "9fff1178b5d681718ac1f0c185718b0bd865379049f2459fe2ecaf2e74ca3783",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-native-lint-02.json",
+      "sha256": "5e72e8a98df87866349fea9f127dc7726130fea0fcdf2264b240c13e659b7278",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-native-build-01.json",
+      "sha256": "61ce30fcc0db10e94060e0a779ed55426b04ddba4ee171c67a7d5993cf183ffe",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-final-format-01.json",
+      "sha256": "204e562d1e6f8a140b4977334e56f2addd6bc4fce01dab0cd454a89d79e71474",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/inspector-shell-ui-tests-01.json",
+      "sha256": "0d91e2fe5759ab729dcae56bbd34d77b26afe46ae94fbaedca27a806f6cfde03",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/shell-panel-native-strip-01.json",
+      "sha256": "1a50c89b9a7b29104586c77f7723ffdb91ece0485c9166fe148e50a238288e78",
+      "passed": true
+    },
+    {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/shell-panel-native-stack-01.json",
+      "sha256": "1fc1088f1f120d22554b49a0271e4d414948dae765779f2346b85828b37c120c",
+      "passed": true
+    }
+  ],
+  "artifact": {
+    "canonical": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/ev-workspace-shell-panel-native-01/ev-workspace-shell-panel.elf",
+      "file_bytes": 36016,
+      "sha256": "4f815bb6ca6b799f9a731f1376bd8d3f76e2894eef20682df8260849042905fd",
+      "loaded_pages_including_stack": 15,
+      "stack_pages": 8,
+      "nonstack_loaded_pages": 7,
+      "image_page_bound": 96,
+      "page_bound_passed": true,
+      "loaded_page_indices": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        480,
+        481,
+        482,
+        483,
+        484,
+        485,
+        486,
+        487
+      ]
+    },
+    "elf_report": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/ev-workspace-shell-panel-native-01/elf.json",
+    "loaded_bytes_compared_bytewise": true,
+    "private_pages_preflight": 19,
+    "loader_frames_preflight": 21,
+    "stack_report": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/ev-workspace-shell-panel-native-01/stack.json",
+    "stack_census_bytes": 1280,
+    "stack_margin_bytes": 31488,
+    "unresolved_calls": 0,
+    "cycles": 0
+  },
+  "retained_failed_attempts": [
+    "inspector-shell-libraries-tests-01: valid all-RW permission255 test fixture corrected to invalid2; protocol unchanged"
+  ],
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

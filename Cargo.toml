@@ -1,13 +1,13 @@
 [workspace]
-members = ["tools/ev", "boot/image-builder", "kernel", "libs/boot-contract", "libs/test-protocol", "libs/userspace-contract", "libs/userspace-runtime", "services/root-supervisor", "services/echo", "services/block", "services/recovery", "services/cap-client", "services/cap-server", "services/ipc-discipline", "libs/store", "libs/file", "services/file", "libs/graphics", "libs/input", "libs/picker", "libs/app-identity", "libs/zion", "libs/app-registry", "libs/diagnostics", "libs/grant-policy", "services/desktop", "services/provider-test", "services/ipc-bench", "libs/userspace-graphics", "apps/hello"]
+members = ["tools/ev", "boot/image-builder", "kernel", "libs/boot-contract", "libs/test-protocol", "libs/userspace-contract", "libs/userspace-runtime", "services/root-supervisor", "services/echo", "services/block", "services/recovery", "services/cap-client", "services/cap-server", "services/ipc-discipline", "libs/store", "libs/file", "services/file", "libs/graphics", "libs/input", "libs/picker", "libs/app-identity", "libs/zion", "libs/app-registry", "libs/diagnostics", "libs/grant-policy", "services/desktop", "services/net-driver", "services/provider-test", "services/ipc-bench", "libs/userspace-graphics", "libs/net-device", "libs/net-stack", "libs/time-contract", "libs/random", "libs/release-trust", "libs/time-proof", "libs/content-store", "apps/hello", "libs/workspace-store", "libs/workspace-editor", "libs/workspace-shell", "libs/workspace-client", "services/workspace", "apps/editor", "services/workspace-display", "apps/files", "services/workspace-root", "apps/inspector", "services/workspace-shell-panel"]
 default-members = ["tools/ev", "libs/boot-contract", "libs/test-protocol"]
 resolver = "3"
 
 [workspace.package]
+license = "GPL-3.0-only"
 version = "0.0.0"
 edition = "2024"
 publish = false
-license = "GPL-3.0-only"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -34,3 +34,10 @@ inherits = "dev"
 
 [profile.host-tools.package.sha2]
 opt-level = 3
+
+# Focused host dataset/protocol qualification; target release profiles unchanged.
+[profile.test.package.ev-workspace-store]
+opt-level = 1
+
+[profile.test.package.ev-workspace-service]
+opt-level = 1

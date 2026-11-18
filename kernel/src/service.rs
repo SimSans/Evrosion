@@ -3,9 +3,13 @@
 //! No raw scheduler identity is accepted from userspace; Root BAC custody and
 //! replacement are separate. Explicit stopped cleanup permits descriptor/domain
 //! reuse; actual hardware quiescence remains the controller's responsibility.
+#[cfg(all(test, feature = "workspace-authority"))]
+mod m8_tests;
 pub mod managed_read;
 use crate::{
-    capability::{self, Authority, Handle, Kind, MAX_SPACES, Rights, SpaceId},
+    capability::{
+        self, Authority, Handle, Kind, Rights, SPACE_STORAGE_CAPACITY as MAX_SPACES, SpaceId,
+    },
     executable::{self, Image, LayoutReservation},
     loaded_image::{LoadedExecutable, Startup},
     mapping::ADDRESS_MASK,
@@ -28,7 +32,11 @@ pub const MAX_JOB_RECORDS: usize = 16;
 pub const MAX_IMAGE_RECORDS: usize = 16;
 pub const MAX_PROCESS_RECORDS: usize = 16;
 const MAX_ROLES: usize = ev_userspace_contract::MAX_GRANTS;
-const _: () = assert!(MAX_ROLES <= capability::MAX_CAPS);
+#[cfg(not(feature = "workspace-authority"))]
+const ROLE_STORAGE_CAPACITY: usize = MAX_ROLES;
+#[cfg(feature = "workspace-authority")]
+const ROLE_STORAGE_CAPACITY: usize = ev_userspace_contract::root_v5::child::MAX_GRANTS;
+const _: () = assert!(ROLE_STORAGE_CAPACITY <= capability::MAX_CAPS);
 #[cfg(test)]
 use crate::capability::{MAX_CAPS, MAX_OBJECTS};
 const BRANCH: Rights = Rights::from_bits(224).unwrap();
@@ -107,17 +115,144 @@ fn kind_tag(kind: Kind) -> u8 {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ImageSummary {
+    entry: u64,
+    stack: u64,
+    bootstrap: u64,
+    frames: u64,
+}
+impl ImageSummary {
+    fn of(plan: &Image<'_>) -> Result<Self, Error> {
+        Ok(Self {
+            entry: plan.entry(),
+            stack: plan.stack_top(),
+            bootstrap: plan.bootstrap_page().ok_or(Error::Descriptor)?,
+            frames: plan.required_frames(),
+        })
+    }
+}
+enum ImageBytes<'a> {
+    Compiled(&'a [u8]),
+    Sealed {
+        identity: crate::dynamic_image::Identity,
+        summary: ImageSummary,
+    },
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DescriptorProfile {
+    Legacy,
+    #[cfg(feature = "workspace-authority")]
+    M8(ev_userspace_contract::root_v5::graph::ImageSlot),
+}
 /// Immutable measured service policy. Roles describe requested authority, not
 /// runtime handles or a fixed digest of newly created per-instance objects.
 pub struct ServiceImage<'a> {
-    bytes: &'a [u8],
+    bytes: ImageBytes<'a>,
     digest: [u8; 32],
     limits: Limits,
-    roles: [Option<Role>; MAX_ROLES],
+    roles: [Option<Role>; ROLE_STORAGE_CAPACITY],
     count: usize,
     layout: LayoutReservation,
+    profile: DescriptorProfile,
 }
 impl<'a> ServiceImage<'a> {
+    /// Trusted measured V5 slot, not a userspace quota/profile selector. Every
+    /// role/limit/ABI comes from the closed SDK graph. Core descriptors retain
+    /// their exact v1 bytes/hash but are privately marked as selected M8 policy.
+    #[cfg(feature = "workspace-authority")]
+    pub fn verify_m8(
+        bytes: &'a [u8],
+        expected_image_sha: [u8; 32],
+        slot: ev_userspace_contract::root_v5::graph::ImageSlot,
+    ) -> Result<Self, Error> {
+        use ev_userspace_contract::root_v5::{self as v5, child, graph};
+        if bytes.len() > crate::bootstrap_manifest::MAX_IMAGE_BYTES
+            || Sha256::digest(bytes).as_slice() != expected_image_sha
+        {
+            return Err(Error::Measurement);
+        }
+        let representative = slot.representative();
+        let limits = representative.limits();
+        let limits = Limits::new(limits[0], limits[1], limits[2], limits[3]);
+        let mut roles = [Role {
+            selector: 0,
+            kind: Kind::Memory,
+            rights: Rights::READ,
+        }; ROLE_STORAGE_CAPACITY];
+        let expected = graph::grants(representative);
+        let count = expected.len();
+        if count == 0 || count > ROLE_STORAGE_CAPACITY {
+            return Err(Error::Descriptor);
+        }
+        for (i, grant) in expected.enumerate() {
+            let kind = match grant.kind {
+                1 => Kind::Memory,
+                2 => Kind::Endpoint,
+                7 => Kind::IoPorts,
+                8 => Kind::Display,
+                _ => return Err(Error::Role),
+            };
+            let rights = Rights::from_bits(grant.rights).ok_or(Error::Role)?;
+            if rights.bits() == 0 || !kind.permits(rights) {
+                return Err(Error::Role);
+            }
+            roles[i] = Role {
+                selector: i as u64 + 1,
+                kind,
+                rights,
+            };
+        }
+        let Some(profile) = executable::m8::ServiceProfile::for_slot(slot) else {
+            let mut result = Self::verify(bytes, expected_image_sha, limits, &roles[..count])?;
+            result.profile = DescriptorProfile::M8(slot);
+            return Ok(result);
+        };
+        let mut hash = Sha256::new();
+        hash.update(b"evrosion.service.descriptor.m8.v5\0");
+        hash.update(expected_image_sha);
+        hash.update(v5::ABI);
+        hash.update(child::abi(representative));
+        hash.update((slot.index() as u64).to_le_bytes());
+        for value in profile.values() {
+            hash.update(value.to_le_bytes());
+        }
+        for resource in RESOURCES {
+            hash.update(limits.limit(resource).to_le_bytes());
+        }
+        hash.update((count as u64).to_le_bytes());
+        let mut saved = [None; ROLE_STORAGE_CAPACITY];
+        for (index, role) in roles[..count].iter().copied().enumerate() {
+            saved[index] = Some(role);
+            hash.update(role.selector.to_le_bytes());
+            hash.update([kind_tag(role.kind)]);
+            hash.update(role.rights.bits().to_le_bytes());
+        }
+        if profile.layout() == LayoutReservation::DisplayApertureV1 {
+            for value in [
+                executable::DISPLAY_RELATIVE_START,
+                executable::DISPLAY_MAXIMUM_BYTES,
+                executable::DISPLAY_LOWER_GUARD,
+                executable::DISPLAY_UPPER_GUARD,
+                executable::DISPLAY_TABLE_FRAMES,
+                7,
+                1u64 << 63,
+            ] {
+                hash.update(value.to_le_bytes());
+            }
+        }
+        let result = Self {
+            bytes: ImageBytes::Compiled(bytes),
+            digest: hash.finalize().into(),
+            limits,
+            roles: saved,
+            count,
+            layout: profile.layout(),
+            profile: DescriptorProfile::M8(slot),
+        };
+        result.plan()?;
+        Ok(result)
+    }
     pub fn verify(
         bytes: &'a [u8],
         expected_image_sha: [u8; 32],
@@ -147,6 +282,15 @@ impl<'a> ServiceImage<'a> {
         {
             return Err(Error::Measurement);
         }
+        Self::measured_policy(bytes, expected_image_sha, limits, roles, layout)
+    }
+    fn measured_policy(
+        bytes: &'a [u8],
+        expected_image_sha: [u8; 32],
+        limits: Limits,
+        roles: &[Role],
+        layout: LayoutReservation,
+    ) -> Result<Self, Error> {
         if roles.is_empty()
             || roles.len() > ev_userspace_contract::MAX_GRANTS
             || !valid_limits(limits)
@@ -164,7 +308,7 @@ impl<'a> ServiceImage<'a> {
             }
         }
         let mut previous = 0;
-        let mut saved = [None; MAX_ROLES];
+        let mut saved = [None; ROLE_STORAGE_CAPACITY];
         let mut hash = Sha256::new();
         hash.update(match layout {
             LayoutReservation::Legacy => b"evrosion.service.descriptor.v1\0".as_slice(),
@@ -206,12 +350,13 @@ impl<'a> ServiceImage<'a> {
             }
         }
         let result = Self {
-            bytes,
+            bytes: ImageBytes::Compiled(bytes),
             digest: hash.finalize().into(),
             limits,
             roles: saved,
             count: roles.len(),
             layout,
+            profile: DescriptorProfile::Legacy,
         };
         result.plan()?;
         Ok(result)
@@ -228,14 +373,128 @@ impl<'a> ServiceImage<'a> {
     pub fn roles(&self) -> impl Iterator<Item = Role> + '_ {
         self.roles[..self.count].iter().flatten().copied()
     }
+    #[cfg(feature = "workspace-authority")]
+    pub fn m8_slot(&self) -> Option<ev_userspace_contract::root_v5::graph::ImageSlot> {
+        match self.profile {
+            DescriptorProfile::Legacy => None,
+            DescriptorProfile::M8(slot) => Some(slot),
+        }
+    }
     pub fn plan(&self) -> Result<Image<'a>, Error> {
+        let ImageBytes::Compiled(bytes) = self.bytes else {
+            return Err(Error::Phase);
+        };
+        #[cfg(feature = "workspace-authority")]
+        if let DescriptorProfile::M8(slot) = self.profile {
+            return Ok(Image::from_m8_descriptor(
+                bytes,
+                self.digest,
+                slot,
+                self.limits,
+            )?);
+        }
         Ok(Image::from_descriptor_with_layout(
-            self.bytes,
+            bytes,
             self.digest,
             ev_userspace_contract::ABI,
             self.limits,
             self.layout,
         )?)
+    }
+    fn summary(&self) -> Result<ImageSummary, Error> {
+        match self.bytes {
+            ImageBytes::Compiled(_) => ImageSummary::of(&self.plan()?),
+            ImageBytes::Sealed { summary, .. } => Ok(summary),
+        }
+    }
+    fn from_sealed<R: crate::dynamic_image::ReadOnlyRam>(
+        sealed: &crate::dynamic_image::SealedImage,
+        ram: &R,
+    ) -> Result<Self, Error> {
+        let spec = sealed.specification();
+        if spec.abi != ev_userspace_contract::ABI {
+            return Err(Error::Descriptor);
+        }
+        let mut grants = ev_userspace_contract::root_v4::graph::grants(
+            ev_userspace_contract::root_v4::graph::Child::App,
+        );
+        if grants.len() != 7 {
+            return Err(Error::Role);
+        }
+        let roles: [Role; 7] = core::array::from_fn(|i| {
+            let grant = grants.next().expect("closed App template count");
+            Role {
+                selector: i as u64 + 1,
+                kind: match grant.kind {
+                    1 => Kind::Memory,
+                    2 => Kind::Endpoint,
+                    _ => unreachable!("closed App template"),
+                },
+                rights: Rights::from_bits(grant.rights).unwrap(),
+            }
+        });
+        let values = ev_userspace_contract::root_v4::graph::Child::App.limits();
+        let limits = Limits::new(values[0], values[1], values[2], values[3]);
+        let bytes = sealed.elf(ram).map_err(|_| Error::Measurement)?;
+        // Only the affine sealed owner reaches this private measured-policy
+        // boundary. Full package+ELF hashes were read back after alias removal.
+        let checked = ServiceImage::measured_policy(
+            bytes,
+            spec.elf_sha256,
+            limits,
+            &roles,
+            LayoutReservation::Legacy,
+        )?;
+        if checked.digest() != spec.descriptor {
+            return Err(Error::Measurement);
+        }
+        let summary = checked.summary()?;
+        Ok(Self {
+            bytes: ImageBytes::Sealed {
+                identity: sealed.identity(),
+                summary,
+            },
+            digest: checked.digest,
+            limits: checked.limits,
+            roles: checked.roles,
+            count: checked.count,
+            layout: checked.layout,
+            profile: checked.profile,
+        })
+    }
+    /// The selected factory fixes only the six-role File App resource/role
+    /// shape. Package signatures and the actual AppId remain Root policy.
+    #[cfg(feature = "workspace-authority")]
+    fn from_workspace_sealed<R: crate::dynamic_image::ReadOnlyRam>(
+        sealed: &crate::dynamic_image::SealedImage,
+        ram: &R,
+    ) -> Result<Self, Error> {
+        let spec = sealed.specification();
+        if spec.abi != ev_userspace_contract::ABI {
+            return Err(Error::Descriptor);
+        }
+        let bytes = sealed.elf(ram).map_err(|_| Error::Measurement)?;
+        let checked = ServiceImage::verify_m8(
+            bytes,
+            spec.elf_sha256,
+            ev_userspace_contract::root_v5::graph::ImageSlot::Editor,
+        )?;
+        if checked.digest() != spec.descriptor {
+            return Err(Error::Measurement);
+        }
+        let summary = checked.summary()?;
+        Ok(Self {
+            bytes: ImageBytes::Sealed {
+                identity: sealed.identity(),
+                summary,
+            },
+            digest: checked.digest,
+            limits: checked.limits,
+            roles: checked.roles,
+            count: checked.count,
+            layout: checked.layout,
+            profile: checked.profile,
+        })
     }
 }
 
@@ -276,7 +535,7 @@ struct Process {
     branches: SpaceId,
     image: usize,
     image_source: Source,
-    grants: [Option<Delegated>; MAX_ROLES],
+    grants: [Option<Delegated>; ROLE_STORAGE_CAPACITY],
     phase: Phase,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -342,10 +601,39 @@ impl ActiveGrantBranch {
 pub struct Registry<'a> {
     incarnation: NonZeroU64,
     service_limits: Limits,
+    alternate_service_limits: Option<Limits>,
+    #[cfg(feature = "workspace-authority")]
+    m8_services: bool,
     jobs: [Option<Job>; MAX_JOB_RECORDS],
     images: [Option<(usize, ServiceImage<'a>)>; MAX_IMAGE_RECORDS],
     processes: [Option<Process>; MAX_PROCESS_RECORDS],
     closed_domains: [Option<SpaceId>; MAX_SPACES],
+}
+/// Owned typed hybrid record. Old startup() retains its exact336-byte return.
+#[cfg(feature = "workspace-authority")]
+pub enum ServiceStartup {
+    V1([u8; ev_userspace_contract::SIZE]),
+    V5 {
+        child: ev_userspace_contract::root_v5::graph::Child,
+        bytes: [u8; ev_userspace_contract::root_v5::child::SIZE],
+    },
+}
+#[cfg(feature = "workspace-authority")]
+impl ServiceStartup {
+    pub fn bytes(&self) -> &[u8] {
+        match self {
+            Self::V1(bytes) => bytes,
+            Self::V5 { bytes, .. } => bytes,
+        }
+    }
+    pub fn record(
+        &self,
+    ) -> Result<crate::startup_record::Record<'_>, crate::startup_record::Error> {
+        match self {
+            Self::V1(bytes) => crate::startup_record::Record::service_v1(bytes),
+            Self::V5 { child, bytes } => crate::startup_record::Record::service_v5(*child, bytes),
+        }
+    }
 }
 #[cfg(test)]
 fn object_slot(identity: usize) -> Result<usize, Error> {
@@ -391,6 +679,9 @@ impl<'a> Registry<'a> {
         Self {
             incarnation,
             service_limits: SERVICE_LIMITS,
+            alternate_service_limits: None,
+            #[cfg(feature = "workspace-authority")]
+            m8_services: false,
             jobs: [None; MAX_JOB_RECORDS],
             images: [const { None }; MAX_IMAGE_RECORDS],
             processes: [None; MAX_PROCESS_RECORDS],
@@ -406,6 +697,43 @@ impl<'a> Registry<'a> {
         let mut registry = Self::for_incarnation(incarnation);
         registry.service_limits = limits;
         Ok(registry)
+    }
+    /// Trusted finite two-template profile, fixed before any userspace request.
+    /// Template zero retains the ordinary budget; template one is an optional
+    /// separately measured service budget. Callers can select an installed ID,
+    /// never supply limits. Actual image admission still requires exact limits.
+    pub fn with_service_templates(
+        incarnation: NonZeroU64,
+        ordinary: Limits,
+        alternate: Limits,
+    ) -> Result<Self, Error> {
+        if !valid_limits(ordinary) || !valid_limits(alternate) {
+            return Err(Error::Descriptor);
+        }
+        // Construct once, avoiding a second full Registry Result owner in this
+        // bounded trusted initialization path.
+        let mut registry = Self::for_incarnation(incarnation);
+        registry.service_limits = ordinary;
+        registry.alternate_service_limits = Some(alternate);
+        Ok(registry)
+    }
+    /// Trusted measured V5 selection. Userspace selects only one of these
+    /// immutable IDs; neither a packet nor the compiled storage headroom can
+    /// enable this policy on an existing legacy registry.
+    #[cfg(feature = "workspace-authority")]
+    pub const fn for_m8_services(incarnation: NonZeroU64) -> Self {
+        let values = ev_userspace_contract::root_v5::resources::JOB_TEMPLATE_LIMITS;
+        let mut registry = Self::for_incarnation(incarnation);
+        registry.service_limits =
+            Limits::new(values[0][0], values[0][1], values[0][2], values[0][3]);
+        registry.alternate_service_limits = Some(Limits::new(
+            values[1][0],
+            values[1][1],
+            values[1][2],
+            values[1][3],
+        ));
+        registry.m8_services = true;
+        registry
     }
     /// Trusted once-only binding of an existing object to its actual scheduler Job.
     pub fn register_job(
@@ -449,6 +777,10 @@ impl<'a> Registry<'a> {
         let id = a
             .authorize(space, cap, Kind::Memory, Rights::READ)?
             .identity();
+        #[cfg(feature = "workspace-authority")]
+        if self.m8_services != image.m8_slot().is_some() {
+            return Err(Error::Descriptor);
+        }
         if self.images.iter().flatten().any(|(key, _)| *key == id) {
             return Err(Error::AlreadyRegistered);
         }
@@ -459,6 +791,277 @@ impl<'a> Registry<'a> {
             .ok_or(Error::Capacity)?;
         self.images[slot] = Some((id, image));
         Ok(())
+    }
+    /// Register only the closed V4 seven-role App descriptor from an actual
+    /// affine sealed owner. No packet nominates roles, rights or resource limits.
+    pub fn register_sealed<R: crate::dynamic_image::ReadOnlyRam>(
+        &mut self,
+        a: &Authority,
+        s: &Scheduler,
+        permit: &crate::dynamic_image::RootPermit<'_, '_>,
+        sealed: &mut crate::dynamic_image::SealedImage,
+        ram: &R,
+    ) -> Result<(), Error> {
+        if permit.is_workspace() {
+            return Err(Error::Descriptor);
+        }
+        #[cfg(feature = "workspace-authority")]
+        if self.m8_services {
+            return Err(Error::Descriptor);
+        }
+        let root = permit.check(a, s).map_err(|_| Error::Phase)?;
+        if root != sealed.root() {
+            return Err(Error::Incarnation);
+        }
+        if sealed.registered() {
+            return Err(Error::AlreadyRegistered);
+        }
+        let id = a
+            .authorize(
+                root.domain,
+                sealed.root_handle(),
+                Kind::Memory,
+                Rights::READ,
+            )?
+            .identity();
+        let descriptor = ServiceImage::from_sealed(sealed, ram)?;
+        if self.images.iter().flatten().any(|(key, _)| *key == id) {
+            return Err(Error::AlreadyRegistered);
+        }
+        let slot = self
+            .images
+            .iter()
+            .position(Option::is_none)
+            .ok_or(Error::Capacity)?;
+        self.images[slot] = Some((id, descriptor));
+        sealed.pin();
+        Ok(())
+    }
+    /// Additive selected V5 factory. A live typed V5 Root permit and the
+    /// actual sealed byte owner are both mandatory; no packet supplies quota,
+    /// roles, an app identity or a substitute static byte reference.
+    #[cfg(feature = "workspace-authority")]
+    pub fn register_workspace_sealed<R: crate::dynamic_image::ReadOnlyRam>(
+        &mut self,
+        a: &Authority,
+        s: &Scheduler,
+        permit: &crate::dynamic_image::RootPermit<'_, '_>,
+        sealed: &mut crate::dynamic_image::SealedImage,
+        ram: &R,
+    ) -> Result<(), Error> {
+        if !self.m8_services || !permit.is_workspace() {
+            return Err(Error::Descriptor);
+        }
+        let root = permit.check(a, s).map_err(|_| Error::Phase)?;
+        if root != sealed.root() {
+            return Err(Error::Incarnation);
+        }
+        if sealed.registered() {
+            return Err(Error::AlreadyRegistered);
+        }
+        if sealed.workspace_registration_fenced() {
+            return Err(Error::Phase);
+        }
+        let id = a
+            .authorize(
+                root.domain,
+                sealed.root_handle(),
+                Kind::Memory,
+                Rights::READ,
+            )?
+            .identity();
+        let descriptor = ServiceImage::from_workspace_sealed(sealed, ram)?;
+        if self.images.iter().flatten().any(|(key, _)| *key == id) {
+            return Err(Error::AlreadyRegistered);
+        }
+        let slot = self
+            .images
+            .iter()
+            .position(Option::is_none)
+            .ok_or(Error::Capacity)?;
+        self.images[slot] = Some((id, descriptor));
+        sealed.pin();
+        Ok(())
+    }
+    /// Selected native registration closes a userspace preemption window by
+    /// checking actual Kernel time against the sealed owner's original cut.
+    /// Legacy registration and existing immutable references remain unchanged.
+    #[cfg(feature = "workspace-authority")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn register_workspace_sealed_at<R: crate::dynamic_image::ReadOnlyRam>(
+        &mut self,
+        a: &Authority,
+        s: &Scheduler,
+        permit: &crate::dynamic_image::RootPermit<'_, '_>,
+        sealed: &mut crate::dynamic_image::SealedImage,
+        ram: &R,
+        now: u64,
+    ) -> Result<(), Error> {
+        if !self.m8_services || !permit.is_workspace() {
+            return Err(Error::Descriptor);
+        }
+        if sealed.is_registered() {
+            return Err(Error::AlreadyRegistered);
+        }
+        sealed
+            .admit_workspace_registration(a, s, permit, now)
+            .map_err(|_| Error::Phase)?;
+        self.register_workspace_sealed(a, s, permit, sealed, ram)
+    }
+    /// Logical unregister cannot release any physical code. The same actual
+    /// sealed owner stays pinned until every held/active/retired process row is
+    /// forgotten by its existing stop/retirement gates.
+    pub fn unregister_sealed(
+        &mut self,
+        a: &Authority,
+        s: &Scheduler,
+        permit: &crate::dynamic_image::RootPermit<'_, '_>,
+        sealed: &mut crate::dynamic_image::SealedImage,
+    ) -> Result<(), Error> {
+        let root = permit.check(a, s).map_err(|_| Error::Phase)?;
+        if root != sealed.root() {
+            return Err(Error::Incarnation);
+        }
+        self.unregister_sealed_record(sealed)
+    }
+    /// Trusted controller cleanup after the retained Root actually terminated
+    /// and its authority domain closed. No caller identity/Job or live-user
+    /// permit substitutes for the sealed owner's private generational origin.
+    /// This only removes the exact registry pin: actual readonly PTE/TLB
+    /// detachment and lease return remain required before physical retirement.
+    pub fn unregister_sealed_stopped(
+        &mut self,
+        a: &Authority,
+        s: &Scheduler,
+        sealed: &mut crate::dynamic_image::SealedImage,
+    ) -> Result<(), Error> {
+        let root = sealed.root();
+        if !s.process_terminated(root.token.process()) || a.is_live_space(root.domain) {
+            return Err(Error::Phase);
+        }
+        if s.process_job(root.token.process())? != root.job {
+            return Err(Error::JobLimits);
+        }
+        self.unregister_sealed_record(sealed)
+    }
+    fn unregister_sealed_record(
+        &mut self,
+        sealed: &mut crate::dynamic_image::SealedImage,
+    ) -> Result<(), Error> {
+        let identity = sealed.identity();
+        let slot = self
+            .images
+            .iter()
+            .position(|row| {
+                row.as_ref().is_some_and(|(_, image)| {
+                    matches!(image.bytes, ImageBytes::Sealed { identity: id, .. } if id == identity)
+                })
+            })
+            .ok_or(Error::UnknownObject)?;
+        let id = self.images[slot].as_ref().unwrap().0;
+        if !sealed.registered() || self.processes.iter().flatten().any(|p| p.image == id) {
+            return Err(Error::Phase);
+        }
+        self.images[slot] = None;
+        sealed.unpin();
+        Ok(())
+    }
+    /// Resolve only a short-lived immutable byte borrow from the exact pinned
+    /// owner. The Registry stores no self-reference or fabricated static slice.
+    pub fn plan_sealed<'s, R: crate::dynamic_image::ReadOnlyRam>(
+        &self,
+        a: &Authority,
+        caller: SpaceId,
+        process_cap: Handle,
+        sealed: &'s crate::dynamic_image::SealedImage,
+        ram: &'s R,
+    ) -> Result<Image<'s>, Error> {
+        self.plan_sealed_profile(a, caller, process_cap, sealed, ram, false)
+    }
+    #[cfg(feature = "workspace-authority")]
+    pub fn plan_workspace_sealed<'s, R: crate::dynamic_image::ReadOnlyRam>(
+        &self,
+        a: &Authority,
+        caller: SpaceId,
+        process_cap: Handle,
+        sealed: &'s crate::dynamic_image::SealedImage,
+        ram: &'s R,
+    ) -> Result<Image<'s>, Error> {
+        if !self.m8_services {
+            return Err(Error::Descriptor);
+        }
+        self.plan_sealed_profile(a, caller, process_cap, sealed, ram, true)
+    }
+    fn plan_sealed_profile<'s, R: crate::dynamic_image::ReadOnlyRam>(
+        &self,
+        a: &Authority,
+        caller: SpaceId,
+        process_cap: Handle,
+        sealed: &'s crate::dynamic_image::SealedImage,
+        ram: &'s R,
+        workspace: bool,
+    ) -> Result<Image<'s>, Error> {
+        let (_, process) = self.process(a, caller, process_cap)?;
+        let descriptor = self.held(process)?;
+        let ImageBytes::Sealed { identity, summary } = descriptor.bytes else {
+            return Err(Error::Descriptor);
+        };
+        if !sealed.registered() || identity != sealed.identity() {
+            return Err(Error::ImageMismatch);
+        }
+        if a.authorize(
+            caller,
+            process.image_source.handle,
+            Kind::Memory,
+            Rights::READ,
+        )?
+        .identity()
+            != process.image
+        {
+            return Err(Error::ImageMismatch);
+        }
+        let bytes = sealed.elf(ram).map_err(|_| Error::Measurement)?;
+        #[cfg(feature = "workspace-authority")]
+        let plan = if workspace {
+            if descriptor.m8_slot()
+                != Some(ev_userspace_contract::root_v5::graph::ImageSlot::Editor)
+            {
+                return Err(Error::Descriptor);
+            }
+            Image::from_m8_descriptor(
+                bytes,
+                descriptor.digest,
+                ev_userspace_contract::root_v5::graph::ImageSlot::Editor,
+                descriptor.limits,
+            )?
+        } else {
+            if descriptor.m8_slot().is_some() {
+                return Err(Error::Descriptor);
+            }
+            Image::from_descriptor_with_layout(
+                bytes,
+                descriptor.digest,
+                ev_userspace_contract::ABI,
+                descriptor.limits,
+                descriptor.layout,
+            )?
+        };
+        #[cfg(not(feature = "workspace-authority"))]
+        let plan = Image::from_descriptor_with_layout(
+            bytes,
+            descriptor.digest,
+            ev_userspace_contract::ABI,
+            descriptor.limits,
+            descriptor.layout,
+        )?;
+        #[cfg(not(feature = "workspace-authority"))]
+        if workspace {
+            return Err(Error::Descriptor);
+        }
+        if ImageSummary::of(&plan)? != summary {
+            return Err(Error::ImageMismatch);
+        }
+        Ok(plan)
     }
     fn job(&self, a: &Authority, caller: SpaceId, cap: Handle) -> Result<JobId, Error> {
         let id = a
@@ -502,17 +1105,31 @@ impl<'a> Registry<'a> {
         {
             return Err(Error::Phase);
         }
+        self.forget_job_transaction(a, s, (slot, row))
+    }
+    // Keep the large staged copies in a separate entry-frame lifetime. In the
+    // selected bare build an in-function shrink-wrapped inline stack probe
+    // overwrote R11 holding the computed row index before that index was read.
+    // This helper starts with the copies, before any slot-derived work, and
+    // consumes only the exact preflight-captured slot/row (never a user ID).
+    #[inline(never)]
+    fn forget_job_transaction(
+        &mut self,
+        a: &mut Authority,
+        s: &mut Scheduler,
+        retirement: (usize, Job),
+    ) -> Result<(), Error> {
         let mut authority = a.staged_copy();
         let mut scheduler = s.staged_copy();
-        scheduler.reclaim_job(job)?;
-        if row.origin == JobOrigin::Managed {
+        scheduler.reclaim_job(retirement.1.actual)?;
+        if retirement.1.origin == JobOrigin::Managed {
             authority.collect_lineage()?;
-            authority.retire_unreferenced_object(row.object, Kind::Job)?;
+            authority.retire_unreferenced_object(retirement.1.object, Kind::Job)?;
             authority.collect_dead_objects()?;
         }
         *a = authority;
         *s = scheduler;
-        self.jobs[slot] = None;
+        self.jobs[retirement.0] = None;
         Ok(())
     }
     /// Select the next immutable incarnation only after all old Job/process
@@ -569,9 +1186,19 @@ impl<'a> Registry<'a> {
         template: u64,
     ) -> Result<Handle, Error> {
         let parent = self.job(a, caller, creator)?;
-        if template != 0 {
-            return Err(Error::UnsupportedTemplate);
-        }
+        let limits = match template {
+            0 => self.service_limits,
+            1 => self
+                .alternate_service_limits
+                .ok_or(Error::UnsupportedTemplate)?,
+            #[cfg(feature = "workspace-authority")]
+            2 | 3 if self.m8_services => {
+                let values = ev_userspace_contract::root_v5::resources::JOB_TEMPLATE_LIMITS
+                    [template as usize];
+                Limits::new(values[0], values[1], values[2], values[3])
+            }
+            _ => return Err(Error::UnsupportedTemplate),
+        };
         let slot = self
             .jobs
             .iter()
@@ -579,7 +1206,7 @@ impl<'a> Registry<'a> {
             .ok_or(Error::Capacity)?;
         let mut authority = a.staged_copy();
         let mut scheduler = s.staged_copy();
-        let job = scheduler.create_child_job(parent, self.service_limits)?;
+        let job = scheduler.create_child_job(parent, limits)?;
         let cap = authority.create_managed(caller, creator, Kind::Job, PROCESS_RIGHTS)?;
         let id = authority
             .authorize(caller, cap, Kind::Job, Rights::CONTROL)?
@@ -675,7 +1302,7 @@ impl<'a> Registry<'a> {
                 return Err(Error::Phase);
             }
         }
-        let frames = descriptor.plan()?.required_frames();
+        let frames = descriptor.summary()?.frames;
         let slot = self
             .processes
             .iter()
@@ -708,7 +1335,7 @@ impl<'a> Registry<'a> {
                 owner: caller,
                 handle: image_cap,
             },
-            grants: [None; MAX_ROLES],
+            grants: [None; ROLE_STORAGE_CAPACITY],
             phase: Phase::Held,
         };
         *a = authority;
@@ -795,6 +1422,26 @@ impl<'a> Registry<'a> {
                 s.held_process_job(process.metadata.process),
                 Err(scheduler::Error::NotHeld)
             )
+        {
+            return Err(Error::Phase);
+        }
+        Ok(process.metadata)
+    }
+    /// Read-only inspection of an admitted process while its exact descriptor
+    /// remains retained, including the stopped interval before retirement.
+    /// This is deliberately separate from active_metadata: stopped targets
+    /// must never regain the live-grant mechanism through a diagnostic query.
+    pub(crate) fn retained_metadata(
+        &self,
+        a: &Authority,
+        s: &Scheduler,
+        caller: SpaceId,
+        cap: Handle,
+    ) -> Result<Metadata, Error> {
+        let (_, process) = self.process(a, caller, cap)?;
+        if process.phase != Phase::Active
+            || s.thread_process(process.metadata.thread)? != process.metadata.process
+            || s.process_job(process.metadata.process)? != process.metadata.job
         {
             return Err(Error::Phase);
         }
@@ -937,7 +1584,7 @@ impl<'a> Registry<'a> {
         let branch_slot = vacancies
             .next()
             .ok_or(Error::Authority(capability::Error::Capacity))?;
-        let mut private = [Handle(0); MAX_ROLES];
+        let mut private = [Handle(0); ROLE_STORAGE_CAPACITY];
         let mut count = 0;
         for grant in process.grants.iter().flatten() {
             private[count] = grant.private;
@@ -1020,8 +1667,8 @@ impl<'a> Registry<'a> {
         {
             return Err(Error::UnknownObject);
         }
-        let mut private = [Handle(0); MAX_ROLES];
-        let mut grants = [Handle(0); MAX_ROLES];
+        let mut private = [Handle(0); ROLE_STORAGE_CAPACITY];
+        let mut grants = [Handle(0); ROLE_STORAGE_CAPACITY];
         for (i, role) in image.roles().enumerate() {
             let supplied = process.grants[i].ok_or(Error::Role)?;
             private[i] = supplied.private;
@@ -1046,6 +1693,17 @@ impl<'a> Registry<'a> {
         a.require_exact_handles(process.branches, &private[..image.count])?;
         a.require_exact_handles(process.metadata.domain, &grants[..image.count])?;
         let mut hash = Sha256::new();
+        #[cfg(feature = "workspace-authority")]
+        if let Some(slot) = image.m8_slot() {
+            hash.update(b"evrosion.service.authority.m8.v5\0");
+            hash.update((slot.index() as u64).to_le_bytes());
+            hash.update(ev_userspace_contract::root_v5::child::abi(
+                slot.representative(),
+            ));
+        } else {
+            hash.update(b"evrosion.service.authority.v1\0");
+        }
+        #[cfg(not(feature = "workspace-authority"))]
         hash.update(b"evrosion.service.authority.v1\0");
         hash.update((image.count as u64).to_le_bytes());
         for (i, role) in image.roles().enumerate() {
@@ -1067,13 +1725,16 @@ impl<'a> Registry<'a> {
     ) -> Result<[u8; ev_userspace_contract::SIZE], Error> {
         let (_, process) = self.process(a, caller, process_cap)?;
         let image = self.held(process)?;
+        if image.count > MAX_ROLES {
+            return Err(Error::Descriptor);
+        }
         let authority = self.validate_grants(a, process)?;
         let mut grants = [ev_userspace_contract::Grant {
             selector: 0,
             handle: 0,
             kind: 0,
             rights: 0,
-        }; MAX_ROLES];
+        }; ROLE_STORAGE_CAPACITY];
         for (i, role) in image.roles().enumerate() {
             grants[i] = ev_userspace_contract::Grant {
                 selector: role.selector,
@@ -1094,6 +1755,88 @@ impl<'a> Registry<'a> {
             &grants[..image.count],
         )
         .map_err(Error::Bootstrap)
+    }
+    #[cfg(feature = "workspace-authority")]
+    pub fn startup_m8(
+        &self,
+        a: &Authority,
+        caller: SpaceId,
+        process_cap: Handle,
+        epoch: NonZeroU64,
+    ) -> Result<ServiceStartup, Error> {
+        use ev_userspace_contract::root_v5::{self as v5, child};
+        if !self.m8_services {
+            return Err(Error::Descriptor);
+        }
+        let (_, process) = self.process(a, caller, process_cap)?;
+        let image = self.held(process)?;
+        let slot = image.m8_slot().ok_or(Error::Descriptor)?;
+        let representative = slot.representative();
+        if !child::extended(representative) {
+            return self
+                .startup(a, caller, process_cap, epoch)
+                .map(ServiceStartup::V1);
+        }
+        let authority = self.validate_grants(a, process)?;
+        let mut handles = [0u64; v5::child::MAX_GRANTS];
+        for (index, grant) in process.grants[..image.count].iter().enumerate() {
+            handles[index] = grant.ok_or(Error::Role)?.grant.0;
+        }
+        let context = ev_userspace_contract::Context {
+            epoch: epoch.get(),
+            incarnation: self.incarnation.get(),
+            process: process.metadata.process.diagnostic_id(),
+            limits: RESOURCES.map(|r| image.limits.limit(r)),
+            manifest: image.digest,
+            authority,
+        };
+        let bytes = child::encode_profile(representative, context, &handles[..image.count])
+            .map_err(|_| Error::Descriptor)?;
+        Ok(ServiceStartup::V5 {
+            child: representative,
+            bytes,
+        })
+    }
+    fn startup_information(
+        &self,
+        a: &Authority,
+        caller: SpaceId,
+        process_cap: Handle,
+        epoch: NonZeroU64,
+        address: u64,
+    ) -> Result<Startup, Error> {
+        #[cfg(feature = "workspace-authority")]
+        {
+            let (_, process) = self.process(a, caller, process_cap)?;
+            if self.held(process)?.m8_slot().is_some_and(|slot| {
+                ev_userspace_contract::root_v5::child::extended(slot.representative())
+            }) {
+                return self.startup_information_m8(a, caller, process_cap, epoch, address);
+            }
+        }
+        let record = self.startup(a, caller, process_cap, epoch)?;
+        Ok(Startup {
+            address,
+            bytes: record.len(),
+            digest: Sha256::digest(record).into(),
+        })
+    }
+    #[cfg(feature = "workspace-authority")]
+    #[inline(never)]
+    fn startup_information_m8(
+        &self,
+        a: &Authority,
+        caller: SpaceId,
+        process_cap: Handle,
+        epoch: NonZeroU64,
+        address: u64,
+    ) -> Result<Startup, Error> {
+        let record = self.startup_m8(a, caller, process_cap, epoch)?;
+        Ok(Startup {
+            address,
+            bytes: record.bytes().len(),
+            digest: Sha256::digest(record.bytes()).into(),
+        })
     }
     pub fn plan(
         &self,
@@ -1135,7 +1878,7 @@ impl<'a> Registry<'a> {
                 }
                 self.processes[id].as_mut().unwrap().phase = Phase::Active;
                 let count = self.image(process.image).unwrap().count;
-                let mut private = [Handle(0); MAX_ROLES];
+                let mut private = [Handle(0); ROLE_STORAGE_CAPACITY];
                 for (i, cap) in private.iter_mut().take(count).enumerate() {
                     *cap = process.grants[i].unwrap().private;
                 }
@@ -1167,21 +1910,16 @@ impl<'a> Registry<'a> {
         {
             return Err(Error::JobLimits);
         }
-        let plan = image.plan()?;
-        let record = self.startup(a, caller, process_cap, epoch)?;
+        let plan = image.summary()?;
         let info = loaded.information();
-        let startup = Startup {
-            address: plan.bootstrap_page().unwrap(),
-            bytes: record.len(),
-            digest: Sha256::digest(record).into(),
-        };
+        let startup = self.startup_information(a, caller, process_cap, epoch, plan.bootstrap)?;
         if info.process != process.metadata.process
-            || loaded.layout() != plan.layout()
+            || loaded.layout() != image.layout
             || info.manifest != image.digest
-            || info.entry != plan.entry()
-            || info.stack != plan.stack_top()
+            || info.entry != plan.entry
+            || info.stack != plan.stack
             || info.frames != process.metadata.frames
-            || info.frames != plan.required_frames()
+            || info.frames != plan.frames
             || info.root == 0
             || !info.root.is_multiple_of(FRAME_SIZE)
             || info.root & ADDRESS_MASK != info.root
@@ -1206,7 +1944,7 @@ pub struct Running<L: LoadedExecutable> {
     metadata: Metadata,
     context: UserContext,
     branches: SpaceId,
-    private: [Handle; MAX_ROLES],
+    private: [Handle; ROLE_STORAGE_CAPACITY],
     count: usize,
     stopping: bool,
 }
@@ -2346,6 +3084,225 @@ mod tests {
             Err(Error::UnknownObject)
         );
         assert_eq!(f.s.dispatch(0), Ok(None));
+    }
+    fn two_template_fixture() -> Fixture {
+        let mut f = fixture(&roles());
+        let limits = ev_userspace_contract::root_v4::JOB_TEMPLATE_LIMITS;
+        let ordinary = Limits::new(limits[0][0], limits[0][1], limits[0][2], limits[0][3]);
+        let network = Limits::new(limits[1][0], limits[1][1], limits[1][2], limits[1][3]);
+        f.r = Registry::with_service_templates(epoch(), ordinary, network).unwrap();
+        f.r.register_job(&f.a, f.owner, f.parent, f.parent_job)
+            .unwrap();
+        f.r.register_image(
+            &f.a,
+            f.owner,
+            f.image,
+            ServiceImage::verify(ELF, Sha256::digest(ELF).into(), network, &roles()).unwrap(),
+        )
+        .unwrap();
+        f
+    }
+    #[test]
+    fn trusted_two_template_profile_keeps_exact_image_limits_and_parent_charging() {
+        let mut f = two_template_fixture();
+        let ordinary =
+            f.r.create_job(&mut f.a, &mut f.s, f.owner, f.parent, 0)
+                .unwrap();
+        let network =
+            f.r.create_job(&mut f.a, &mut f.s, f.owner, f.parent, 1)
+                .unwrap();
+        let ordinary_id = f.r.job(&f.a, f.owner, ordinary).unwrap();
+        let network_id = f.r.job(&f.a, f.owner, network).unwrap();
+        assert_eq!(
+            f.s.job_limits(ordinary_id),
+            Ok(Limits::new(16_384, 32, 1, 1))
+        );
+        assert_eq!(
+            f.s.job_limits(network_id),
+            Ok(Limits::new(16_384, 64, 1, 1))
+        );
+        let before = (
+            f.a.metadata_usage(),
+            f.s.metadata_usage(),
+            f.r.metadata_usage(),
+        );
+        assert_eq!(
+            f.r.create_process(&mut f.a, &mut f.s, f.owner, ordinary, f.image),
+            Err(Error::JobLimits)
+        );
+        assert_eq!(
+            (
+                f.a.metadata_usage(),
+                f.s.metadata_usage(),
+                f.r.metadata_usage()
+            ),
+            before
+        );
+        let ordinary_image =
+            f.a.create_root(f.owner, Kind::Memory, Rights::READ)
+                .unwrap();
+        f.r.register_image(
+            &f.a,
+            f.owner,
+            ordinary_image,
+            ServiceImage::verify(
+                ELF,
+                Sha256::digest(ELF).into(),
+                Limits::new(16_384, 32, 1, 1),
+                &roles(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            f.r.create_process(&mut f.a, &mut f.s, f.owner, network, ordinary_image),
+            Err(Error::JobLimits)
+        );
+        let control =
+            f.r.create_process(&mut f.a, &mut f.s, f.owner, network, f.image)
+                .unwrap();
+        let actual = f.r.metadata(&f.a, f.owner, control).unwrap();
+        assert_eq!(actual.job, network_id);
+        assert_eq!(f.s.usage(network_id, Resource::Frames), Ok(actual.frames));
+        assert_eq!(f.s.usage(f.parent_job, Resource::Frames), Ok(actual.frames));
+        assert_eq!(f.s.usage(f.parent_job, Resource::Processes), Ok(1));
+        assert_eq!(f.s.usage(f.parent_job, Resource::Threads), Ok(1));
+        assert_eq!(f.s.dispatch(0), Ok(None)); // It remains an ordinary held process.
+    }
+    #[test]
+    fn alternate_template_refusals_preserve_identity_and_all_owner_tables() {
+        let mut f = two_template_fixture();
+        let before = (
+            f.a.metadata_usage(),
+            f.s.metadata_usage(),
+            f.r.metadata_usage(),
+        );
+        let jobs = f.r.jobs;
+        for id in [2, u64::MAX] {
+            assert_eq!(
+                f.r.create_job(&mut f.a, &mut f.s, f.owner, f.parent, id),
+                Err(Error::UnsupportedTemplate)
+            );
+        }
+        assert_eq!(
+            f.r.create_job(&mut f.a, &mut f.s, f.owner, f.image, 1),
+            Err(Error::Authority(capability::Error::WrongKind))
+        );
+        assert_eq!(
+            (
+                f.a.metadata_usage(),
+                f.s.metadata_usage(),
+                f.r.metadata_usage()
+            ),
+            before
+        );
+        assert_eq!(f.r.jobs, jobs);
+        let foreign = f.a.create_space().unwrap();
+        let before = (
+            f.a.metadata_usage(),
+            f.s.metadata_usage(),
+            f.r.metadata_usage(),
+        );
+        assert_eq!(
+            f.r.create_job(&mut f.a, &mut f.s, foreign, f.parent, 1),
+            Err(Error::Authority(capability::Error::InvalidHandle))
+        );
+        assert_eq!(
+            (
+                f.a.metadata_usage(),
+                f.s.metadata_usage(),
+                f.r.metadata_usage()
+            ),
+            before
+        );
+        let mut fills = [Handle(0); MAX_CAPS];
+        let mut count = 0;
+        while let Ok(cap) = f.a.derive(f.owner, f.parent, f.owner, Rights::READ) {
+            fills[count] = cap;
+            count += 1;
+        }
+        let expected =
+            f.s.staged_copy()
+                .create_child_job(f.parent_job, Limits::new(16_384, 64, 1, 1))
+                .unwrap();
+        let before = (
+            f.a.metadata_usage(),
+            f.s.metadata_usage(),
+            f.r.metadata_usage(),
+        );
+        assert_eq!(
+            f.r.create_job(&mut f.a, &mut f.s, f.owner, f.parent, 1),
+            Err(Error::Authority(capability::Error::Capacity))
+        );
+        assert_eq!(
+            (
+                f.a.metadata_usage(),
+                f.s.metadata_usage(),
+                f.r.metadata_usage()
+            ),
+            before
+        );
+        assert_eq!(f.r.jobs, jobs);
+        f.a.close(f.owner, fills[count - 1]).unwrap();
+        let job =
+            f.r.create_job(&mut f.a, &mut f.s, f.owner, f.parent, 1)
+                .unwrap();
+        assert_eq!(f.r.job(&f.a, f.owner, job), Ok(expected));
+    }
+    #[test]
+    fn alternate_template_cannot_bypass_parent_budget_or_enable_itself_on_legacy_registry() {
+        let mut f = two_template_fixture();
+        let job =
+            f.r.create_job(&mut f.a, &mut f.s, f.owner, f.parent, 1)
+                .unwrap();
+        f.s.charge_frames(f.parent_job, 64).unwrap();
+        let before = (
+            f.a.metadata_usage(),
+            f.s.metadata_usage(),
+            f.r.metadata_usage(),
+        );
+        let probe = authority_probe(&f);
+        assert_eq!(
+            f.r.create_process(&mut f.a, &mut f.s, f.owner, job, f.image),
+            Err(Error::Scheduler(scheduler::Error::Budget))
+        );
+        assert_eq!(
+            (
+                f.a.metadata_usage(),
+                f.s.metadata_usage(),
+                f.r.metadata_usage()
+            ),
+            before
+        );
+        assert_eq!(authority_probe(&f), probe);
+        assert_eq!(f.s.usage(f.parent_job, Resource::Frames), Ok(64));
+        let mut legacy = fixture(&roles());
+        for id in [1, 2, u64::MAX] {
+            assert_eq!(
+                legacy.r.create_job(
+                    &mut legacy.a,
+                    &mut legacy.s,
+                    legacy.owner,
+                    legacy.parent,
+                    id
+                ),
+                Err(Error::UnsupportedTemplate)
+            );
+        }
+        for bad in [
+            Limits::UNLIMITED,
+            Limits::new(0, 64, 1, 1),
+            Limits::new(16_384, 0, 1, 1),
+        ] {
+            assert_eq!(
+                Registry::with_service_templates(epoch(), SERVICE_LIMITS, bad).err(),
+                Some(Error::Descriptor)
+            );
+            assert_eq!(
+                Registry::with_service_templates(epoch(), bad, SERVICE_LIMITS).err(),
+                Some(Error::Descriptor)
+            );
+        }
     }
     #[test]
     fn late_job_and_process_capacity_failure_leaves_all_tables_uncommitted() {

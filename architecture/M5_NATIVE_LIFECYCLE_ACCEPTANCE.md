@@ -1,7 +1,7 @@
 # Bounded M5 Native lifecycle acceptance
 
 Accepted 2026-11-11 for the Native lifecycle subtask. M5 and0.1 remain active.
-The [immutable physical proof](../docs/release/0.1-preview.md#validation-and-provenance)
+The immutable physical proof (local engineering archive)
 retains744 files,428 compiled sources and every1,077 manifest input hash, including
 actual executables, complete packages, image, raw VM output, scanouts and disks.
 Kernel SHA256 is `5a55dd4440569dc6b0f6c07d61ecb666d115e1a0f243a260b7be3bee5a931f02`.

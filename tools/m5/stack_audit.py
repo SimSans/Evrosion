@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Inspect actual linked x86-64 stack frames; this is not a formal stack bound.
 
-Usage: python3 tools/m5/stack_audit.py [--userspace [--stack-bytes 16384|32768]] ELF OUTPUT_JSON
+Usage: python3 tools/m5/stack_audit.py [--userspace [--stack-bytes 16384|32768] [--stack-first-page 256|480]] ELF OUTPUT_JSON
 The report is created exclusively and made read-only. Existing proof is never
 replaced. This preflight rejects a resolved full-entry reference census at or
 above the unchanged 256 KiB boot stack, including _start and the loader adapter.
@@ -129,16 +129,18 @@ def load_pointer_reader(data):
     return pointer
 
 
-def verify_user_stack(data, stack_bytes):
+def verify_user_stack(data, stack_bytes, stack_first_page=256):
     """Check the exact named private RW/NX zero stack LOAD and both guards."""
     if stack_bytes not in (16384, 32768):
         raise ValueError("userspace stack must select16KiB or32KiB")
+    if stack_first_page not in (256, 480):
+        raise ValueError("userspace stack must select legacy page256 or M8 page480")
     load_pointer_reader(data)  # shared strict bounded ELF64 header preflight
     if struct.unpack_from("<H",data,18)[0] != 62:
         raise ValueError("userspace stack check requires x86-64 ELF")
     phoff = struct.unpack_from("<Q",data,32)[0]
     phsize, phnum = struct.unpack_from("<HH",data,54)
-    start = (1 << 39) + 256 * 4096
+    start = (1 << 39) + stack_first_page * 4096
     end = start + stack_bytes
     stack = None
     for index in range(phnum):
@@ -154,7 +156,7 @@ def verify_user_stack(data, stack_bytes):
             raise ValueError("other LOAD overlaps private stack or guards")
     if stack is None:
         raise ValueError("declared private stack LOAD missing")
-    return {"start":start,"bytes":stack_bytes,"pages":stack_bytes//4096,
+    return {"start":start,"first_page":stack_first_page,"bytes":stack_bytes,"pages":stack_bytes//4096,
             "lower_guard":start-4096,"upper_guard":end,
             "zero_initialized_rw_nx":True,"other_loads_excluded_from_stack_and_guards":True}
 
@@ -287,7 +289,8 @@ def main_observer_edges(found, graph, unresolved):
     edges = []
     profiles = [
         (("desktop_runtime::Runtime", "native_runtime::"),
-         ("evrosion_kernel::desktop_observation",)),
+         ("evrosion_kernel::desktop_observation",
+          "evrosion_kernel::session_observation",)),
         (("provider_runtime::Runtime", "provider_runtime::world"),
          ("evrosion_kernel::provider_observation::observation",
           "evrosion_kernel::ipc_bench_observation::observation",)),
@@ -303,7 +306,7 @@ def main_observer_edges(found, graph, unresolved):
     return edges
 
 
-def audit(path, userspace=False, user_stack_bytes=USER_STACK_BYTES):
+def audit(path, userspace=False, user_stack_bytes=USER_STACK_BYTES, user_stack_first_page=256):
     found = functions(path)
     required_symbols = ["_start"] if userspace else ["_start", "evrosion_kernel_entry"]
     for required in required_symbols:
@@ -313,7 +316,14 @@ def audit(path, userspace=False, user_stack_bytes=USER_STACK_BYTES):
     if not userspace and len(adapters) != 1:
         raise ValueError("expected exactly one actual linked loader adapter")
     data = path.read_bytes()
-    user_stack = verify_user_stack(data,user_stack_bytes) if userspace else None
+    if not userspace and user_stack_first_page != 256:
+        raise ValueError("declared private stack page requires userspace mode")
+    if userspace:
+        if len(data) < 64 or data[:6] != b"\x7fELF\x02\x01":
+            raise ValueError("expected little-endian ELF64")
+        if found["_start"]["address"] != struct.unpack_from("<Q", data, 24)[0]:
+            raise ValueError("userspace _start symbol does not match ELF entry e_entry")
+    user_stack = verify_user_stack(data,user_stack_bytes,user_stack_first_page) if userspace else None
     frames = {name: {"address": f"0x{function['address']:x}", **frame(function)}
               for name, function in found.items()}
     graph, unresolved, resolved = references(found, load_pointer_reader(data))
@@ -325,7 +335,7 @@ def audit(path, userspace=False, user_stack_bytes=USER_STACK_BYTES):
     if not all(required in reachable for required in [*adapters,*required_symbols]):
         raise ValueError("resolved full-entry graph does not include required actual entries")
     selected = [name for name in reachable if any(marker in name for marker in
-                ["desktop_runtime::world", "native_runtime::", "desktop_observation",
+                ["desktop_runtime::world", "native_runtime::", "desktop_observation", "session_observation",
                  "provider_runtime::", "provider_observation::", "ipc_bench_observation::",
                  "user_runtime::resume_context", "ev_exception_dispatch"])]
     if userspace:
@@ -371,16 +381,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--userspace", action="store_true")
     parser.add_argument("--stack-bytes", type=int, choices=(16384,32768))
+    parser.add_argument("--stack-first-page", type=int, choices=(256,480))
     parser.add_argument("elf", type=Path)
     parser.add_argument("output", type=Path)
     arguments = parser.parse_args()
-    if arguments.stack_bytes is not None and not arguments.userspace:
-        parser.error("Kernel stack budget is fixed256KiB; --stack-bytes requires --userspace")
+    if (arguments.stack_bytes is not None or arguments.stack_first_page is not None) and not arguments.userspace:
+        parser.error("Kernel stack budget is fixed256KiB; stack declarations require --userspace")
     userspace = arguments.userspace
     source,target = arguments.elf,arguments.output
     if target.exists():
         raise SystemExit(f"refusing to replace existing stack evidence: {target}")
-    report = audit(source,userspace,arguments.stack_bytes or USER_STACK_BYTES)
+    report = audit(source,userspace,arguments.stack_bytes or USER_STACK_BYTES,arguments.stack_first_page or 256)
     exclusive_report(target, report)
     print(json.dumps({key: report[key] for key in
                       ["scope", "mode", "elf_sha256", "resolved_full_entry_bytes", "stack_bytes", "margin_bytes", "passed"]}))

@@ -374,20 +374,22 @@ fn noncontiguous_ram_frames_remain_one_object_and_one_exact_lease() {
 }
 #[test]
 fn bootstrap_recycle_limit_refuses_owner_without_freeing_any_prefix() {
-    assert!(MAX_RECYCLED.is_multiple_of(MAX_PAGES));
-    let mut f = allocator(MAX_RECYCLED + 2 * MAX_PAGES);
-    let (mut s, j) = scheduler((MAX_RECYCLED + MAX_PAGES) as u64);
+    let mut f = allocator(2 * MAX_RECYCLED + 2 * MAX_PAGES);
+    let (mut s, j) = scheduler(MAX_PAGES as u64);
     let mut ram = Ram::new();
-    // Allocate every real owner before returning any, so recycling cannot
-    // accidentally replace the capacity test with repeated reuse of one extent.
-    let owners: Vec<_> = (0..MAX_RECYCLED / MAX_PAGES)
-        .map(|_| initialized(&mut f, &mut s, j, MAX_PAGES, &mut ram))
+    // Hold real intervening claims so512 returns genuinely fill512 distinct
+    // runs. Contiguous returns deliberately no longer model metadata exhaustion.
+    let frames: Vec<_> = (0..2 * MAX_RECYCLED)
+        .map(|_| f.allocate().unwrap())
         .collect();
     let retained = initialized(&mut f, &mut s, j, MAX_PAGES, &mut ram);
-    for owner in owners {
-        owner
-            .release(&mut f, &mut s, &mut ram)
-            .unwrap_or_else(|e| panic!("{:?}", e.error));
+    let mut held = Vec::new();
+    for (index, frame) in frames.into_iter().enumerate() {
+        if index % 2 == 0 {
+            f.reclaim(frame).unwrap();
+        } else {
+            held.push(frame);
+        }
     }
     assert_eq!(f.recycle_capacity(), 0);
     let before = (
@@ -408,9 +410,20 @@ fn bootstrap_recycle_limit_refuses_owner_without_freeing_any_prefix() {
         before
     );
     assert_eq!(rejected.owner.0.count(), MAX_PAGES);
-    // Explicitly retained claim, not a false complete-graph retirement claim.
-    let _retained_owner = rejected.owner;
+    // Freeing the real intervening claims creates room; retrying this rejected
+    // preflight now releases the SAME owner, without a prior scrub/free prefix.
+    for frame in held {
+        f.reclaim(frame).unwrap();
+    }
+    rejected
+        .owner
+        .release(&mut f, &mut s, &mut ram)
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    assert_eq!(s.usage(j, Resource::Frames).unwrap(), 0);
+    assert_eq!(f.recycled_frames(), (2 * MAX_RECYCLED + MAX_PAGES) as u64);
+    assert_eq!(f.recycle_capacity(), MAX_RECYCLED - 1);
 }
+
 #[test]
 fn destroyed_writable_ram_must_reinitialize_before_republication() {
     let mut f = allocator(8);
@@ -440,6 +453,217 @@ fn compact_lease_metadata_has_no_sixty_four_address_array() {
     assert!(core::mem::size_of::<ExtentLease>() <= 64);
     assert!(core::mem::size_of::<MemoryExtent>() < 4096);
     assert_eq!(core::mem::size_of::<PhysicalFrame>(), 16);
+}
+#[test]
+fn legacy_alias_layout_and_64_page_factory_remain_exact_under_every_profile() {
+    #[allow(dead_code)]
+    struct LegacyOwner {
+        frames: [Option<PhysicalFrame>; 64],
+        pages: usize,
+        job: JobId,
+        charge: u64,
+        backing: u64,
+    }
+    #[allow(dead_code)]
+    struct LegacyExtent {
+        object: usize,
+        owner: Option<LegacyOwner>,
+        leases: [Option<LeaseRecord>; MAX_LEASES],
+        sequence: u64,
+    }
+    assert_eq!(MAX_PAGES, 64);
+    assert_eq!(
+        core::mem::size_of::<UninitializedRam>(),
+        core::mem::size_of::<LegacyOwner>()
+    );
+    assert_eq!(
+        core::mem::size_of::<InitializedRam>(),
+        core::mem::size_of::<LegacyOwner>()
+    );
+    assert_eq!(
+        core::mem::size_of::<RetiredRam>(),
+        core::mem::size_of::<LegacyOwner>()
+    );
+    assert_eq!(
+        core::mem::size_of::<MemoryExtent>(),
+        core::mem::size_of::<LegacyExtent>()
+    );
+    assert_eq!(
+        core::mem::align_of::<MemoryExtent>(),
+        core::mem::align_of::<LegacyExtent>()
+    );
+    let mut f = allocator(96);
+    let (mut s, j) = scheduler(96);
+    let before = f.remaining_frames();
+    for count in [0, 65, 79, 80, usize::MAX] {
+        let rejected = UninitializedRam::allocate(&mut f, &mut s, j, count)
+            .err()
+            .unwrap();
+        assert_eq!(rejected.error, Error::Count);
+        assert!(rejected.owner.is_none());
+        assert_eq!(f.remaining_frames(), before);
+        assert_eq!(s.usage(j, Resource::Frames), Ok(0));
+    }
+    assert_eq!(
+        BoundedUninitializedRam::<0>::allocate(&mut f, &mut s, j, 1)
+            .err()
+            .unwrap()
+            .error,
+        Error::Count
+    );
+    assert_eq!(
+        BoundedUninitializedRam::<81>::allocate(&mut f, &mut s, j, 1)
+            .err()
+            .unwrap()
+            .error,
+        Error::Count
+    );
+    #[cfg(not(feature = "workspace-authority"))]
+    assert_eq!(
+        BoundedUninitializedRam::<80>::allocate(&mut f, &mut s, j, 1)
+            .err()
+            .unwrap()
+            .error,
+        Error::Count
+    );
+}
+#[cfg(feature = "workspace-authority")]
+#[test]
+fn selected_shared_79_pages_have_real_charge_exact_lease_identity_and_complete_retirement() {
+    let mut f = allocator(96);
+    let before = f.remaining_frames();
+    let (mut s, j) = scheduler(96);
+    let mut ram = Ram::new();
+    let owner = M8SharedUninitializedRam::allocate(&mut f, &mut s, j, 79)
+        .unwrap_or_else(|e| panic!("{:?}", e.error))
+        .initialize(&mut ram)
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    assert_eq!((ram.writes, ram.reads), (79 * FRAME_SIZE, 79 * FRAME_SIZE));
+    assert_eq!(s.usage(j, Resource::Frames), Ok(79));
+    let mut a = Authority::new();
+    let root = a.create_space().unwrap();
+    let reader = a.create_space().unwrap();
+    let (mut extent, cap) = M8SharedExtent::publish(&mut a, root, owner, &f, &s)
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    assert_eq!(extent.pages(), 79);
+    assert_eq!(a.metadata_usage(), (2, 1, 1, 1));
+    let writer = extent.map(&a, root, cap, true).unwrap();
+    let read_cap = a
+        .derive(
+            root,
+            cap,
+            reader,
+            Rights::READ | Rights::MAP | Rights::REVOKE,
+        )
+        .unwrap();
+    assert!(extent.map(&a, reader, read_cap, true).is_err());
+    let read = extent.map(&a, reader, read_cap, false).unwrap();
+    assert_eq!(read.pages(), 79);
+    let ids: Vec<_> = extent.physical_pages(&read).unwrap().collect();
+    assert_eq!(ids.len(), 79);
+    assert_eq!(ids.iter().copied().collect::<BTreeSet<_>>().len(), 79);
+    assert_eq!(extent.destroy(&mut a, root, cap).err(), Some(Error::Busy));
+    // A genuine legacy extent receipt cannot alias the selected backing.
+    let small = initialized(&mut f, &mut s, j, 1, &mut ram);
+    let (mut other, other_cap) = publish(&mut a, root, small, &f, &s);
+    let foreign = other.map(&a, root, other_cap, true).unwrap();
+    assert_eq!(extent.validate(&a, &foreign), Err(Error::WrongObject));
+    let (error, foreign) = extent.unmap(foreign).unwrap_err();
+    assert_eq!(error, Error::WrongObject);
+    other.unmap(foreign).unwrap();
+    other
+        .destroy(&mut a, root, other_cap)
+        .unwrap()
+        .release(&mut f, &mut s, &mut ram)
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    a.revoke(reader, read_cap).unwrap();
+    assert!(extent.validate(&a, &read).is_err());
+    extent.unmap(read).unwrap();
+    extent.unmap(writer).unwrap();
+    let retired = extent.destroy(&mut a, root, cap).unwrap();
+    retired
+        .release(&mut f, &mut s, &mut ram)
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    assert_eq!(f.remaining_frames(), before);
+    assert_eq!(s.usage(j, Resource::Frames), Ok(0));
+}
+#[cfg(feature = "workspace-authority")]
+#[test]
+fn selected_shared_capacity_and_quota_refusals_precede_allocation_or_publication() {
+    let mut f = allocator(96);
+    let before = f.remaining_frames();
+    let (mut s, j) = scheduler(78);
+    for count in [0, 81, usize::MAX] {
+        let r = M8SharedUninitializedRam::allocate(&mut f, &mut s, j, count)
+            .err()
+            .unwrap();
+        assert_eq!(r.error, Error::Count);
+        assert!(r.owner.is_none());
+    }
+    let r = M8SharedUninitializedRam::allocate(&mut f, &mut s, j, 79)
+        .err()
+        .unwrap();
+    assert!(matches!(r.error, Error::Scheduler(_)));
+    assert!(r.owner.is_none());
+    assert_eq!(f.remaining_frames(), before);
+    assert_eq!(s.usage(j, Resource::Frames), Ok(0));
+    let (mut s, j) = scheduler(80);
+    let mut small = allocator(78);
+    let r = M8SharedUninitializedRam::allocate(&mut small, &mut s, j, 79)
+        .err()
+        .unwrap();
+    assert_eq!(r.error, Error::Exhausted);
+    assert!(r.owner.is_none());
+    assert_eq!(small.remaining_frames(), 78);
+    assert_eq!(s.usage(j, Resource::Frames), Ok(0));
+}
+#[cfg(feature = "workspace-authority")]
+#[test]
+fn selected_shared_failed_readback_retains_all_79_claims_and_charge_until_checked_release() {
+    let mut f = allocator(79);
+    let (mut s, j) = scheduler(79);
+    let mut ram = Ram::new();
+    ram.corrupt = true;
+    let owner = M8SharedUninitializedRam::allocate(&mut f, &mut s, j, 79)
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    let rejected = owner.initialize(&mut ram).err().unwrap();
+    assert_eq!(rejected.error, InitError::Readback);
+    assert_eq!(rejected.owner.pages(), 79);
+    assert_eq!(f.remaining_frames(), 0);
+    assert_eq!(s.usage(j, Resource::Frames), Ok(79));
+    let release = rejected
+        .owner
+        .release(&mut f, &mut s, &mut ram)
+        .err()
+        .unwrap();
+    assert_eq!(release.error, ReleaseError::Scrub(InitError::Readback));
+    assert_eq!(f.remaining_frames(), 0);
+    assert_eq!(s.usage(j, Resource::Frames), Ok(79));
+    ram.corrupt = false;
+    release
+        .owner
+        .release(&mut f, &mut s, &mut ram)
+        .unwrap_or_else(|e| panic!("{:?}", e.error));
+    assert_eq!(f.remaining_frames(), 79);
+    assert_eq!(s.usage(j, Resource::Frames), Ok(0));
+}
+#[cfg(feature = "workspace-authority")]
+#[test]
+fn selected_shared_metadata_growth_is_resident_only_and_keeps_legacy_lease_geometry() {
+    let extra = core::mem::size_of::<M8SharedExtent>() - core::mem::size_of::<MemoryExtent>();
+    assert_eq!(extra, 16 * core::mem::size_of::<Option<PhysicalFrame>>());
+    let slots = core::mem::size_of::<[Option<M8SharedExtent>; 37]>()
+        - core::mem::size_of::<[Option<MemoryExtent>; 37]>();
+    assert_eq!(slots, 37 * extra);
+    assert_eq!(slots, 14_208);
+    assert!(core::mem::size_of::<ExtentLease>() <= 64);
+    std::println!(
+        "M8_SHARED_METADATA extent64={} extent80={} option_frame={} resident37_delta={} no_stack_or_frame_quota_claim=true",
+        core::mem::size_of::<MemoryExtent>(),
+        core::mem::size_of::<M8SharedExtent>(),
+        core::mem::size_of::<Option<PhysicalFrame>>(),
+        slots
+    );
 }
 
 #[test]
@@ -517,4 +741,138 @@ fn independent_surfaces_keep_display_read_claims_across_one_writer_replacement()
     }
     assert_eq!(frames.remaining_frames(), before);
     assert_eq!(scheduler.usage(parent, Resource::Frames), Ok(0));
+}
+
+#[cfg(feature = "workspace-authority")]
+#[test]
+#[allow(unsafe_code)]
+fn captured_scrub_checks_exact_live_write_lease_and_retains_partial_error_debt() {
+    struct Failing<'a> {
+        ram: &'a mut Ram,
+        writes_left: usize,
+        read_error: bool,
+    }
+    // SAFETY: same exact host frame model, with explicit truthful access errors.
+    unsafe impl RamAccess for Failing<'_> {
+        type Error = ();
+        fn write(&mut self, frame: &PhysicalFrame, byte: usize, value: u8) -> Result<(), ()> {
+            if self.writes_left == 0 {
+                return Err(());
+            }
+            self.writes_left -= 1;
+            self.ram.write(frame, byte, value)
+        }
+        fn read(&mut self, frame: &PhysicalFrame, byte: usize) -> Result<u8, ()> {
+            if self.read_error {
+                Err(())
+            } else {
+                self.ram.read(frame, byte)
+            }
+        }
+    }
+    let mut frames = allocator(8);
+    let (mut s, job) = scheduler(8);
+    let mut ram = Ram::new();
+    let mut a = Authority::new();
+    let domain = a.create_space().unwrap();
+    let first = initialized(&mut frames, &mut s, job, 2, &mut ram);
+    let second = initialized(&mut frames, &mut s, job, 2, &mut ram);
+    let (mut object, cap) = publish(&mut a, domain, first, &frames, &s);
+    let (mut other, other_cap) = publish(&mut a, domain, second, &frames, &s);
+    let write = object.map(&a, domain, cap, true).unwrap();
+    let read = object.map(&a, domain, cap, false).unwrap();
+    let foreign = other.map(&a, domain, other_cap, true).unwrap();
+    let owned: Vec<_> = object.physical_pages(&write).unwrap().collect();
+    let unrelated: Vec<_> = other.physical_pages(&foreign).unwrap().collect();
+    for p in &owned {
+        ram.pages.get_mut(p).unwrap().fill(0xa5);
+    }
+    for p in &unrelated {
+        ram.pages.get_mut(p).unwrap().fill(0x77);
+    }
+    let writes = ram.writes;
+    // SAFETY: explicit single-threaded host RAM model has no executing alias.
+    assert!(matches!(
+        // SAFETY: this exclusive host frame model has no executing aliases.
+        unsafe { object.scrub_captured(&a, &foreign, &mut ram) },
+        Err(ScrubError::State(Error::WrongObject))
+    ));
+    // SAFETY: same model exclusion; readonly refusal must precede all writes.
+    assert_eq!(
+        // SAFETY: this exclusive host frame model has no executing aliases.
+        unsafe { object.scrub_captured(&a, &read, &mut ram) },
+        Err(ScrubError::ReadOnly)
+    );
+    assert_eq!(ram.writes, writes);
+    // SAFETY: same model exclusion. This real access error intentionally occurs
+    // after partial zeroing, and must leave all claims/leases/quota retained.
+    assert_eq!(
+        // SAFETY: this exclusive host frame model has no executing aliases.
+        unsafe {
+            object.scrub_captured(
+                &a,
+                &write,
+                &mut Failing {
+                    ram: &mut ram,
+                    writes_left: 17,
+                    read_error: false,
+                },
+            )
+        },
+        Err(ScrubError::Memory(InitError::Access(())))
+    );
+    assert_eq!(ram.pages[&owned[0]][..17], [0; 17]);
+    assert_eq!(ram.pages[&owned[0]][17], 0xa5);
+    // SAFETY: host RAM model; failure of actual readback is distinct from a
+    // successful wipe and releases no backing or lease on the error path.
+    assert_eq!(
+        // SAFETY: this exclusive host frame model has no executing aliases.
+        unsafe {
+            object.scrub_captured(
+                &a,
+                &write,
+                &mut Failing {
+                    ram: &mut ram,
+                    writes_left: usize::MAX,
+                    read_error: true,
+                },
+            )
+        },
+        Err(ScrubError::Memory(InitError::Access(())))
+    );
+    ram.corrupt = true;
+    // SAFETY: same model; corrupt readback is detected rather than fabricated.
+    assert_eq!(
+        // SAFETY: this exclusive host frame model has no executing aliases.
+        unsafe { object.scrub_captured(&a, &write, &mut ram) },
+        Err(ScrubError::Memory(InitError::Readback))
+    );
+    ram.corrupt = false;
+    assert_eq!((object.live_leases(), other.live_leases()), (2, 1));
+    assert_eq!(s.usage(job, Resource::Frames), Ok(4));
+    assert_eq!(frames.remaining_frames(), 4);
+    assert!(object.validate(&a, &write).is_ok());
+    // SAFETY: same exclusive model boundary and exact live writable claim.
+    unsafe { object.scrub_captured(&a, &write, &mut ram) }.unwrap();
+    for p in owned {
+        assert!(ram.pages[&p].iter().all(|b| *b == 0));
+    }
+    for p in unrelated {
+        assert!(ram.pages[&p].iter().all(|b| *b == 0x77));
+    }
+    a.revoke(domain, cap).unwrap();
+    let writes = ram.writes;
+    // SAFETY: same model; a revoked exact retained lease still cannot authorize
+    // new writes, even though cleanup retains its affine receipt and frames.
+    assert!(matches!(
+        // SAFETY: this exclusive host frame model has no executing aliases.
+        unsafe { object.scrub_captured(&a, &write, &mut ram) },
+        Err(ScrubError::State(Error::Authority(_)))
+    ));
+    assert_eq!(ram.writes, writes);
+    assert_eq!(object.pages(), 2);
+    assert_eq!(
+        (object.live_leases(), s.usage(job, Resource::Frames)),
+        (2, Ok(4))
+    );
 }

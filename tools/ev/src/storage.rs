@@ -145,6 +145,143 @@ pub(crate) struct Disk {
     #[cfg(unix)]
     identity: (u64, u64),
 }
+/// Persistent developer-session disk, confined to the runner's fixed directory.
+/// The open lock remains owned until QEMU has stopped and its bytes are captured.
+pub(crate) struct SessionDisk {
+    pub disk: Disk,
+    _lock: SessionLock,
+    pub created: bool,
+}
+// Unlock the shared open-file description explicitly. A concurrently spawned
+// child can temporarily inherit it before exec closes CLOEXEC descriptors; just
+// closing our descriptor would leave that inherited reference holding the lock.
+struct SessionLock(File);
+impl Drop for SessionLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+impl SessionDisk {
+    #[cfg(unix)]
+    pub fn open(root: &Path, seed: &[u8]) -> Result<Self> {
+        Self::open_profile(root, seed, Path::new("build/m6/session"))
+    }
+    #[cfg(unix)]
+    pub(crate) fn open_network(root: &Path, seed: &[u8]) -> Result<Self> {
+        Self::open_profile(root, seed, Path::new("build/m6/network-session"))
+    }
+    #[cfg(unix)]
+    pub(crate) fn open_document(root: &Path, seed: &[u8]) -> Result<Self> {
+        let directory = root.join("build/m7/document-session");
+        if fs::symlink_metadata(directory.join("boot-set")).is_ok()
+            && !(directory.join("data.raw").try_exists().unwrap_or(false)
+                && directory.join("owner.json").try_exists().unwrap_or(false))
+        {
+            return Err("retained document boot set has incomplete owned disk state; preserved without formatting".into());
+        }
+        Self::open_profile(root, seed, Path::new("build/m7/document-session"))
+    }
+    #[cfg(unix)]
+    fn open_profile(root: &Path, seed: &[u8], relative: &Path) -> Result<Self> {
+        if seed.len() != DISK_BYTES {
+            return Err("session seed must be exactly 4 MiB".into());
+        }
+        let root = root.canonicalize().map_err(|e| e.to_string())?;
+        let directory = directory_beneath(&root, relative)?;
+        let lock_path = directory.join("session.lock");
+        if let Ok(meta) = fs::symlink_metadata(&lock_path)
+            && (!meta.is_file() || meta.file_type().is_symlink() || meta.nlink() != 1)
+        {
+            return Err("session lock is not an owned regular file".into());
+        }
+        let lock = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .mode(0o600)
+            .open(&lock_path)
+            .map_err(|e| e.to_string())?;
+        let locked = lock.metadata().map_err(|e| e.to_string())?;
+        let named = fs::symlink_metadata(&lock_path).map_err(|e| e.to_string())?;
+        if !locked.is_file()
+            || locked.nlink() != 1
+            || named.file_type().is_symlink()
+            || (locked.dev(), locked.ino()) != (named.dev(), named.ino())
+        {
+            return Err("session lock identity changed".into());
+        }
+        lock.try_lock()
+            .map_err(|_| "another session owns this developer disk")?;
+        let lock = SessionLock(lock);
+        let receipt = directory.join("owner.json");
+        let data = directory.join("data.raw");
+        let (disk, created) = match (receipt.try_exists(), data.try_exists()) {
+            (Ok(false), Ok(false)) => {
+                let mut disk = Disk::create(&root, &directory)?;
+                disk.restore_snapshot(seed)?;
+                json_new(
+                    &receipt,
+                    &json!({"schema":1,"workspace":root,"device":disk.identity.0,"inode":disk.identity.1}),
+                )?;
+                (disk, true)
+            }
+            (Ok(true), Ok(true)) => {
+                let metadata = fs::symlink_metadata(&receipt).map_err(|e| e.to_string())?;
+                if !metadata.is_file()
+                    || metadata.file_type().is_symlink()
+                    || metadata.nlink() != 1
+                    || metadata.len() > 4096
+                {
+                    return Err("session ownership record must be a small regular file".into());
+                }
+                #[derive(serde::Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct Owner {
+                    schema: u32,
+                    workspace: PathBuf,
+                    device: u64,
+                    inode: u64,
+                }
+                let owner: Owner =
+                    serde_json::from_slice(&fs::read(&receipt).map_err(|e| e.to_string())?)
+                        .map_err(|e| format!("invalid session ownership record: {e}"))?;
+                if owner.schema != 1 || owner.workspace != root {
+                    return Err("session disk belongs to another workspace".into());
+                }
+                let disk = Disk {
+                    root: root.clone(),
+                    path: data,
+                    identity: (owner.device, owner.inode),
+                };
+                disk.validate(&root)?;
+                (disk, false)
+            }
+            _ => {
+                return Err(
+                    "incomplete or inaccessible session state; retained without formatting".into(),
+                );
+            }
+        };
+        Ok(Self {
+            disk,
+            _lock: lock,
+            created,
+        })
+    }
+    #[cfg(not(unix))]
+    pub fn open(_: &Path, _: &[u8]) -> Result<Self> {
+        Err("persistent developer sessions currently require a supported Linux host".into())
+    }
+    #[cfg(not(unix))]
+    pub(crate) fn open_network(_: &Path, _: &[u8]) -> Result<Self> {
+        Err("network developer sessions currently require a supported Linux host".into())
+    }
+    #[cfg(not(unix))]
+    pub(crate) fn open_document(_: &Path, _: &[u8]) -> Result<Self> {
+        Err("document developer sessions currently require a supported Linux host".into())
+    }
+}
 impl Disk {
     pub(crate) fn create(root: &Path, evidence: &Path) -> Result<Self> {
         let root = root.canonicalize().map_err(|error| error.to_string())?;
@@ -319,6 +456,7 @@ impl Disk {
 fn retained_manifest(root: &Path, directory: &Path, phase: Phase) -> Result<Manifest> {
     let bytes = fs::read(root.join("build/m0/manifest.json")).map_err(|error| error.to_string())?;
     let manifest: Manifest = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+    manifest.validate_policy_rows()?;
     if manifest.fixture.as_deref() != Some(phase.fixture()) {
         return Err("selected build does not match the storage phase".into());
     }
@@ -535,6 +673,97 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+    #[cfg(unix)]
+    #[test]
+    fn network_and_document_disks_are_independent_and_never_replace_session_edits() {
+        let root = Temp::new();
+        let seed = fixture(false);
+        let session = SessionDisk::open(&root.0, &seed).unwrap();
+        let mut edited = seed.clone();
+        edited[DISK_BYTES - 1] = 0xa7;
+        fs::write(&session.disk.path, &edited).unwrap();
+        let network = SessionDisk::open_network(&root.0, &seed).unwrap();
+        assert!(network.created);
+        assert_ne!(network.disk.path, session.disk.path);
+        assert_eq!(network.disk.bytes().unwrap(), seed);
+        let document = SessionDisk::open_document(&root.0, &seed).unwrap();
+        assert!(document.created);
+        assert_ne!(document.disk.path, network.disk.path);
+        assert_ne!(document.disk.path, session.disk.path);
+        assert_eq!(document.disk.bytes().unwrap(), seed);
+        assert!(SessionDisk::open_document(&root.0, &seed).is_err());
+        assert_eq!(session.disk.bytes().unwrap(), edited);
+        assert!(SessionDisk::open_network(&root.0, &seed).is_err());
+        drop(network);
+        let reopened = SessionDisk::open_network(&root.0, &seed).unwrap();
+        assert!(!reopened.created);
+        assert_eq!(session.disk.bytes().unwrap(), edited);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn document_boot_set_without_its_owned_disk_is_preserved_without_reinitialization() {
+        let root = Temp::new();
+        let directory =
+            directory_beneath(&root.0, Path::new("build/m7/document-session/boot-set")).unwrap();
+        immutable_new(&directory.join("retained.bin"), b"retained guest artifacts").unwrap();
+        assert!(SessionDisk::open_document(&root.0, &fixture(false)).is_err());
+        assert!(!directory.parent().unwrap().join("data.raw").exists());
+        assert!(!directory.parent().unwrap().join("owner.json").exists());
+        assert_eq!(
+            fs::read(directory.join("retained.bin")).unwrap(),
+            b"retained guest artifacts"
+        );
+    }
+    #[cfg(unix)]
+    #[test]
+    fn session_reopens_only_its_original_disk_and_excludes_concurrent_owners() {
+        let root = Temp::new();
+        let seed = fixture(false);
+        let mut session = SessionDisk::open(&root.0, &seed).unwrap();
+        assert!(session.created);
+        assert!(SessionDisk::open(&root.0, &seed).is_err());
+        let mut edited = seed.clone();
+        edited[1024] = 91; // Host ownership unit fixture, not a guest storage proof.
+        session.disk.restore_snapshot(&edited).unwrap();
+        // Model a forked child's reference to the same open-file description.
+        // Dropping the session must release ownership even before that reference
+        // is closed by exec; a second live SessionDisk still cannot acquire it.
+        let inherited = session._lock.0.try_clone().unwrap();
+        drop(session);
+        let reopened = SessionDisk::open(&root.0, &seed).unwrap();
+        assert!(!reopened.created);
+        assert_eq!(reopened.disk.bytes().unwrap(), edited);
+        drop(reopened);
+        drop(inherited);
+        let data = root.0.join("build/m6/session/data.raw");
+        fs::rename(&data, data.with_extension("retained")).unwrap();
+        fs::write(&data, &seed).unwrap();
+        assert!(SessionDisk::open(&root.0, &seed).is_err());
+        assert_eq!(fs::read(data.with_extension("retained")).unwrap(), edited);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn session_never_formats_unowned_partial_or_foreign_state() {
+        let root = Temp::new();
+        let dir = directory_beneath(&root.0, Path::new("build/m6/session")).unwrap();
+        let seed = fixture(false);
+        let prior = vec![0x72; DISK_BYTES];
+        fs::write(dir.join("data.raw"), &prior).unwrap();
+        assert!(SessionDisk::open(&root.0, &seed).is_err());
+        assert_eq!(fs::read(dir.join("data.raw")).unwrap(), prior);
+        assert!(!dir.join("owner.json").exists());
+        fs::remove_file(dir.join("data.raw")).unwrap();
+        let owned = SessionDisk::open(&root.0, &seed).unwrap();
+        drop(owned);
+        let path = dir.join("owner.json");
+        let mut owner: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        owner["workspace"] = json!("/different/workspace");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        fs::write(&path, serde_json::to_vec(&owner).unwrap()).unwrap();
+        assert!(SessionDisk::open(&root.0, &seed).is_err());
+        assert_eq!(fs::read(dir.join("data.raw")).unwrap(), seed);
+        assert!(SessionDisk::open(&root.0, &[0; 1]).is_err());
     }
     #[test]
     fn exact_fixture_and_guard_sectors_are_enforced() {

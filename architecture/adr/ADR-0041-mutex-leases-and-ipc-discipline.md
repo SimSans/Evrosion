@@ -61,5 +61,5 @@ lease/order exhaustion, verified-death poisoning and stale object/thread/lease
 generations. Actual source-built clients must hold the real mutex, observe
 generated RPC denial, release it, and successfully forward A→B→C. The deeper
 fixture must execute all eight edges through real scheduling and protected waits.
-Hardware and cumulative results belong in [M2 progress](../../docs/release/0.1-preview.md#validation-and-provenance).
+Hardware and cumulative results belong in M2 progress.
 This record does not certify those pending executions or general thread creation.

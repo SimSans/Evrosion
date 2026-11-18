@@ -364,6 +364,7 @@ fn failure_wire(f: ev_store::LastFailure) -> ev_diagnostics::system::Failure {
             ev_store::LastFailureReason::MissingProgress => 2,
             ev_store::LastFailureReason::StorageFailure => 3,
             ev_store::LastFailureReason::AttemptBudgetExhausted => 4,
+            ev_store::LastFailureReason::CriticalComponentFault => 5,
         },
         supervisor_image: f.supervisor_image,
         process_stamp: f.process_stamp,
@@ -485,6 +486,7 @@ pub(crate) fn retain(
                 boot_serial: a.boot_serial,
                 attempts: 1,
                 reason: ev_store::LastFailureReason::MissingProgress,
+                evidence: None,
                 supervisor_image: a.supervisor_image,
                 process_stamp: Some(a.process_stamp),
                 operation: ev_store::OperationId::new(operation)
@@ -1097,6 +1099,9 @@ pub(crate) fn retain(
             Role::File => cat.base().images().nth(2).unwrap().image,
             Role::Block => cat.base().images().nth(3).unwrap().image,
             Role::Display => cat.base().images().nth(5).unwrap().image,
+            Role::NetDriver | Role::NetService => {
+                return Err("Native3 inspector cannot accept V4 network roles".into());
+            }
         };
         if row.image != image
             || row.package
@@ -1139,6 +1144,9 @@ pub(crate) fn retain(
                 Role::Application => 5,
                 Role::Display => 6,
                 Role::Boot => unreachable!(),
+                Role::NetDriver | Role::NetService => {
+                    return Err("Native3 inspector cannot accept V4 network roles".into());
+                }
             };
             let profile = &profiles[index].counts;
             if !row.started

@@ -1,16 +1,25 @@
 [package]
+license.workspace = true
 name = "ev"
 description = "Evrosion development frontend (Internal during M0)"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-license.workspace = true
+
+[features]
+workspace = ["ev-kernel/workspace-authority", "dep:ev-workspace-store", "dep:ev-workspace-client"]
 
 [lints]
 workspace = true
 
 [dependencies]
-ev-root-supervisor = { path = "../../services/root-supervisor", features = ["desktop-contract", "native-contract"] }
+ev-release-trust = { path = "../../libs/release-trust" }
+ed25519-dalek = { version = "=2.2.0", default-features = false, features = ["zeroize"] }
+zeroize = "=1.8.2"
+ev-net-driver = { path = "../../services/net-driver" }
+ev-time-proof = { path = "../../libs/time-proof" }
+ev-root-supervisor = { path = "../../services/root-supervisor", features = ["desktop-contract", "native-contract", "native-network", "document-workflow"] }
+ev-content-store = { path = "../../libs/content-store" }
 toml = { version = "~1.1.6", default-features = false, features = ["std", "parse", "serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -19,10 +28,15 @@ ev-test-protocol = { path = "../../libs/test-protocol" }
 ev-userspace-contract = { path = "../../libs/userspace-contract" }
 ev-kernel = { path = "../../kernel" }
 ev-store = { path = "../../libs/store" }
+ev-workspace-store = { path = "../../libs/workspace-store", optional = true }
+ev-workspace-client = { path = "../../libs/workspace-client", optional = true }
 ev-file = { path = "../../libs/file" }
-ev-graphics = { path = "../../libs/graphics" }
+ev-graphics = { path = "../../libs/graphics", features = ["owner-ui"] }
 ev-zion = { path = "../../libs/zion", features = ["std"] }
 ev-app-registry = { path = "../../libs/app-registry" }
+ev-native-hello = { path = "../../apps/hello" }
+ev-input = { path = "../../libs/input" }
+ev-desktop = { path = "../../services/desktop" }
 ev-provider-test = { path = "../../services/provider-test" }
 ev-diagnostics = { path = "../../libs/diagnostics" }
 ev-grant-policy = { path = "../../libs/grant-policy" }
@@ -56,3 +70,19 @@ path = "../../kernel/src/provider_runtime/abi_test_harness.rs"
 [[test]]
 name = "provider-measurement"
 path = "../../kernel/src/provider_runtime/measurement_test_harness.rs"
+
+[[test]]
+name = "session-ui-observation"
+path = "../../kernel/src/desktop_runtime/session_ui_test_harness.rs"
+
+[[test]]
+name = "session-log-retention"
+path = "../../kernel/src/session_log_test_harness.rs"
+
+[[test]]
+name = "network-retirement"
+path = "../../kernel/src/desktop_runtime/network_retirement_test_harness.rs"
+
+[dev-dependencies]
+ev-time-contract = { path = "../../libs/time-contract" }
+ev-net-stack = { path = "../../libs/net-stack" }

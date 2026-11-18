@@ -1,7 +1,7 @@
 # M4 graphical-machine engineering acceptance
 
 Status: **PASS — bounded Internal reference-machine scope**, 2026-10-27.
-The [formal M4 acceptance record](../docs/release/0.1-preview.md#validation-and-provenance)
+The formal M4 acceptance record (local engineering archive)
 reconciles the full desktop and refreshed original surface negative regression
 against E-025.45–54/R-011.17 and bounded A-004 selected READ. Its current regression
 matches all 360 compiled code inputs to the accepted desktop cohort; full
@@ -9,7 +9,7 @@ frontend checks pass 140 tests with one existing ignored test, and all 18
 governance tests pass. [M3 acceptance](M3_ACCEPTANCE.md), M0 at `m0` and all
 historical evidence remain unchanged. This is not M5/whole0.1 acceptance.
 
-The [full desktop execution](../docs/release/0.1-preview.md#validation-and-provenance)
+The full desktop execution (local engineering archive)
 passes one actual fresh QEMU VM with source-built Root, Shell, Input, File, Block,
 App and Display. Its retained kernel build input is
 `c7bbafa08a3753f147a7cca3310824e34f12275c4278761b8784a0dd9da38df6`.
@@ -27,29 +27,29 @@ updates are not claimed to preserve a complete-tree build fingerprint forever.
 | E-025.51/.54: App fault, shell/system survival and relaunch | Actual App PF14/error4 with retained fault/process/thread/address, stopped owner retirement, distinct replacement App, cleared RAM/no inherited File grant, actual re-grant/read. PASS. |
 | E-017 shell/display separation beyond minimum exit | Actual Shell fault/replacement while Display and current App survive, new Input barrier and protected App Present restore the existing Notes content. Two actual faults/restarts overall; same Display process 2. PASS for injected App/Shell failures. |
 | E-025.53: coherent resource/IPC/storage slice | 216 actual protected calls/replies, 9 actual admitted starts/incarnations, peak 7 live actors, 275 accounted private/shared RAM frames, returned mappings/metadata, independent cold File volume inspection and unchanged guard/System regions. PASS in this bounded graph. |
-| Original component/negative regression on current code | [Current three-world regression](../docs/release/0.1-preview.md#validation-and-provenance) passes actual normal scanout, App absent-aperture PF14/error4 and Display RO-surface-write PF14/error7, 9 authority denials and exact retirement, with all 360 compiled code inputs matching the accepted desktop. The [first component proof](../docs/release/0.1-preview.md#validation-and-provenance) remains separate historical evidence. PASS. |
+| Original component/negative regression on current code | Current three-world regression (local engineering archive) passes actual normal scanout, App absent-aperture PF14/error4 and Display RO-surface-write PF14/error7, 9 authority denials and exact retirement, with all 360 compiled code inputs matching the accepted desktop. The first component proof (local engineering archive) remains separate historical evidence. PASS. |
 
 The graph retains 20 real captures. Fifteen required stages pass exact comparison
 of all 1,024,000 pixels each; five transient mismatches remain explicitly failed
 captures and are not relabeled successes. Three running held-key checkpoints
 record 68/67/65 guest ticks. Actual input/QMP pause/capture/continue commands are
 retained; host delay or paused guest time is not consent evidence. Small PNG
-views of the [actual trusted picker](../docs/release/0.1-preview.md#validation-and-provenance)
-and [actual selected-file app](../docs/release/0.1-preview.md#validation-and-provenance)
+views of the actual trusted picker (local engineering archive)
+and actual selected-file app (local engineering archive)
 are lossless conversions, not replacement evidence.
 
-[Current core/startup checks](../docs/release/0.1-preview.md#validation-and-provenance)
+Current core/startup checks (local engineering archive)
 pass 355 kernel and 41 contract tests and strict host/target lint. The
-[consent/readability correction](../docs/release/0.1-preview.md#validation-and-provenance)
+consent/readability correction (local engineering archive)
 retains 15 Desktop/Shell, 10 graphics and 138 frontend passing tests, one existing
 ignored frontend test, exact source deltas and strict target checks. Earlier
-[authority/reuse tests](../docs/release/0.1-preview.md#validation-and-provenance)
+authority/reuse tests (local engineering archive)
 cover bounded pools/generation reuse, legacy-v1/Root-v2 separation and repeated
 managed grant lifecycle. These are supporting model/component records; the
 physical graph is the separate linked proof above.
 
-The [submission/readability failure](../docs/release/0.1-preview.md#validation-and-provenance)
-and [post-delivery rights-inspection failure](../docs/release/0.1-preview.md#validation-and-provenance)
+The submission/readability failure (local engineering archive)
+and post-delivery rights-inspection failure (local engineering archive)
 remain immutable. Their fixes respectively prevent rearming consent during
 Opening, preserve every font row, and let exact known rights masks reach actual
 authorization; they do not widen selected App authority. Earlier stack, mapping,

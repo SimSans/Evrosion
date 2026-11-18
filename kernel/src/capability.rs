@@ -15,8 +15,39 @@ pub const MAX_OBJECTS: usize = 64;
 /// factory selects one of these fixed wider domains; no syscall selects class.
 pub const MAX_CONTROL_CAPS: usize = 64;
 pub const MAX_CONTROL_SPACES: usize = 4;
-const EXTRA_CONTROL_CAPS: usize = MAX_CONTROL_CAPS - MAX_CAPS;
-const _: () = assert!(MAX_SPACES < 256 && MAX_OBJECTS < 256 && MAX_CONTROL_CAPS < 256);
+/// Physical metadata capacity, distinct from the effective legacy envelopes.
+/// The default Kernel keeps the exact original arrays; only the selected M8
+/// build carries the larger storage. Ordinary domains always remain16 slots.
+pub const SPACE_STORAGE_CAPACITY: usize = if cfg!(feature = "workspace-authority") {
+    64
+} else {
+    MAX_SPACES
+};
+pub const OBJECT_STORAGE_CAPACITY: usize = if cfg!(feature = "workspace-authority") {
+    96
+} else {
+    MAX_OBJECTS
+};
+const NODE_STORAGE_CAPACITY: usize = if cfg!(feature = "workspace-authority") {
+    512
+} else {
+    MAX_NODES
+};
+const CONTROL_STORAGE_CAPACITY: usize = if cfg!(feature = "workspace-authority") {
+    96
+} else {
+    MAX_CONTROL_CAPS
+};
+const EXTRA_CONTROL_CAPS: usize = CONTROL_STORAGE_CAPACITY - MAX_CAPS;
+#[cfg(feature = "workspace-authority")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SelectedEnvelope {
+    workspace: bool,
+    workspace_controls: [bool; MAX_CONTROL_SPACES],
+}
+const _: () = assert!(
+    SPACE_STORAGE_CAPACITY < 256 && OBJECT_STORAGE_CAPACITY < 256 && CONTROL_STORAGE_CAPACITY < 256
+);
 const MAX_GENERATION: u64 = u64::MAX >> 8;
 const MAX_OBJECT_GENERATION: usize = (usize::MAX >> 8) + 1;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -110,7 +141,7 @@ struct Object {
 struct NodeIndex(NonZeroU16);
 impl NodeIndex {
     fn checked(index: usize) -> Option<Self> {
-        if index >= MAX_NODES {
+        if index >= NODE_STORAGE_CAPACITY {
             return None;
         }
         Some(Self(NonZeroU16::new(
@@ -124,7 +155,7 @@ impl NodeIndex {
 fn node_index(index: usize) -> NodeIndex {
     NodeIndex::checked(index).expect("previously bounded node slot")
 }
-const _: () = assert!(MAX_NODES <= u16::MAX as usize);
+const _: () = assert!(NODE_STORAGE_CAPACITY <= u16::MAX as usize);
 #[derive(Clone, Copy)]
 struct Node {
     object: usize,
@@ -180,7 +211,7 @@ pub struct Derivation {
 }
 /// A complete, atomically installed batch. Handles remain destination-local.
 pub struct GrantBatch {
-    handles: [Handle; MAX_CONTROL_CAPS],
+    handles: [Handle; CONTROL_STORAGE_CAPACITY],
     count: usize,
 }
 impl GrantBatch {
@@ -195,15 +226,17 @@ pub struct ScopedGrants {
     pub grants: GrantBatch,
 }
 pub struct Authority {
-    spaces: [bool; MAX_SPACES],
-    closed: [bool; MAX_SPACES],
-    space_generations: [u64; MAX_SPACES],
-    slots: [[Slot; MAX_CAPS]; MAX_SPACES],
+    #[cfg(feature = "workspace-authority")]
+    envelope: SelectedEnvelope,
+    spaces: [bool; SPACE_STORAGE_CAPACITY],
+    closed: [bool; SPACE_STORAGE_CAPACITY],
+    space_generations: [u64; SPACE_STORAGE_CAPACITY],
+    slots: [[Slot; MAX_CAPS]; SPACE_STORAGE_CAPACITY],
     control_owners: [Option<usize>; MAX_CONTROL_SPACES],
     control_slots: [[Slot; EXTRA_CONTROL_CAPS]; MAX_CONTROL_SPACES],
-    nodes: [Option<Node>; MAX_NODES],
-    objects: [Option<Object>; MAX_OBJECTS],
-    object_generations: [usize; MAX_OBJECTS],
+    nodes: [Option<Node>; NODE_STORAGE_CAPACITY],
+    objects: [Option<Object>; OBJECT_STORAGE_CAPACITY],
+    object_generations: [usize; OBJECT_STORAGE_CAPACITY],
 }
 impl Default for Authority {
     fn default() -> Self {
@@ -232,16 +265,64 @@ impl Authority {
     }
     pub const fn new() -> Self {
         Self {
-            spaces: [false; MAX_SPACES],
-            closed: [false; MAX_SPACES],
-            space_generations: [0; MAX_SPACES],
-            slots: [[EMPTY; MAX_CAPS]; MAX_SPACES],
+            #[cfg(feature = "workspace-authority")]
+            envelope: SelectedEnvelope {
+                workspace: false,
+                workspace_controls: [false; MAX_CONTROL_SPACES],
+            },
+            spaces: [false; SPACE_STORAGE_CAPACITY],
+            closed: [false; SPACE_STORAGE_CAPACITY],
+            space_generations: [0; SPACE_STORAGE_CAPACITY],
+            slots: [[EMPTY; MAX_CAPS]; SPACE_STORAGE_CAPACITY],
             control_owners: [None; MAX_CONTROL_SPACES],
             control_slots: [[EMPTY; EXTRA_CONTROL_CAPS]; MAX_CONTROL_SPACES],
-            nodes: [None; MAX_NODES],
-            objects: [None; MAX_OBJECTS],
-            object_generations: [0; MAX_OBJECTS],
+            nodes: [None; NODE_STORAGE_CAPACITY],
+            objects: [None; OBJECT_STORAGE_CAPACITY],
+            object_generations: [0; OBJECT_STORAGE_CAPACITY],
         }
+    }
+    /// Trusted once-only factory for the independently verified M8 graph.
+    /// No syscall or userspace scalar selects this profile. Existing new() and
+    /// existing control-space factory keep their legacy effective limits even
+    /// in this build; ordinary processes never obtain a wider handle table.
+    #[cfg(feature = "workspace-authority")]
+    pub const fn for_workspace_profile() -> Self {
+        let mut table = Self::new();
+        table.envelope.workspace = true;
+        table
+    }
+    fn space_limit(&self) -> usize {
+        #[cfg(feature = "workspace-authority")]
+        if self.envelope.workspace {
+            return SPACE_STORAGE_CAPACITY;
+        }
+        MAX_SPACES
+    }
+    fn object_limit(&self) -> usize {
+        #[cfg(feature = "workspace-authority")]
+        if self.envelope.workspace {
+            return OBJECT_STORAGE_CAPACITY;
+        }
+        MAX_OBJECTS
+    }
+    fn node_limit(&self) -> usize {
+        #[cfg(feature = "workspace-authority")]
+        if self.envelope.workspace {
+            return NODE_STORAGE_CAPACITY;
+        }
+        MAX_NODES
+    }
+    /// Trusted M8 custody/Root factory. It cannot upgrade an existing domain or
+    /// an Authority initialized for a legacy profile. Recycle preserves class.
+    #[cfg(feature = "workspace-authority")]
+    pub fn create_workspace_control_space(&mut self) -> Result<SpaceId, Error> {
+        if !self.envelope.workspace {
+            return Err(Error::Denied);
+        }
+        let space = self.create_control_space()?;
+        let bank = self.bank(space.0).ok_or(Error::InvalidSpace)?;
+        self.envelope.workspace_controls[bank] = true;
+        Ok(space)
     }
     /// Copy fixed metadata for a crate-private staged admission transaction.
     /// This does not copy hardware, mappings or resource ownership and must not
@@ -250,6 +331,8 @@ impl Authority {
     /// validation under the same serialized owner; rejected staging is discarded.
     pub(crate) fn staged_copy(&self) -> Self {
         Self {
+            #[cfg(feature = "workspace-authority")]
+            envelope: self.envelope,
             spaces: self.spaces,
             closed: self.closed,
             space_generations: self.space_generations,
@@ -263,7 +346,10 @@ impl Authority {
     }
     /// Trusted kernel bootstrap creation, not callable by a userspace request.
     pub fn create_space(&mut self) -> Result<SpaceId, Error> {
-        let index = self.spaces.iter().position(|s| !s).ok_or(Error::Capacity)?;
+        let index = self.spaces[..self.space_limit()]
+            .iter()
+            .position(|s| !s)
+            .ok_or(Error::Capacity)?;
         self.spaces[index] = true;
         self.space_generations[index] = 1;
         Ok(SpaceId(index, 1))
@@ -272,8 +358,7 @@ impl Authority {
     /// its physical bank and every slot generation; only explicit recycle_space
     /// reopens that same domain. Ordinary CreateProcess never calls this API.
     pub fn create_control_space(&mut self) -> Result<SpaceId, Error> {
-        let index = self
-            .spaces
+        let index = self.spaces[..self.space_limit()]
             .iter()
             .position(|used| !used)
             .ok_or(Error::Capacity)?;
@@ -297,20 +382,31 @@ impl Authority {
             .position(|owner| *owner == Some(space))
     }
     fn capacity(&self, space: usize) -> usize {
-        if self.bank(space).is_some() {
+        if let Some(bank) = self.bank(space) {
+            #[cfg(feature = "workspace-authority")]
+            if self.envelope.workspace_controls[bank] {
+                return CONTROL_STORAGE_CAPACITY;
+            }
+            let _ = bank;
             MAX_CONTROL_CAPS
         } else {
             MAX_CAPS
         }
     }
     fn entries(&self, space: usize) -> impl Iterator<Item = &Slot> {
-        self.slots[space].iter().chain(
-            self.bank(space)
-                .into_iter()
-                .flat_map(|bank| self.control_slots[bank].iter()),
-        )
+        self.slots[space]
+            .iter()
+            .chain(
+                self.bank(space)
+                    .into_iter()
+                    .flat_map(|bank| self.control_slots[bank].iter()),
+            )
+            .take(self.capacity(space))
     }
     fn slot(&self, space: usize, index: usize) -> Option<&Slot> {
+        if index >= self.capacity(space) {
+            return None;
+        }
         if index < MAX_CAPS {
             self.slots[space].get(index)
         } else {
@@ -320,6 +416,9 @@ impl Authority {
         }
     }
     fn slot_mut(&mut self, space: usize, index: usize) -> Option<&mut Slot> {
+        if index >= self.capacity(space) {
+            return None;
+        }
         if index < MAX_CAPS {
             self.slots[space].get_mut(index)
         } else {
@@ -354,7 +453,7 @@ impl Authority {
         {
             return Err(Error::Denied);
         }
-        let mut seen = [false; MAX_CONTROL_CAPS];
+        let mut seen = [false; CONTROL_STORAGE_CAPACITY];
         for handle in handles {
             let (slot, _) = self.locate(owner, *handle)?;
             if seen[slot] {
@@ -432,7 +531,7 @@ impl Authority {
     /// Borrowed Access values exclude this mutation. No object descriptor,
     /// physical resource, process or external reference is reclaimed here.
     pub fn collect_lineage(&mut self) -> Result<usize, Error> {
-        let mut reachable = [false; MAX_NODES];
+        let mut reachable = [false; NODE_STORAGE_CAPACITY];
         for slot in self
             .slots
             .iter()
@@ -440,7 +539,7 @@ impl Authority {
             .chain(self.control_slots.iter().flatten())
         {
             let mut current = slot.node.map(NodeIndex::index);
-            for _ in 0..MAX_NODES {
+            for _ in 0..NODE_STORAGE_CAPACITY {
                 let Some(index) = current else {
                     break;
                 };
@@ -475,15 +574,15 @@ impl Authority {
     /// This operation never frees backing, mappings, DMA, threads or processes,
     /// and certifies no hardware/reference quiescence beyond this metadata table.
     pub fn collect_dead_objects(&mut self) -> Result<usize, Error> {
-        let mut referenced = [false; MAX_OBJECTS];
+        let mut referenced = [false; OBJECT_STORAGE_CAPACITY];
         // Validate the whole table before collecting anything. Corrupt/dangling
         // references cannot turn into permission to reclaim another descriptor.
-        for start in 0..MAX_NODES {
+        for start in 0..NODE_STORAGE_CAPACITY {
             if self.nodes[start].is_none() {
                 continue;
             }
             let mut current = Some(start);
-            for _ in 0..MAX_NODES {
+            for _ in 0..NODE_STORAGE_CAPACITY {
                 let Some(index) = current else { break };
                 let node = self
                     .nodes
@@ -540,8 +639,7 @@ impl Authority {
         Ok(())
     }
     fn prepare_object(&self) -> Result<(usize, usize), Error> {
-        let slot = self
-            .objects
+        let slot = self.objects[..self.object_limit()]
             .iter()
             .position(Option::is_none)
             .ok_or(Error::Capacity)?;
@@ -594,7 +692,7 @@ impl Authority {
         let (_, index) = self.locate(owner, handle)?;
         let node = self.nodes[index].ok_or(Error::InvalidHandle)?;
         let mut ancestor = Some(index);
-        for _ in 0..MAX_NODES {
+        for _ in 0..NODE_STORAGE_CAPACITY {
             let Some(current) = ancestor else { break };
             let parent = self
                 .nodes
@@ -637,8 +735,7 @@ impl Authority {
         }
         let slot = self.prepare_slot(owner)?;
         let (object, generation) = self.prepare_object()?;
-        let node = self
-            .nodes
+        let node = self.nodes[..self.node_limit()]
             .iter()
             .position(Option::is_none)
             .ok_or(Error::Capacity)?;
@@ -679,8 +776,7 @@ impl Authority {
         }
         let slot = self.prepare_slot(owner)?;
         let (object, generation) = self.prepare_object()?;
-        let node = self
-            .nodes
+        let node = self.nodes[..self.node_limit()]
             .iter()
             .position(Option::is_none)
             .ok_or(Error::Capacity)?;
@@ -714,7 +810,7 @@ impl Authority {
             return Err(Error::Denied);
         }
         let mut lineage_root = index;
-        for _ in 0..MAX_NODES {
+        for _ in 0..NODE_STORAGE_CAPACITY {
             match self.nodes[lineage_root].ok_or(Error::Revoked)?.parent {
                 Some(parent) => lineage_root = parent.index(),
                 None => break,
@@ -782,9 +878,9 @@ impl Authority {
         {
             return Err(Error::Capacity);
         }
-        let mut parents = [0; MAX_CONTROL_CAPS];
-        let mut objects = [0; MAX_CONTROL_CAPS];
-        let mut vacant = [0; 2 * MAX_CONTROL_CAPS];
+        let mut parents = [0; CONTROL_STORAGE_CAPACITY];
+        let mut objects = [0; CONTROL_STORAGE_CAPACITY];
+        let mut vacant = [0; 2 * CONTROL_STORAGE_CAPACITY];
         let branch_rights = Rights::DERIVE | Rights::TRANSFER | Rights::REVOKE;
         for (i, request) in requests.iter().enumerate() {
             let (parent, source) = self.live_node(owner, request.source)?;
@@ -809,7 +905,7 @@ impl Authority {
         }
         let required = requests.len() * if branches.is_some() { 2 } else { 1 };
         let mut found = 0;
-        for (i, node) in self.nodes.iter().enumerate() {
+        for (i, node) in self.nodes[..self.node_limit()].iter().enumerate() {
             if node.is_none() {
                 vacant[found] = i;
                 found += 1;
@@ -822,8 +918,8 @@ impl Authority {
             return Err(Error::Capacity);
         }
         // No fallible work remains. Exclusive mutation linearizes both levels.
-        let mut handles = [Handle(0); MAX_CONTROL_CAPS];
-        let mut pinned = [Handle(0); MAX_CONTROL_CAPS];
+        let mut handles = [Handle(0); CONTROL_STORAGE_CAPACITY];
+        let mut pinned = [Handle(0); CONTROL_STORAGE_CAPACITY];
         for (i, request) in requests.iter().enumerate() {
             let parent = if let Some(branches) = branches {
                 let branch = vacant[requests.len() + i];
@@ -878,7 +974,7 @@ impl Authority {
         if handles.is_empty() || handles.len() > self.capacity(space) {
             return Err(Error::Capacity);
         }
-        let mut indices = [0; MAX_CONTROL_CAPS];
+        let mut indices = [0; CONTROL_STORAGE_CAPACITY];
         for (i, handle) in handles.iter().enumerate() {
             let (_, index) = self.locate(owner, *handle)?;
             let node = self.nodes[index].ok_or(Error::InvalidHandle)?;
@@ -912,8 +1008,7 @@ impl Authority {
             return Err(Error::Denied);
         }
         let slot = self.prepare_slot(destination)?;
-        let node = self
-            .nodes
+        let node = self.nodes[..self.node_limit()]
             .iter()
             .position(Option::is_none)
             .ok_or(Error::Capacity)?;
@@ -966,8 +1061,7 @@ impl Authority {
             return Err(Error::Denied);
         }
         let slot = self.prepare_slot(destination)?;
-        let node = self
-            .nodes
+        let node = self.nodes[..self.node_limit()]
             .iter()
             .position(Option::is_none)
             .ok_or(Error::Capacity)?;
@@ -1013,10 +1107,12 @@ impl Authority {
     }
 }
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     extern crate std;
     use super::*;
-    fn unchanged(a: &Authority, before: &Authority) {
+    pub(crate) fn unchanged(a: &Authority, before: &Authority) {
+        #[cfg(feature = "workspace-authority")]
+        assert_eq!(a.envelope, before.envelope);
         assert_eq!(a.spaces, before.spaces);
         assert_eq!(a.closed, before.closed);
         assert_eq!(a.space_generations, before.space_generations);
@@ -1241,16 +1337,25 @@ mod tests {
     fn compact_node_links_check_bound_width_zero_and_keep_exact_public_indices() {
         assert_eq!(NodeIndex::checked(0).unwrap().0.get(), 1);
         assert_eq!(
-            NodeIndex::checked(MAX_NODES - 1).unwrap().index(),
-            MAX_NODES - 1
+            NodeIndex::checked(NODE_STORAGE_CAPACITY - 1)
+                .unwrap()
+                .index(),
+            NODE_STORAGE_CAPACITY - 1
         );
-        assert!(NodeIndex::checked(MAX_NODES).is_none());
+        assert!(NodeIndex::checked(NODE_STORAGE_CAPACITY).is_none());
         assert!(NodeIndex::checked(usize::MAX).is_none());
         assert!(NonZeroU16::new(0).is_none());
         assert_eq!(core::mem::size_of::<Option<NodeIndex>>(), 2);
         assert_eq!(core::mem::size_of::<Slot>(), 16);
         assert_eq!(core::mem::size_of::<Node>(), 16);
-        assert!(core::mem::size_of::<Authority>() < 20 * 1024);
+        assert!(
+            core::mem::size_of::<Authority>()
+                < if cfg!(feature = "workspace-authority") {
+                    32 * 1024
+                } else {
+                    20 * 1024
+                }
+        );
         std::println!(
             "CAPACITY Authority={} Slot={} Node={} GrantBatch={}",
             core::mem::size_of::<Authority>(),
@@ -1384,7 +1489,8 @@ mod tests {
         assert_eq!(a.collect_dead_objects(), Ok(0));
         assert_eq!(a.collect_lineage(), Ok(MAX_OBJECTS));
         assert_eq!(a.collect_dead_objects(), Ok(MAX_OBJECTS));
-        assert_eq!(a.object_generations, [1; MAX_OBJECTS]);
+        assert_eq!(a.object_generations[..MAX_OBJECTS], [1; MAX_OBJECTS]);
+        assert!(a.object_generations[MAX_OBJECTS..].iter().all(|g| *g == 0));
         let staged = a.staged_copy();
         unchanged(&a, &staged);
         let replacement = a.create_root(owner, Kind::Endpoint, Rights::SEND).unwrap();
@@ -2729,3 +2835,6 @@ mod io_ports_kind_tests {
         );
     }
 }
+
+#[cfg(all(test, feature = "workspace-authority"))]
+mod workspace_tests;

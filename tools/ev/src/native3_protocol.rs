@@ -101,6 +101,12 @@ pub(crate) fn line(line: &str, build: &str) -> Result<()> {
         event(line, build).map(drop)
     }
 }
+pub(crate) fn line_session(line: &str, build: &str) -> Result<()> {
+    event_profile(line, build, true, false).map(drop)
+}
+pub(crate) fn line_network(line: &str, build: &str) -> Result<()> {
+    event_network(line, build).map(drop)
+}
 pub(crate) fn record(
     serial: &[u8],
     build: &str,
@@ -130,19 +136,267 @@ pub(crate) fn record(
             counts = Some(summary(line, build)?);
         } else if line.starts_with("EVROSION_M5_NATIVE ")
             || line.starts_with("EVROSION_M5_NATIVE_ACTION")
+            || line.starts_with("EVROSION_M6_DOWNLOADED_ACTION")
             || line.starts_with("EVROSION_M4_DESKTOP ")
         {
             return Err("Native3 Recovery mixed ordinary/App/Desktop execution".into());
         }
     }
     Ok(native_protocol::Record {
+        history_complete: true,
+        downloaded_actions: Vec::new(),
         counts: counts.ok_or("Native3 Recovery footer absent")?,
         actions: Vec::new(),
     })
 }
+/// Explicit V4 Recovery: the Root+Block graph retains the nine-slot session
+/// recorder while emitting its true independent Recovery completion marker.
+/// Legacy Recovery remains on record(..., true) and its seven-slot boot gate.
+pub(crate) fn record_network_recovery(
+    serial: &[u8],
+    build: &str,
+) -> Result<native_protocol::Record> {
+    let retention = crate::session_protocol::retention_network_recovery(serial, build)?;
+    if retention.omitted != 0 {
+        return Err("V4 Recovery history incomplete".into());
+    }
+    let mut record = record(serial, build, true)?;
+    let actions = crate::downloaded_protocol::records(serial, build, true)?;
+    if !actions.is_empty() {
+        return Err("V4 Recovery started downloaded code".into());
+    }
+    let states = native_protocol::states_network(serial, build)?;
+    if !states.last().is_some_and(|r| r.is("finish")) {
+        return Err("V4 Recovery lacks complete requested finish report".into());
+    }
+    let mut common = None;
+    for line in std::str::from_utf8(serial)
+        .map_err(|_| "V4 Recovery UTF8")?
+        .lines()
+    {
+        if line.starts_with("EVROSION_M5_NATIVE_COMMON_PREFIX ") {
+            let Event::Common(c) = event_network(line, build)? else {
+                unreachable!()
+            };
+            if c.mode != 2 || common.replace(c).is_some() {
+                return Err("V4 Recovery actual mode/Root prefix differs".into());
+            }
+        }
+        if line.starts_with("EVROSION_M5_NATIVE_CRITICAL_READY ")
+            || line.starts_with("EVROSION_M5_NATIVE_MANAGED_READ ")
+            || line.starts_with("EVROSION_M5_NATIVE_INHIBIT ")
+        {
+            return Err("V4 Recovery invented normal Shell/App graph".into());
+        }
+    }
+    let common = common.ok_or("V4 Recovery actual Root+Block prefix absent")?;
+    let profiles = crate::native_profile::finished_network(serial, build, 0, Some(2))?;
+    for (index, profile) in profiles.iter().enumerate() {
+        let c = &profile.counts;
+        let identity = match index {
+            0 => Some((common.root_process, common.root_thread)),
+            4 => Some((common.block_process, common.block_thread)),
+            _ => None,
+        };
+        if let Some((process, thread)) = identity {
+            if c["incarnations"] != 1
+                || c["current_process"] != process
+                || c["current_thread"] != thread
+            {
+                return Err("V4 Recovery profiles differ from actual Root/Block identities".into());
+            }
+        } else if c
+            .iter()
+            .any(|(name, value)| !matches!(name.as_str(), "index" | "elapsed_ticks") && *value != 0)
+        {
+            return Err("V4 Recovery started App/Display/NIC or another normal actor".into());
+        }
+    }
+    if !crate::network_protocol::records(serial, build)?.is_empty()
+        || !crate::time_proof_protocol::records(serial, build)?.is_empty()
+    {
+        return Err("V4 Recovery unexpectedly ran network/time work".into());
+    }
+    record.downloaded_actions = actions;
+    Ok(record)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Synthetic Root+Block V4 parser input. Generic mechanism rows below are
+    // borrowed from a retained parser fixture; this is no new VM evidence.
+    fn network_recovery_fixture() -> (String, String) {
+        let raw = include_str!("../../../tests/fixtures/m6-session-exercise-parser.serial");
+        let rows: Vec<_> = raw.lines().collect();
+        let build = rows
+            .iter()
+            .find(|l| l.starts_with("EVROSION_BOOT "))
+            .unwrap()
+            .split(' ')
+            .find_map(|f| f.strip_prefix("build="))
+            .unwrap()
+            .to_owned();
+        let before = rows
+            .iter()
+            .position(|l| l.starts_with("EVROSION_M5_NATIVE_MEMORY "))
+            .unwrap();
+        let after = rows
+            .iter()
+            .position(|l| l.starts_with("EVROSION_M5_NATIVE "))
+            .unwrap()
+            + 1;
+        let mut out = rows[..before].join("\n") + "\n";
+        out += rows
+            .iter()
+            .find(|l| l.starts_with("EVROSION_M5_NATIVE_MEMORY ") && l.contains(" phase=before "))
+            .unwrap();
+        out += "\n";
+        let padding = *rows
+            .iter()
+            .find(|l| l.starts_with("EVROSION_M6_WINDOW_PADDING "))
+            .unwrap();
+        out += padding;
+        out += "\n";
+        out += &format!(
+            "EVROSION_M5_NATIVE_COMMON_PREFIX protocol=1 build={build} mode=2 root_process=20 root_thread=120 root_image_sha256={} root_epoch=4 root_incarnation=2 root_manifest_sha256={} block_process=24 block_thread=124 block_image_sha256={} system_endpoint=77 root_frames=40 block_frames=20\n",
+            "b".repeat(64),
+            "c".repeat(64),
+            "d".repeat(64)
+        );
+        out += &format!(
+            "EVROSION_NATIVE_STATE protocol=1 build={build} report=1 op=finish result=ok installed=0 active=none staged=none previous=none process=0 thread=0 revision=0 data_epoch=0 data_counter=0 value=0 mutations=0 recovery=0 actual_process=0 actual_thread=0 actual_image_sha256={} identity_matches=true\n",
+            "0".repeat(64)
+        );
+        for i in 0..9 {
+            let running = matches!(i, 0 | 4);
+            let n = u64::from(running);
+            out += &format!(
+                "EVROSION_M5_NATIVE_PROFILE protocol=1 build={build} phase=finished scope=actor_slot index={i} current_process={} current_thread={} current_job={} incarnations={n} elapsed_ticks=100 captures={} syscalls={} irqs={n} faults=0 port_in={} port_out={} yields={n} continuations={} charged_cpu_ticks={n} current_job_cpu_ticks={n} cpu_scope=subtree\n",
+                if running { 20 + i } else { 0 },
+                if running { 120 + i } else { 0 },
+                if running { 100 + i } else { 0 },
+                n * 11,
+                n * 10,
+                n * 3,
+                n * 2,
+                n * 8
+            );
+        }
+        out += &format!(
+            "EVROSION_M6_UI_COUNTS protocol=1 build={build} phase=finished barriers=0 cursors=0 note_requests=0 note_accepted=0 note_delivered=0\n"
+        );
+        out += padding;
+        out += "\n";
+        for phase in ["held", "after"] {
+            out += rows
+                .iter()
+                .find(|l| {
+                    l.starts_with("EVROSION_M5_NATIVE_MEMORY ")
+                        && l.contains(&format!(" phase={phase} "))
+                })
+                .unwrap();
+            out += "\n";
+        }
+        out += &format!(
+            "EVROSION_M6_LOG protocol=1 build={build} observed=0 retained=0 omitted=0 detail_bytes=0 final_bytes=0 omitted_bytes=0 prefix_closed=false\n"
+        );
+        out += &footer().replace(&"a".repeat(64), &build);
+        out += "\n";
+        out += &rows[after..].join("\n");
+        out += "\n";
+        (out, build)
+    }
+    #[test]
+    fn network_recovery_requires_true_marker_complete_retention_and_exact_nine_slot_empty_graph() {
+        let (serial, build) = network_recovery_fixture();
+        let record = record_network_recovery(serial.as_bytes(), &build).unwrap();
+        assert_eq!(record.counts["starts"], 2);
+        assert!(record.actions.is_empty() && record.downloaded_actions.is_empty());
+        assert!(crate::session_protocol::retention(serial.as_bytes(), &build).is_err());
+        let body = crate::session_protocol::without_network_diagnostics(serial.as_bytes(), &build)
+            .unwrap();
+        crate::boot_protocol::check_network_recovery(&body, &build, Some(33)).unwrap();
+        assert!(crate::boot_protocol::check_network(&body, &build, Some(33)).is_err());
+        assert!(crate::boot_protocol::check(&body, &build, Some(33)).is_err());
+        assert!(crate::native_profile::finished(serial.as_bytes(), &build, 0, Some(2)).is_err());
+        for bad in [
+            serial.replace("mode=2", "mode=1"),
+            serial.replace("EVROSION_M5_NATIVE_RECOVERY ", "EVROSION_M5_NATIVE "),
+            serial.replace("graphical=false", "display_survived=true"),
+            serial.replace("index=4 current_process=24", "index=4 current_process=25"),
+            serial
+                .lines()
+                .filter(|l| !l.contains(" index=8 "))
+                .map(|l| format!("{l}\n"))
+                .collect(),
+            serial.clone() + &footer().replace(&"a".repeat(64), &build) + "\n",
+        ] {
+            assert!(record_network_recovery(bad.as_bytes(), &build).is_err());
+        }
+    }
+    #[test]
+    fn both_boot_postchecks_select_recovery_only_for_exact_proof_and_owner_fixtures() {
+        let (serial, build) = network_recovery_fixture();
+        let body = crate::session_protocol::without_network_diagnostics(serial.as_bytes(), &build)
+            .unwrap();
+        for fixture in ["m6-network-recovery", "m6-network-recovery-owner"] {
+            crate::boot::check_network_fixture(Some(fixture), &body, &build, Some(33)).unwrap();
+            let record =
+                crate::boot::record_network_fixture(Some(fixture), serial.as_bytes(), &build)
+                    .unwrap();
+            assert_eq!(record.counts["starts"], 2);
+            assert!(record.actions.is_empty() && record.downloaded_actions.is_empty());
+            assert!(
+                crate::boot::check_network_fixture(Some(fixture), &body, &build, Some(35)).is_err()
+            );
+            let incomplete = serial
+                .lines()
+                .filter(|l| !l.contains(" index=8 "))
+                .map(|l| format!("{l}\n"))
+                .collect::<String>();
+            assert!(
+                crate::boot::record_network_fixture(Some(fixture), incomplete.as_bytes(), &build)
+                    .is_err()
+            );
+        }
+        for fixture in [
+            None,
+            Some("m6-network"),
+            Some("m6-network-system"),
+            Some("m6-session"),
+            Some("m5-native-recovery"),
+            Some("m6-network-recovery-extra"),
+            Some("m6-network-recovery-owner-extra"),
+        ] {
+            assert!(!crate::boot::network_recovery_fixture(fixture));
+            assert!(crate::boot::check_network_fixture(fixture, &body, &build, Some(33)).is_err());
+            assert!(
+                crate::boot::record_network_fixture(fixture, serial.as_bytes(), &build).is_err()
+            );
+        }
+    }
+    #[test]
+    fn network_recovery_rejects_activity_in_every_unstarted_actor_and_keeps_legacy_seven_strict() {
+        let (serial, build) = network_recovery_fixture();
+        for index in [1, 2, 3, 5, 6, 7, 8] {
+            let old = serial
+                .lines()
+                .find(|l| {
+                    l.starts_with("EVROSION_M5_NATIVE_PROFILE ")
+                        && l.contains(&format!(" index={index} "))
+                })
+                .unwrap();
+            let bad = serial.replace(old, &old.replace("port_in=0", "port_in=1"));
+            assert!(record_network_recovery(bad.as_bytes(), &build).is_err());
+        }
+        let seven = serial
+            .lines()
+            .filter(|l| !l.contains(" index=7 ") && !l.contains(" index=8 "))
+            .map(|l| format!("{l}\n"))
+            .collect::<String>();
+        assert!(crate::native_profile::finished(seven.as_bytes(), &build, 0, Some(2)).is_ok());
+        assert!(record_network_recovery(seven.as_bytes(), &build).is_err());
+    }
     fn footer() -> String {
         let mut out = format!(
             "EVROSION_M5_NATIVE_RECOVERY protocol=1 build={} status=PASS",
@@ -252,6 +506,12 @@ fn id(v: &str, key: &str) -> Result<u64> {
     Ok(n)
 }
 pub(crate) fn event(line: &str, build: &str) -> Result<Event> {
+    event_profile(line, build, false, false)
+}
+pub(crate) fn event_network(line: &str, build: &str) -> Result<Event> {
+    event_profile(line, build, true, true)
+}
+fn event_profile(line: &str, build: &str, session: bool, network: bool) -> Result<Event> {
     let f: Vec<_> = line.split(' ').collect();
     if line.len() > 1536 || f.len() < 3 || f[1] != "protocol=1" || digest(f[2], "build")? != build {
         return Err("Native3 malformed/wrong-build observation".into());
@@ -276,7 +536,12 @@ pub(crate) fn event(line: &str, build: &str) -> Result<Event> {
             if r.mode > 2
                 || r.root_process == r.block_process
                 || r.root_thread == r.block_thread
-                || r.root_frames > ev_kernel::executable::NATIVE_ROOT_MAX_PRIVATE_FRAMES
+                || r.root_frames
+                    > if network {
+                        ev_kernel::executable::ROOT_V4_MAX_PRIVATE_FRAMES
+                    } else {
+                        ev_kernel::executable::NATIVE_ROOT_MAX_PRIVATE_FRAMES
+                    }
                 || r.block_frames > 32
                 || r.root_image == r.block_image
             {
@@ -334,7 +599,7 @@ pub(crate) fn event(line: &str, build: &str) -> Result<Event> {
                 manifest: digest(f[8], "root_manifest_sha256")?,
                 tick: canonical_number(f[9], "tick")?,
             };
-            if r.sequence > 32 {
+            if !session && r.sequence > 32 {
                 return Err("Native3 actual self identity query bound exceeded".into());
             }
             Ok(Event::SelfIdentity(r))
@@ -416,6 +681,7 @@ mod observation_tests {
             "c".repeat(64)
         );
         assert!(event(&line, &build()).is_ok());
+        assert!(line_session(&line.replace("sequence=1", "sequence=33"), &build()).is_ok());
         for bad in [
             line.replace("sequence=1", "sequence=33"),
             line.replace("thread=120", "thread=0"),
@@ -429,6 +695,21 @@ mod observation_tests {
                 .unwrap()
                 .len(),
             1
+        );
+    }
+    #[test]
+    fn network_prefix_uses_its_selected_capacity_without_loosening_native3() {
+        let limit = ev_kernel::executable::ROOT_V4_MAX_PRIVATE_FRAMES;
+        let field = format!("root_frames={limit}");
+        let line = common().replace("root_frames=40", &field);
+        assert!(event_network(&line, &build()).is_ok());
+        assert!(event(&line, &build()).is_err());
+        assert!(
+            event_network(
+                &line.replace(&field, &format!("root_frames={}", limit + 1)),
+                &build()
+            )
+            .is_err()
         );
     }
     #[test]

@@ -1,0 +1,600 @@
+diff --git a/kernel/src/lib.rs b/kernel/src/lib.rs
+--- a/kernel/src/lib.rs
++++ b/kernel/src/lib.rs
+@@ -68,3 +68,6 @@
+ pub mod session_power;
+ pub mod startup_record;
+ pub mod startup_trace;
++
++// Source12 isolated startup diagnostic; no authority or behavioral input.
++pub mod present_trace;
+diff --git a/kernel/src/present_trace.rs b/kernel/src/present_trace.rs
+new file mode 100644
+--- /dev/null
++++ b/kernel/src/present_trace.rs
+@@ -0,0 +1,305 @@
++//! Diagnostic-only fixed prefix of actual selected DisplayPresent credits.
++//! Never consulted by admission, scheduling, timeout, delivery or reply logic.
++use core::fmt::{self, Write};
++pub const ACTORS: usize = 13;
++pub const PER_ACTOR: usize = 4;
++pub const CAPACITY: usize = ACTORS * PER_ACTOR;
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub struct Row {
++    pub caller: usize,
++    pub thread: u64,
++    pub epoch: u64,
++    pub serial: u64,
++    pub endpoint: usize,
++    pub frame: u64,
++    pub deadline: u64,
++    pub offered: u64,
++    pub accepted: u64,
++    pub delivered: u64,
++    pub terminal: u64,
++    pub completed: u64,
++    pub returned: u64,
++    /// 0 absent, 1 accepted, 2 delivered, 3 terminal, 4 acknowledged/withdrawn.
++    pub phase: u8,
++    /// Raw caller status, meaningful only after terminal/completion.
++    pub status: u64,
++    /// Actual scalar offered by callee, including replies after expiry.
++    pub reply: u64,
++    pub has_reply: bool,
++    pub dirty: bool,
++}
++impl Row {
++    pub fn write(self, out: &mut dyn Write) -> fmt::Result {
++        writeln!(
++            out,
++            "EVROSION_M8_PRESENT_TRACE phase={} caller_actor={} caller_thread={} epoch={} serial={} endpoint={} frame={} deadline={} offered={} accepted={} delivered={} terminal={} completed={} returned={} status={} reply={:#x} has_reply={} content=false diagnostic_only=true",
++            self.phase,
++            self.caller,
++            self.thread,
++            self.epoch,
++            self.serial,
++            self.endpoint,
++            self.frame,
++            self.deadline,
++            self.offered,
++            self.accepted,
++            self.delivered,
++            self.terminal,
++            self.completed,
++            self.returned,
++            self.status,
++            self.reply,
++            self.has_reply
++        )
++    }
++}
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
++pub struct Counts {
++    pub offers: u64,
++    pub accepted: u64,
++    pub omitted: u64,
++    pub denied: u64,
++    pub last_denied_at: u64,
++    pub last_denied_status: u64,
++}
++#[derive(Clone, Copy)]
++struct Offer {
++    frame: u64,
++    deadline: u64,
++    first: u64,
++}
++pub struct Trace {
++    rows: [Row; CAPACITY],
++    counts: [Counts; ACTORS],
++    offers: [Option<Offer>; ACTORS],
++}
++impl Default for Trace {
++    fn default() -> Self {
++        Self {
++            rows: [Row::default(); CAPACITY],
++            counts: [Counts::default(); ACTORS],
++            offers: [None; ACTORS],
++        }
++    }
++}
++impl Trace {
++    pub fn offer(&mut self, caller: usize, frame: u64, deadline: u64, now: u64) {
++        self.counts[caller].offers += 1;
++        if self.offers[caller].is_none_or(|o| o.frame != frame || o.deadline != deadline) {
++            self.offers[caller] = Some(Offer {
++                frame,
++                deadline,
++                first: now,
++            });
++        }
++    }
++    pub fn offered(&self, caller: usize, frame: u64, deadline: u64) -> Option<u64> {
++        self.offers[caller]
++            .filter(|o| o.frame == frame && o.deadline == deadline)
++            .map(|o| o.first)
++    }
++    pub fn denied(&mut self, caller: usize, status: u64, now: u64) {
++        let c = &mut self.counts[caller];
++        c.denied += 1;
++        c.last_denied_at = now;
++        c.last_denied_status = status;
++    }
++    pub fn accept(&mut self, mut row: Row) -> Option<usize> {
++        self.offers[row.caller] = None;
++        let c = &mut self.counts[row.caller];
++        let ordinal = c.accepted;
++        c.accepted += 1;
++        if ordinal >= PER_ACTOR as u64 {
++            c.omitted += 1;
++            return None;
++        }
++        let slot = row.caller * PER_ACTOR + ordinal as usize;
++        row.phase = 1;
++        row.dirty = true;
++        self.rows[slot] = row;
++        Some(slot)
++    }
++    pub fn delivered(&mut self, slot: Option<usize>, now: u64) {
++        if let Some(slot) = slot {
++            let r = &mut self.rows[slot];
++            r.delivered = now;
++            r.phase = 2;
++            r.dirty = true;
++        }
++    }
++    pub fn terminal(&mut self, slot: Option<usize>, status: u64, now: u64) {
++        if let Some(slot) = slot {
++            let r = &mut self.rows[slot];
++            if r.terminal == 0 {
++                r.terminal = now;
++                r.status = status;
++                r.phase = 3;
++                r.dirty = true;
++            }
++        }
++    }
++    pub fn complete(
++        &mut self,
++        slot: Option<usize>,
++        status: u64,
++        reply: Option<u64>,
++        now: u64,
++        returned: bool,
++    ) {
++        if let Some(slot) = slot {
++            let r = &mut self.rows[slot];
++            r.completed = now;
++            r.returned = if returned { now } else { 0 };
++            r.status = status;
++            r.reply = reply.unwrap_or(0);
++            r.has_reply = reply.is_some();
++            r.phase = 4;
++            r.dirty = true;
++        }
++    }
++    /// Defer serial formatting until this credit is already terminal.
++    /// Offered/accepted/delivered timestamps remain in the immutable row.
++    pub fn pop_dirty(&mut self) -> Option<Row> {
++        let r = self.rows.iter_mut().find(|r| r.dirty && r.phase >= 3)?;
++        r.dirty = false;
++        Some(*r)
++    }
++    pub fn counts(&self, caller: usize) -> Counts {
++        self.counts[caller]
++    }
++}
++#[cfg(test)]
++mod tests {
++    use super::*;
++    fn row(caller: usize, serial: u64) -> Row {
++        Row {
++            caller,
++            thread: 10,
++            epoch: 805,
++            serial,
++            endpoint: 37,
++            frame: 2,
++            deadline: 6261,
++            offered: 5237,
++            accepted: 5238,
++            ..Row::default()
++        }
++    }
++    #[test]
++    fn busy_same_request_keeps_first_offer_without_renewing_cut() {
++        let mut t = Trace::default();
++        t.offer(9, 2, 6261, 5237);
++        t.denied(9, 2, 5237);
++        t.offer(9, 2, 6261, 5800);
++        assert_eq!(t.offered(9, 2, 6261), Some(5237));
++        assert_eq!(t.offered(9, 2, 6262), None);
++        let mut r = row(9, 151);
++        r.offered = t.offered(9, 2, 6261).unwrap();
++        r.accepted = 6000;
++        let slot = t.accept(r);
++        assert_eq!(t.offered(9, 2, 6261), None);
++        t.delivered(slot, 6001);
++        t.complete(slot, 0, Some(2), 6259, true);
++        let end = t.pop_dirty().unwrap();
++        assert_eq!(
++            (end.offered, end.accepted, end.delivered, end.deadline),
++            (5237, 6000, 6001, 6261)
++        );
++        t.offer(9, 3, 7000, 6300);
++        assert_eq!(t.offered(9, 3, 7000), Some(6300));
++        assert_eq!(t.counts(9).offers, 3);
++    }
++    #[test]
++    fn expired_delivered_credit_keeps_identity_reply_and_original_cut() {
++        let mut t = Trace::default();
++        t.offer(9, 2, 6261, 5237);
++        let slot = t.accept(row(9, 151));
++        assert!(t.pop_dirty().is_none());
++        t.delivered(slot, 6000);
++        assert!(t.pop_dirty().is_none());
++        t.terminal(slot, 4, 6261);
++        t.terminal(slot, 5, 6262);
++        let terminal = t.pop_dirty().unwrap();
++        assert_eq!(
++            (terminal.terminal, terminal.status, terminal.deadline),
++            (6261, 4, 6261)
++        );
++        t.complete(slot, 4, Some(u64::MAX), 6263, true);
++        let end = t.pop_dirty().unwrap();
++        assert_eq!((end.epoch, end.serial, end.frame), (805, 151, 2));
++        assert_eq!(
++            (
++                end.completed,
++                end.returned,
++                end.terminal,
++                end.status,
++                end.has_reply,
++                end.reply
++            ),
++            (6263, 6263, 6261, 4, true, u64::MAX)
++        );
++        assert!(t.pop_dirty().is_none());
++    }
++    #[test]
++    fn independent_actor_prefixes_never_replace_and_omissions_are_counted() {
++        let mut t = Trace::default();
++        for n in 0..7 {
++            t.offer(9, 2, 6261, 5237);
++            let s = t.accept(row(9, n + 1));
++            assert_eq!(s.is_some(), n < 4);
++            t.complete(s, 0, Some(2), 6001, true);
++        }
++        t.offer(10, 2, 6261, 5237);
++        let s = t.accept(row(10, 99));
++        t.complete(s, 0, Some(2), 6001, true);
++        let mut rows = 0;
++        while let Some(r) = t.pop_dirty() {
++            if r.caller == 9 {
++                rows += 1;
++                assert!(r.serial <= 4);
++            }
++        }
++        assert_eq!(rows, 4);
++        assert_eq!(
++            t.counts(9),
++            Counts {
++                offers: 7,
++                accepted: 7,
++                omitted: 3,
++                ..Counts::default()
++            }
++        );
++        assert_eq!(t.counts(10).accepted, 1);
++    }
++    #[test]
++    fn preaccept_denials_and_undelivered_withdrawal_are_not_successful_replies() {
++        let mut t = Trace::default();
++        t.offer(9, 2, 6261, 5237);
++        t.denied(9, 2, 100);
++        t.offer(9, 2, 6261, 5237);
++        let slot = t.accept(row(9, 2));
++        t.terminal(slot, 4, 6261);
++        t.complete(slot, 4, None, 6261, true);
++        let r = t.pop_dirty().unwrap();
++        assert_eq!(
++            (r.delivered, r.has_reply, r.reply, r.status),
++            (0, false, 0, 4)
++        );
++        assert_eq!(t.counts(9).denied, 1);
++        assert_eq!(t.counts(9).last_denied_status, 2);
++    }
++    #[test]
++    fn successful_scalar_and_missing_caller_return_are_distinct() {
++        let mut t = Trace::default();
++        let slot = t.accept(row(9, 1));
++        t.delivered(slot, 6000);
++        t.complete(slot, 0, Some(2), 6001, true);
++        let a = t.pop_dirty().unwrap();
++        assert_eq!((a.terminal, a.status, a.reply, a.returned), (0, 0, 2, 6001));
++        let slot = t.accept(row(9, 2));
++        t.terminal(slot, 5, 6002);
++        t.complete(slot, 5, None, 6003, false);
++        let b = t.pop_dirty().unwrap();
++        assert_eq!((b.status, b.returned, b.completed), (5, 0, 6003));
++    }
++}
+diff --git a/kernel/src/workspace_runtime.rs b/kernel/src/workspace_runtime.rs
+--- a/kernel/src/workspace_runtime.rs
++++ b/kernel/src/workspace_runtime.rs
+@@ -118,6 +118,7 @@
+     root_exited: bool,
+     power: ev_kernel::session_power::Latch,
+     log_retention: crate::session_log::Retention,
++    present_trace: ev_kernel::present_trace::Trace,
+ }
+ impl World {
+     fn metadata(&self, index: usize) -> Option<Metadata> {
+diff --git a/kernel/src/workspace_runtime/executor.rs b/kernel/src/workspace_runtime/executor.rs
+--- a/kernel/src/workspace_runtime/executor.rs
++++ b/kernel/src/workspace_runtime/executor.rs
+@@ -20,6 +20,7 @@
+                 self.resources(log, "quiescence_bound", transitions);
+                 panic!("{reason}; all owners retained")
+             });
++            self.flush_present_trace(log);
+             for wire in self.wires.iter_mut().flatten() {
+                 if wire.needs_async_expiry() {
+                     wire.expire_async(self.core.a, now)
+@@ -116,6 +117,7 @@
+                 }
+             };
+             *self.context_mut(index) = frame;
++            self.flush_present_trace(log);
+             if !blocked {
+                 if frame.vector == 128 && !yielded && frame.registers[14] == 0 {
+                     assert_eq!(self.core.s.state(meta.thread), Ok(State::Running(0)));
+@@ -185,7 +187,36 @@
+         }
+         self.event(log, "contained", index);
+     }
++    fn flush_present_trace(&mut self, log: &mut dyn Write) {
++        while let Some(row) = self.present_trace.pop_dirty() {
++            let mut measure = crate::session_log::Measure::default();
++            row.write(&mut measure)
++                .expect("complete Present diagnostic row");
++            let bytes = measure.finish().expect("bounded Present diagnostic row");
++            match self
++                .log_retention
++                .record(bytes, false)
++                .expect("Present diagnostic retention")
++            {
++                crate::session_log::Decision::Emit => {
++                    let _ = row.write(log);
++                }
++                crate::session_log::Decision::FirstOmission => {
++                    let _ = writeln!(
++                        log,
++                        "EVROSION_M8_LOG_RETENTION phase=prefix_closed observed={} retained={} omitted={} detail_bytes={} scope=resource_and_present_records final_reserve=true",
++                        self.log_retention.observed,
++                        self.log_retention.retained,
++                        self.log_retention.omitted,
++                        self.log_retention.detail_bytes
++                    );
++                }
++                crate::session_log::Decision::Omit => {}
++            }
++        }
++    }
+     fn resources(&mut self, log: &mut dyn Write, phase: &str, transitions: u64) {
++        self.flush_present_trace(log);
+         // Reuse the sustained-session complete-record retention mechanism.
+         // Exhausting ordinary history never consumes the terminal ownership
+         // reserve and never interrupts legitimate OS work.
+@@ -204,7 +235,7 @@
+             crate::session_log::Decision::FirstOmission => {
+                 let _ = writeln!(
+                     log,
+-                    "EVROSION_M8_LOG_RETENTION phase=prefix_closed observed={} retained={} omitted={} detail_bytes={} scope=periodic_resource_records_only final_reserve=true",
++                    "EVROSION_M8_LOG_RETENTION phase=prefix_closed observed={} retained={} omitted={} detail_bytes={} scope=resource_and_present_records final_reserve=true",
+                     self.log_retention.observed,
+                     self.log_retention.retained,
+                     self.log_retention.omitted,
+@@ -269,6 +300,21 @@
+             crate::timer::now(),
+             self.facts.irq_by_actor
+         );
++        for caller in 0..ev_kernel::present_trace::ACTORS {
++            let c = self.present_trace.counts(caller);
++            if c.offers != 0 {
++                let _ = writeln!(
++                    log,
++                    "EVROSION_M8_PRESENT_COUNTS phase={phase} caller_actor={caller} offers={} accepted={} omitted={} denied={} last_denied_at={} last_denied_status={} retained_per_actor=4 diagnostic_only=true",
++                    c.offers,
++                    c.accepted,
++                    c.omitted,
++                    c.denied,
++                    c.last_denied_at,
++                    c.last_denied_status
++                );
++            }
++        }
+         for p in self.pending.iter().flatten() {
+             let parent = p.credit.parent();
+             let _ = writeln!(
+diff --git a/kernel/src/workspace_runtime/transport.rs b/kernel/src/workspace_runtime/transport.rs
+--- a/kernel/src/workspace_runtime/transport.rs
++++ b/kernel/src/workspace_runtime/transport.rs
+@@ -15,6 +15,7 @@
+     pub deadline: u64,
+     pub by: u64,
+     pub credit: ev_kernel::rpc::AcceptedSnapshot,
++    pub trace: Option<usize>,
+ }
+ fn status(status: Status) -> u64 {
+     match status {
+@@ -25,7 +26,17 @@
+     }
+ }
+ impl World {
+-    fn block_denied(&mut self, wire: usize, status: u64, error: Option<ev_kernel::rpc::Error>) {
++    fn block_denied(
++        &mut self,
++        caller: usize,
++        wire: usize,
++        status: u64,
++        error: Option<ev_kernel::rpc::Error>,
++    ) {
++        if wire == Channel::DisplayPresent.index() {
++            self.present_trace
++                .denied(caller, status, crate::timer::now());
++        }
+         if wire == Channel::WorkspaceBlock.index() {
+             let trace = &mut self.facts.block;
+             trace.outcome = if error.is_some() { 4 } else { 3 };
+@@ -132,6 +143,9 @@
+             scalar(frame, 1, 0);
+             return false;
+         };
++        if w == Channel::DisplayPresent.index() {
++            self.present_trace.offer(index, value, absolute, now);
++        }
+         if w == Channel::WorkspaceBlock.index() {
+             let parent = self.core.rpc.serving(meta.thread);
+             let trace = &mut self.facts.block;
+@@ -159,7 +173,7 @@
+             || absolute == u64::MAX
+             || absolute > now.saturating_add(channel.session_rpc_ticks())
+         {
+-            self.block_denied(w, 4, None);
++            self.block_denied(index, w, 4, None);
+             scalar(frame, 4, 0);
+             return false;
+         }
+@@ -169,25 +183,25 @@
+             .bound
+             .and_then(|t| self.index_thread(t))
+         else {
+-            self.block_denied(w, 2, None);
++            self.block_denied(index, w, 2, None);
+             scalar(frame, 2, 0);
+             return false;
+         };
+         let Some(slot) = self.pending.iter().position(Option::is_none) else {
+-            self.block_denied(w, 2, None);
++            self.block_denied(index, w, 2, None);
+             scalar(frame, 2, 0);
+             return false;
+         };
+         if self.pending.iter().flatten().any(|p| p.caller == index)
+             || self.wires[w].as_ref().unwrap().pending() != 0
+         {
+-            self.block_denied(w, 2, None);
++            self.block_denied(index, w, 2, None);
+             scalar(frame, 2, 0);
+             return false;
+         }
+         let deadline = Deadline::after(0, absolute).unwrap();
+         if self.core.s.check_block(0, deadline).is_err() {
+-            self.block_denied(w, 4, None);
++            self.block_denied(index, w, 4, None);
+             scalar(frame, 4, 0);
+             return false;
+         }
+@@ -207,7 +221,7 @@
+             )
+             .is_err()
+         {
+-            self.block_denied(w, 2, None);
++            self.block_denied(index, w, 2, None);
+             scalar(frame, 2, 0);
+             return false;
+         }
+@@ -231,7 +245,7 @@
+                     ev_kernel::rpc::Error::WouldBlock | ev_kernel::rpc::Error::Overloaded => 2,
+                     _ => 1,
+                 };
+-                self.block_denied(w, code, Some(error));
++                self.block_denied(index, w, code, Some(error));
+                 scalar(
+                     frame,
+                     match error {
+@@ -256,7 +270,28 @@
+             .s
+             .block_guarded(0, deadline)
+             .expect("V5 preflighted guarded waiter");
++        let trace = if w == Channel::DisplayPresent.index() {
++            Some(ev_kernel::present_trace::Row {
++                caller: index,
++                thread: meta.thread.diagnostic_id(),
++                epoch: id.epoch().get(),
++                serial: id.serial(),
++                endpoint: self.core.rpc.accepted_snapshot(id).unwrap().endpoint(),
++                frame: value,
++                deadline: absolute,
++                offered: self
++                    .present_trace
++                    .offered(index, value, absolute)
++                    .unwrap_or(now),
++                accepted: crate::timer::now(),
++                ..ev_kernel::present_trace::Row::default()
++            })
++            .and_then(|row| self.present_trace.accept(row))
++        } else {
++            None
++        };
+         self.pending[slot] = Some(Pending {
++            trace,
+             credit: self
+                 .core
+                 .rpc
+@@ -315,6 +350,7 @@
+         assert_eq!(d.capability, None);
+         assert_eq!(&d.bytes[..8], &p.value.to_le_bytes());
+         self.pending[slot].as_mut().unwrap().delivered = true;
++        self.present_trace.delivered(p.trace, crate::timer::now());
+         extended(frame, 0, p.value, p.id.serial());
+     }
+     pub(super) fn reply_rpc(
+@@ -372,6 +408,13 @@
+                 },
+             );
+         }
++        self.present_trace.complete(
++            p.trace,
++            status(completion.status),
++            Some(value),
++            crate::timer::now(),
++            self.core.s.state(self.current(p.caller).thread) != Ok(State::Exited),
++        );
+         self.pending[slot] = None;
+         if w == Channel::WorkspaceBlock.index() {
+             let trace = &mut self.facts.block;
+@@ -477,6 +520,8 @@
+                 }
+             } else {
+                 p.terminal = Some(event.status);
++                self.present_trace
++                    .terminal(p.trace, status(event.status), now);
+                 if event.status != Status::DeadlineExceeded {
+                     p.by = now.checked_add(1024).ok_or("V5 finite terminal cut")?;
+                 }
+@@ -497,6 +542,13 @@
+             assert!(self.core.s.wake(p.wait));
+             scalar(self.context_mut(p.caller), status(p.terminal.unwrap()), 0);
+         }
++        self.present_trace.complete(
++            p.trace,
++            status(p.terminal.unwrap()),
++            None,
++            crate::timer::now(),
++            self.core.s.state(self.current(p.caller).thread) != Ok(State::Exited),
++        );
+         self.pending[slot] = None;
+     }
+ }
+diff --git a/kernel/src/workspace_runtime/world.rs b/kernel/src/workspace_runtime/world.rs
+--- a/kernel/src/workspace_runtime/world.rs
++++ b/kernel/src/workspace_runtime/world.rs
+@@ -155,6 +155,7 @@
+         ptr::addr_of_mut!((*p).root_exited).write(false);
+         ptr::addr_of_mut!((*p).power).write(ev_kernel::session_power::Latch::new());
+         ptr::addr_of_mut!((*p).log_retention).write(crate::session_log::Retention::new());
++        ptr::addr_of_mut!((*p).present_trace).write(ev_kernel::present_trace::Trace::default());
+         &mut *p
+     };
+     world.wires[graph::ROOT_EVENTS_WIRE] =

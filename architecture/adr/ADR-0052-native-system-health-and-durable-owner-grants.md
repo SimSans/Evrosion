@@ -2,13 +2,13 @@
 
 Status: Accepted bounded mechanism refinement; durable owner-grant and composed
 System-health execution verified in separate actual cohorts.
-Date: 2026-11-11. Documented mechanism refinement; foundational guarantees stay.
+Date: 2026-11-11. Founder engineering mandate Level B; foundational guarantees stay.
 
-The [native lifecycle](../../docs/release/0.1-preview.md#validation-and-provenance),
-[live diagnostics](../../docs/release/0.1-preview.md#validation-and-provenance)
-and [provider replacement](../../docs/release/0.1-preview.md#validation-and-provenance)
-now have actual bounded execution evidence. [A-003 durable owner policy](../../docs/release/0.1-preview.md#validation-and-provenance)
-also passes four actual cold VMs; the [coherent GUI/System recovery demonstration](../../docs/release/0.1-preview.md#validation-and-provenance)
+The native lifecycle (local engineering archive),
+live diagnostics (local engineering archive)
+and provider replacement (local engineering archive)
+now have actual bounded execution evidence. A-003 durable owner policy (local engineering archive)
+also passes four actual cold VMs; the coherent GUI/System recovery demonstration (local engineering archive)
 passes five. Final cumulative/visible/performance/quickstart readiness remains
 separate. This refinement
 reuses Store publication/health, actual bootstrap binding, immutable packages and

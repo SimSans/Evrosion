@@ -8,11 +8,15 @@
 #![allow(clippy::result_large_err)]
 use crate::{
     capability::{Authority, Error as CapError, Handle, Kind, Rights, SpaceId},
-    memory::{BootstrapFrames, FRAME_SIZE, MAX_RECYCLED, PhysicalFrame},
+    memory::{BootstrapFrames, FRAME_SIZE, PhysicalFrame},
     scheduler::{Error as SchedulerError, JobId, Resource, Scheduler},
 };
 use core::sync::atomic::{AtomicU64, Ordering};
 pub const MAX_PAGES: usize = 64;
+/// Selected shared-bank metadata capacity. Individual dynamic package owners
+/// and every legacy factory continue through the exact64-page aliases below.
+#[cfg(feature = "workspace-authority")]
+pub const M8_SHARED_MAX_PAGES: usize = 80;
 pub const MAX_LEASES: usize = 8;
 static NEXT_BACKING: AtomicU64 = AtomicU64::new(1);
 
@@ -28,6 +32,7 @@ pub enum Error {
     Overflow,
     Busy,
     Destroyed,
+    Fragmented,
     Authority(CapError),
     Scheduler(SchedulerError),
 }
@@ -62,14 +67,21 @@ pub enum InitError<E> {
     Readback,
     Incomplete,
 }
-struct OwnedRam {
-    frames: [Option<PhysicalFrame>; MAX_PAGES],
+#[cfg(feature = "workspace-authority")]
+#[derive(Debug, PartialEq, Eq)]
+pub enum ScrubError<E> {
+    State(Error),
+    ReadOnly,
+    Memory(InitError<E>),
+}
+struct OwnedRam<const N: usize> {
+    frames: [Option<PhysicalFrame>; N],
     pages: usize,
     job: JobId,
     charge: u64,
     backing: u64,
 }
-impl OwnedRam {
+impl<const N: usize> OwnedRam<N> {
     fn count(&self) -> usize {
         self.frames.iter().flatten().count()
     }
@@ -97,23 +109,34 @@ impl OwnedRam {
     }
 }
 #[must_use = "retain or explicitly release the RAM claims and quota"]
-pub struct UninitializedRam(OwnedRam);
+pub struct BoundedUninitializedRam<const N: usize>(OwnedRam<N>);
 #[must_use = "publish, retain, or explicitly release the RAM claims and quota"]
-pub struct InitializedRam(OwnedRam);
+pub struct BoundedInitializedRam<const N: usize>(OwnedRam<N>);
 #[must_use = "reinitialize or explicitly release the retired RAM claims and quota"]
-pub struct RetiredRam(OwnedRam);
-pub struct AllocationRejected {
+pub struct BoundedRetiredRam<const N: usize>(OwnedRam<N>);
+pub struct BoundedAllocationRejected<const N: usize> {
     pub error: Error,
-    pub owner: Option<UninitializedRam>,
+    pub owner: Option<BoundedUninitializedRam<N>>,
 }
 pub struct InitializationRejected<T, E> {
     pub error: InitError<E>,
     pub owner: T,
 }
-pub struct PublicationRejected {
+pub struct BoundedPublicationRejected<const N: usize> {
     pub error: Error,
-    pub owner: InitializedRam,
+    pub owner: BoundedInitializedRam<N>,
 }
+// Fixed legacy aliases preserve both allocation bounds and physical layout.
+pub type UninitializedRam = BoundedUninitializedRam<MAX_PAGES>;
+pub type InitializedRam = BoundedInitializedRam<MAX_PAGES>;
+pub type RetiredRam = BoundedRetiredRam<MAX_PAGES>;
+pub type AllocationRejected = BoundedAllocationRejected<MAX_PAGES>;
+pub type PublicationRejected = BoundedPublicationRejected<MAX_PAGES>;
+pub type MemoryExtent = BoundedMemoryExtent<MAX_PAGES>;
+#[cfg(feature = "workspace-authority")]
+pub type M8SharedExtent = BoundedMemoryExtent<M8_SHARED_MAX_PAGES>;
+#[cfg(feature = "workspace-authority")]
+pub type M8SharedUninitializedRam = BoundedUninitializedRam<M8_SHARED_MAX_PAGES>;
 pub struct ReleaseRejected<T, E> {
     pub error: ReleaseError<E>,
     pub owner: T,
@@ -123,7 +146,10 @@ pub enum ReleaseError<E> {
     State(Error),
     Scrub(InitError<E>),
 }
-impl UninitializedRam {
+fn valid_capacity<const N: usize>() -> bool {
+    N > 0 && (N <= MAX_PAGES || (cfg!(feature = "workspace-authority") && N <= 80))
+}
+impl<const N: usize> BoundedUninitializedRam<N> {
     /// Reserves an explicit non-process owner Job quota. A process mapper is not
     /// silently charged again. Late refusal returns every frame and charge.
     pub fn allocate(
@@ -131,12 +157,12 @@ impl UninitializedRam {
         s: &mut Scheduler,
         job: JobId,
         pages: usize,
-    ) -> Result<Self, AllocationRejected> {
-        let early = |error| AllocationRejected { error, owner: None };
-        if !(1..=MAX_PAGES).contains(&pages) {
+    ) -> Result<Self, BoundedAllocationRejected<N>> {
+        let early = |error| BoundedAllocationRejected { error, owner: None };
+        if !valid_capacity::<N>() || !(1..=N).contains(&pages) {
             return Err(early(Error::Count));
         }
-        let reused = pages.min(MAX_RECYCLED - a.recycle_capacity()) as u64;
+        let reused = (pages as u64).min(a.recycled_frames());
         if a.remaining_frames() < pages as u64 || a.reused_frames().checked_add(reused).is_none() {
             return Err(early(Error::Exhausted));
         }
@@ -146,7 +172,7 @@ impl UninitializedRam {
         s.charge_frames(job, pages as u64)
             .map_err(|e| early(Error::Scheduler(e)))?;
         let mut owner = OwnedRam {
-            frames: [const { None }; MAX_PAGES],
+            frames: [const { None }; N],
             pages,
             job,
             charge: pages as u64,
@@ -156,7 +182,7 @@ impl UninitializedRam {
             match a.allocate() {
                 Ok(frame) => owner.frames[index] = Some(frame),
                 Err(_) => {
-                    return Err(AllocationRejected {
+                    return Err(BoundedAllocationRejected {
                         error: Error::Exhausted,
                         owner: Some(Self(owner)),
                     });
@@ -171,7 +197,7 @@ impl UninitializedRam {
     pub fn initialize<R: RamAccess>(
         self,
         access: &mut R,
-    ) -> Result<InitializedRam, InitializationRejected<Self, R::Error>> {
+    ) -> Result<BoundedInitializedRam<N>, InitializationRejected<Self, R::Error>> {
         if self.0.count() != self.0.pages {
             return Err(InitializationRejected {
                 error: InitError::Incomplete,
@@ -179,32 +205,33 @@ impl UninitializedRam {
             });
         }
         match self.0.initialize(access) {
-            Ok(()) => Ok(InitializedRam(self.0)),
+            Ok(()) => Ok(BoundedInitializedRam(self.0)),
             Err(error) => Err(InitializationRejected { error, owner: self }),
         }
     }
 }
-impl RetiredRam {
+impl<const N: usize> BoundedRetiredRam<N> {
     /// A destroyed writable extent is not still zero-initialized. Re-publication
     /// requires actual byte initialization/readback again, or explicit release.
     pub fn initialize<R: RamAccess>(
         self,
         access: &mut R,
-    ) -> Result<InitializedRam, InitializationRejected<Self, R::Error>> {
+    ) -> Result<BoundedInitializedRam<N>, InitializationRejected<Self, R::Error>> {
         match self.0.initialize(access) {
-            Ok(()) => Ok(InitializedRam(self.0)),
+            Ok(()) => Ok(BoundedInitializedRam(self.0)),
             Err(error) => Err(InitializationRejected { error, owner: self }),
         }
     }
 }
-// This helper refuses before any reclaim if the real bootstrap return queue
-// cannot accept the full owner. The return-queue bound remains unchanged.
-fn release<R: RamAccess>(
-    mut owner: OwnedRam,
+// This helper refuses before scrub/reclaim unless the actual free metadata
+// guarantees room for every independent claim of this owner. Adjacency may
+// coalesce, but cannot weaken this conservative whole-owner preflight.
+fn release<R: RamAccess, const N: usize>(
+    mut owner: OwnedRam<N>,
     a: &mut BootstrapFrames,
     s: &mut Scheduler,
     access: &mut R,
-) -> Result<(), (ReleaseError<R::Error>, OwnedRam)> {
+) -> Result<(), (ReleaseError<R::Error>, OwnedRam<N>)> {
     if let Err(error) = owner.check(a, s) {
         return Err((ReleaseError::State(error), owner));
     }
@@ -228,8 +255,8 @@ fn release<R: RamAccess>(
     Ok(())
 }
 macro_rules! release_owner {
-    ($owner:ty) => {
-        impl $owner {
+    ($owner:ident) => {
+        impl<const N: usize> $owner<N> {
             /// Hardware users/aliases must already be quiescent. Extent destruction
             /// provides the no-live-lease metadata gate, never a CPU/DMA fence.
             pub fn release<R: RamAccess>(
@@ -246,9 +273,9 @@ macro_rules! release_owner {
         }
     };
 }
-release_owner!(UninitializedRam);
-release_owner!(InitializedRam);
-release_owner!(RetiredRam);
+release_owner!(BoundedUninitializedRam);
+release_owner!(BoundedInitializedRam);
+release_owner!(BoundedRetiredRam);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct LeaseRecord {
@@ -278,25 +305,26 @@ impl ExtentLease {
         self.record.writable
     }
 }
-pub struct MemoryExtent {
+pub struct BoundedMemoryExtent<const N: usize> {
     object: usize,
-    owner: Option<OwnedRam>,
+    owner: Option<OwnedRam<N>>,
     leases: [Option<LeaseRecord>; MAX_LEASES],
     sequence: u64,
 }
-impl MemoryExtent {
+impl<const N: usize> BoundedMemoryExtent<N> {
     pub fn publish(
         a: &mut Authority,
         domain: SpaceId,
-        ram: InitializedRam,
+        ram: BoundedInitializedRam<N>,
         allocator: &BootstrapFrames,
         scheduler: &Scheduler,
-    ) -> Result<(Self, Handle), PublicationRejected> {
-        let reject = |error, owner| PublicationRejected { error, owner };
+    ) -> Result<(Self, Handle), BoundedPublicationRejected<N>> {
+        let reject = |error, owner| BoundedPublicationRejected { error, owner };
         if let Err(error) = ram.0.check(allocator, scheduler) {
             return Err(reject(error, ram));
         }
-        if !(1..=MAX_PAGES).contains(&ram.0.pages)
+        if !valid_capacity::<N>()
+            || !(1..=N).contains(&ram.0.pages)
             || ram.0.count() != ram.0.pages
             || ram.0.charge != ram.0.pages as u64
         {
@@ -339,8 +367,80 @@ impl MemoryExtent {
     pub fn pages(&self) -> usize {
         self.owner.as_ref().map_or(0, |owner| owner.pages)
     }
+    pub(crate) fn stamp(&self) -> Result<(usize, u64), Error> {
+        Ok((
+            self.object,
+            self.owner.as_ref().ok_or(Error::Destroyed)?.backing,
+        ))
+    }
+    /// Explicit reference-profile refusal for fragmented RAM; no physical
+    /// adjacency is inferred merely from allocating a bounded extent.
+    pub(crate) fn contiguous(&mut self) -> Result<u64, Error> {
+        if self.live_leases() != 0 {
+            return Err(Error::Busy);
+        }
+        let owner = self.owner.as_mut().ok_or(Error::Destroyed)?;
+        // Canonicalize the retained, still-unmapped frame set before proving
+        // physical adjacency. A sorted recycle pool does not make arbitrary
+        // allocated extents contiguous. No lease/byte view exists yet.
+        owner.frames[..owner.pages]
+            .sort_unstable_by_key(|slot| slot.as_ref().map(PhysicalFrame::start));
+        let first = owner.frames[0].as_ref().ok_or(Error::Count)?.start();
+        for (i, slot) in owner.frames[..owner.pages].iter().enumerate() {
+            if slot.as_ref().map(PhysicalFrame::start) != first.checked_add(i as u64 * FRAME_SIZE) {
+                return Err(Error::Fragmented);
+            }
+        }
+        Ok(first)
+    }
+    pub(crate) fn read_owned<R: RamAccess>(
+        &self,
+        access: &mut R,
+        offset: usize,
+        out: &mut [u8],
+    ) -> Result<(), InitError<R::Error>> {
+        let owner = self.owner.as_ref().ok_or(InitError::Incomplete)?;
+        if offset
+            .checked_add(out.len())
+            .is_none_or(|end| end > owner.pages * FRAME_SIZE as usize)
+        {
+            return Err(InitError::Incomplete);
+        }
+        for (i, byte) in out.iter_mut().enumerate() {
+            let at = offset + i;
+            let frame = owner.frames[at / FRAME_SIZE as usize]
+                .as_ref()
+                .ok_or(InitError::Incomplete)?;
+            *byte = access
+                .read(frame, at % FRAME_SIZE as usize)
+                .map_err(InitError::Access)?;
+        }
+        Ok(())
+    }
+
     pub fn charged_job(&self) -> Result<JobId, Error> {
         Ok(self.owner.as_ref().ok_or(Error::Destroyed)?.job)
+    }
+    /// Selected bootstrap admission borrows this actual initialized/published
+    /// owner and its allocator claim, rather than accepting a sampled charge
+    /// or caller-supplied number. The source must be its full live identity.
+    #[cfg(feature = "workspace-authority")]
+    pub(crate) fn root_shared_charge(
+        &self,
+        authority: &Authority,
+        allocator: &BootstrapFrames,
+        scheduler: &Scheduler,
+        job: JobId,
+        custody: SpaceId,
+        source: Handle,
+    ) -> Result<u64, Error> {
+        self.authorize(authority, custody, source, Rights::CONTROL)?;
+        let owner = self.owner.as_ref().ok_or(Error::Destroyed)?;
+        owner.check(allocator, scheduler)?;
+        if owner.job != job || owner.count() != owner.pages || owner.charge != owner.pages as u64 {
+            return Err(Error::MissingCharge);
+        }
+        Ok(owner.charge)
     }
     pub fn live_leases(&self) -> usize {
         self.leases.iter().flatten().count()
@@ -379,7 +479,7 @@ impl MemoryExtent {
             record,
         })
     }
-    fn retained(&self, lease: &ExtentLease) -> Result<&OwnedRam, Error> {
+    fn retained(&self, lease: &ExtentLease) -> Result<&OwnedRam<N>, Error> {
         let owner = self.owner.as_ref().ok_or(Error::Destroyed)?;
         if lease.object != self.object
             || lease.record.backing != owner.backing
@@ -399,6 +499,32 @@ impl MemoryExtent {
             rights = rights | Rights::WRITE;
         }
         self.authorize(a, lease.record.owner, lease.record.cap, rights)
+    }
+    /// Zero and read back every actual retained RAM byte through the exact
+    /// live writable whole-extent claim. Errors release neither leases, frame
+    /// owners nor cumulative quota; partial writes remain explicit debt.
+    ///
+    /// # Safety
+    /// The hardware controller must exclude every executing CPU/device writer
+    /// and settle old accepted loans before this mutation. Mapping authority
+    /// alone proves none of that. Remaining readonly mappings must not execute
+    /// during the operation; the caller must fence reuse after any error.
+    #[cfg(feature = "workspace-authority")]
+    #[allow(unsafe_code)] // Contract declaration; actual accesses use RamAccess.
+    pub unsafe fn scrub_captured<R: RamAccess>(
+        &mut self,
+        a: &Authority,
+        lease: &ExtentLease,
+        access: &mut R,
+    ) -> Result<(), ScrubError<R::Error>> {
+        self.validate(a, lease).map_err(ScrubError::State)?;
+        if !lease.writable() {
+            return Err(ScrubError::ReadOnly);
+        }
+        self.retained(lease)
+            .map_err(ScrubError::State)?
+            .initialize(access)
+            .map_err(ScrubError::Memory)
     }
     /// Actual immutable frame identity for one retained whole-extent claim.
     /// This does not authorize installation: validate(authority, lease) again
@@ -431,13 +557,15 @@ impl MemoryExtent {
         a: &mut Authority,
         domain: SpaceId,
         cap: Handle,
-    ) -> Result<RetiredRam, Error> {
+    ) -> Result<BoundedRetiredRam<N>, Error> {
         self.authorize(a, domain, cap, Rights::CONTROL)?;
         if self.leases.iter().any(Option::is_some) {
             return Err(Error::Busy);
         }
         a.destroy(domain, cap)?;
-        Ok(RetiredRam(self.owner.take().ok_or(Error::Destroyed)?))
+        Ok(BoundedRetiredRam(
+            self.owner.take().ok_or(Error::Destroyed)?,
+        ))
     }
 }
 

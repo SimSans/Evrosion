@@ -26,6 +26,12 @@ pub(crate) struct Profile {
     pub counts: BTreeMap<String, u64>,
 }
 pub(crate) fn line(line: &str, build: &str) -> Result<Profile> {
+    line_slots(line, build, 7)
+}
+pub(crate) fn line_network(line: &str, build: &str) -> Result<Profile> {
+    line_slots(line, build, 9)
+}
+fn line_slots(line: &str, build: &str, slots: u64) -> Result<Profile> {
     let fields: Vec<_> = line.split(' ').collect();
     if line.len() > 1024
         || fields.len() != 6 + FIELDS.len()
@@ -53,7 +59,7 @@ pub(crate) fn line(line: &str, build: &str) -> Result<Profile> {
             .try_fold(0u64, |total, name| total.checked_add(c[*name]))
             .ok_or_else(|| "Native scheduling counter overflow".into())
     };
-    if c["index"] >= 7
+    if c["index"] >= slots
         || c["captures"] != sum(&["syscalls", "irqs", "faults"])?
         || c["charged_cpu_ticks"] != c["irqs"]
         || sum(&["port_in", "port_out", "yields"])? > c["syscalls"]
@@ -73,6 +79,32 @@ pub(crate) fn finished(
     build: &str,
     faults: u64,
     mode: Option<u64>,
+) -> Result<Vec<Profile>> {
+    finished_profile(serial, build, faults, mode, false, 7)
+}
+pub(crate) fn finished_session(
+    serial: &[u8],
+    build: &str,
+    faults: u64,
+    mode: Option<u64>,
+) -> Result<Vec<Profile>> {
+    finished_profile(serial, build, faults, mode, true, 7)
+}
+pub(crate) fn finished_network(
+    serial: &[u8],
+    build: &str,
+    faults: u64,
+    mode: Option<u64>,
+) -> Result<Vec<Profile>> {
+    finished_profile(serial, build, faults, mode, true, 9)
+}
+fn finished_profile(
+    serial: &[u8],
+    build: &str,
+    faults: u64,
+    mode: Option<u64>,
+    sustained: bool,
+    slots: usize,
 ) -> Result<Vec<Profile>> {
     use ev_userspace_contract::root_v2::native::{catalogue::BootMode, world_ticks};
     // Old Native2 receipts have no mode. New dedicated callers additionally
@@ -95,7 +127,7 @@ pub(crate) fn finished(
         if !row.ends_with('\n') {
             return Err("truncated Native scheduling profile".into());
         }
-        let profile = line(row.trim_end_matches(['\r', '\n']), build)?;
+        let profile = line_slots(row.trim_end_matches(['\r', '\n']), build, slots as u64)?;
         if profile.counts["index"] != profiles.len() as u64 {
             return Err("Native scheduling profile replay, gap or ordering error".into());
         }
@@ -107,10 +139,13 @@ pub(crate) fn finished(
             .try_fold(0u64, |total, p| total.checked_add(p.counts[name]))
             .ok_or_else(|| "Native scheduling aggregate overflow".into())
     };
-    if profiles.len() == 7 && profiles[0].counts["elapsed_ticks"] >= world_ticks(mode) {
+    if !sustained
+        && profiles.len() == slots
+        && profiles[0].counts["elapsed_ticks"] >= world_ticks(mode)
+    {
         return Err("Native scheduling elapsed reached the selected finite world bound".into());
     }
-    if profiles.len() != 7
+    if profiles.len() != slots
         || profiles
             .iter()
             .any(|p| p.counts["elapsed_ticks"] != profiles[0].counts["elapsed_ticks"])
@@ -127,6 +162,44 @@ pub(crate) fn finished(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn network_requires_its_own_exact_nine_slot_batch() {
+        let build = "a".repeat(64);
+        let base = fixture();
+        let extra = base.lines().last().unwrap();
+        let network = format!(
+            "{base}{}\n{}\n",
+            extra.replace("index=6", "index=7"),
+            extra.replace("index=6", "index=8")
+        );
+        assert_eq!(
+            finished_network(network.as_bytes(), &build, 0, None)
+                .unwrap()
+                .len(),
+            9
+        );
+        assert!(finished_session(network.as_bytes(), &build, 0, None).is_err());
+        assert!(finished_network(base.as_bytes(), &build, 0, None).is_err());
+        assert!(
+            finished_network(
+                network.replace("index=8", "index=7").as_bytes(),
+                &build,
+                0,
+                None
+            )
+            .is_err()
+        );
+        assert!(finished_network(network.as_bytes(), &"b".repeat(64), 0, None).is_err());
+    }
+    #[test]
+    fn sustained_profile_preserves_counters_beyond_finite_world_duration() {
+        let build = "a".repeat(64);
+        let text = fixture().replace("elapsed_ticks=100", "elapsed_ticks=1000000");
+        assert!(finished(text.as_bytes(), &build, 0, None).is_err());
+        let actual = finished_session(text.as_bytes(), &build, 0, None).unwrap();
+        assert_eq!(actual[0].counts["elapsed_ticks"], 1_000_000);
+        assert!(finished_session(text.as_bytes(), &build, 1, None).is_err());
+    }
     // Synthetic parser fixture only; it is not an executed runtime result.
     fn fixture() -> String {
         (0..7)

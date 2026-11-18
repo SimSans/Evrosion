@@ -1,0 +1,717 @@
+{
+  "schema": 1,
+  "scope": "Isolated M8 frontend, actual pinned native builds and bounded VM component observations; no full M8 acceptance",
+  "sources": {
+    "tools/ev/Cargo.toml": "0552591163a0ee274172cc4fd80a32cc2dabe123abfddd1088a6af1824d758c6",
+    "tools/ev/src/lib.rs": "8941987f370093b31675a31031eeac54e007018bb280f82a37526c7ba302c6bd",
+    "tools/ev/src/main.rs": "eaf939f064ea2dd62546e43fc78fb850338c3fc9e78c49139ed83a06cbacb077",
+    "tools/ev/src/cli.rs": "5809f88cbaef1154041d01a15df6eebc027b108fa1659b17b2dcb2564b17dc22",
+    "tools/ev/src/vm_profile.rs": "1ff09fd9eafa79366c27d4dc8db3507fc49636a6979e194734ea01810900e06c",
+    "tools/ev/src/workspace.rs": "9cbb1ef438ba05ab9990501ac006ddc75f515c610b6a90e40cb4e360a0807e58",
+    "tools/ev/src/workspace/packages.rs": "bfed2a7ed99405158e911b51c4bc498b9b874bc8dc29053a9511a2ca1439a952",
+    "tools/ev/src/workspace/bundle.rs": "77244a56de2e655c41ebadc65e2f55798c905ae7395aeab305d27e3ee3233ae8",
+    "tools/ev/src/workspace/run.rs": "def6e3e58429ddf39db86bf63a0b31142c92007c60bd72f28ddea8a436de5e02",
+    "tools/ev/WORKSPACE.md": "db1c0409719e184888a1b5c3130478f96f3be762497f87a5bf22047c87aee159",
+    "architecture/adr/ADR-0113-workspace-development-bundle-and-owned-preview.md": "d90c0f7041f85bfda64b866d158c203d940b41bac37bf041843f79e2f23b6a21",
+    "tools/ev/src/qmp.rs": "9306a38fda217cafdabe4a48a8bc90b592180cba894b1bd532cee99a5f19ffa9",
+    "tools/ev/src/workspace/scenario.rs": "c8ede08a25fe21ccf12db2925f7142a7cbebff43872fc78872cf3c7b88418b46",
+    "tools/ev/src/workspace/apps.rs": "c2ea1d09432ece7f89fc12062a8834ac55944d7c52397b4c624951e908142b42",
+    "tools/ev/APP.md": "989c836000c96c86dd5576d0cf7ace0699f0885d11ce9ab8a2b46c3438f60932",
+    "tools/ev/tools/scanout_roi.py": "ef14008a0ccd354024ce13550d2c9382c1dd9a2182f6704b8efaded37087fff3",
+    "tools/ev/templates/selected-file-app/main.rs": "5261bb114a02b71163f483435f90665d2cd67417aba0ef8c7af88124f8276139",
+    "tools/ev/templates/selected-file-app/build.rs": "48e0ec300dc15b063a3fe9153038584381652c7e3d14a5ad6ecd1b1450e3be58",
+    "tools/ev/src/workspace/template.rs": "22413a393567bd2141c9e58c1a1e4c8a2bf20676fb62edcc15aeeab20147aee0"
+  },
+  "receipts": {
+    "workspace-frontend-tests-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-frontend-tests-02.json",
+      "sha256": "3481238c110c6c7261c44968581bc5a958d1a64bc2cd572cd797edce7e428e89"
+    },
+    "workspace-frontend-lint-05": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-frontend-lint-05.json",
+      "sha256": "a228c8a4a335c4a230416147b1a6e9a5fda602f2dc144b06c708d43404f6a407"
+    },
+    "workspace-packages-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-packages-02.json",
+      "sha256": "958da12abfdcc7b8fb02fd864b2be4245230d0258f0946c6963130c4cd915261"
+    },
+    "workspace-network-images-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-network-images-02.json",
+      "sha256": "05dbdb704707a69aed335fa15ff0e394971a0bc6734ca7b9557964ee0680bca6"
+    },
+    "workspace-network-canonical-bytes-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-network-canonical-bytes-01.json",
+      "sha256": "807f11dcb00990b1f442f1304d2c2fb2939427ab3d18370f4b2d8c8b6c51966d"
+    },
+    "workspace-build-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-build-01.json",
+      "sha256": "c2368bd0688d936e94ebb1723045c9423c4f6c3c415341e57d7483214761054e"
+    },
+    "workspace-build-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-build-02.json",
+      "sha256": "9f0f6cc054fb303d511ca5b2284da53533c6d4023b3d37bb54d49df935e6fc20"
+    },
+    "workspace-build-03": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-build-03.json",
+      "sha256": "89c7d7edb0bc586de6262171ce7f746d848c885ad3f66b9e6b3e69a582565966"
+    },
+    "workspace-preview-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-preview-01.json",
+      "sha256": "c9dec701e5cea6237c80bfd94b1989f9cc98198d1ea3238aee9bff85ad0c1af0"
+    },
+    "workspace-build-04": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-build-04.json",
+      "sha256": "0e700bd5be77294de78264bd59a7d1b7d74b00f1ba32d69fb40877fcbd1edf1d"
+    },
+    "workspace-preview-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-preview-02.json",
+      "sha256": "451247d83de8cd416178937c9f30b7acf3fb31d80f3e6ba7065882f3ce102da1"
+    },
+    "workspace-scanout-view-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-scanout-view-01.json",
+      "sha256": "a911066c818d89556296683b163b3f4868b6642b46cb0408d525c67952d028e4"
+    },
+    "workspace-scenario-check-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-scenario-check-01.json",
+      "sha256": "21e746bd8db8843372ac5a475dfb0a9ac8d8d942713d8d6ec1ab2f552aa6bb05"
+    },
+    "workspace-scenario-tests-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-scenario-tests-01.json",
+      "sha256": "b5f71c00569188ef24409c166b4c4c81867acda1fadab467fea8f20f5cc08973"
+    },
+    "workspace-scenario-lint-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-scenario-lint-01.json",
+      "sha256": "720c2739de7149d94f31d6c1b6808de14c64771ca6d5b53a4cb4ad144442e08b"
+    },
+    "workspace-display-view-coherence-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-display-view-coherence-01.json",
+      "sha256": "518ffff3b9880fc0c3f23e5d8dd18cc3a6efe0fe3c8cc19583c8e28b9ceba644"
+    },
+    "workspace-qmp-png-capability-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-qmp-png-capability-01.json",
+      "sha256": "85015f39a89bc918a569089d3eaf502f317a85ac1aefdb3009a88c571dc076cc"
+    },
+    "workspace-cohort-rebuild-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-cohort-rebuild-01.json",
+      "sha256": "cf788ea91612c324d68be18b10749be5c808d98e59f581f5f321d0220476c525",
+      "command_passed": true
+    },
+    "workspace-diagnostic-build-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-diagnostic-build-01.json",
+      "sha256": "521841e587a361dc752c85e8eb4aff6ced7407cf448720d4f5dde4c32cbc2ef3",
+      "command_passed": true
+    },
+    "workspace-diagnostic-preview-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-diagnostic-preview-01.json",
+      "sha256": "f408c68357dd34dd0c92890629a8b88f656bd86c16c7a766e95358f826f89dd4",
+      "command_passed": false
+    },
+    "workspace-readiness-host-build-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-readiness-host-build-01.json",
+      "sha256": "ca997877ac98716d6499ed2e0e9c706354aca95f51ff1756a63d7448dbae33d7",
+      "command_passed": true
+    },
+    "workspace-readiness-preview-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-readiness-preview-01.json",
+      "sha256": "cffad3e68c3ab2d76b5634ccf67a4cf72a4be259119e91401662bab0db33dfeb",
+      "command_passed": false
+    },
+    "workspace-readiness-lint-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-readiness-lint-01.json",
+      "sha256": "92f3de558b870ced1841ee306844739910fc4f13f385bb0d8806a6a9432fd454",
+      "command_passed": true
+    },
+    "workspace-a1-producer-tests-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-producer-tests-01.json",
+      "sha256": "8f86253e2c22ad1933aa61060e602a0e5b337e1945512b7850ed3e8a6054cc2b",
+      "command_passed": true
+    },
+    "sdk-create-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-create-01.json",
+      "sha256": "fb3fd7f5dc97ef6a92e25d2aa0e2a3fed2cd3953629cfe12a94acc3e0cf29009",
+      "command_passed": true
+    },
+    "sdk-sample-build-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-build-01.json",
+      "sha256": "3f6048bfd00cd2d384bec5d629a912d0dad4003a6a5c07e62db69d3af058f2cf",
+      "command_passed": false
+    },
+    "sdk-sample-build-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-build-02.json",
+      "sha256": "726610278be675590cd786bb0f053ee6d6bd7acfe88b4e5da6ee28fd814b1aea",
+      "command_passed": true
+    },
+    "sdk-sample-build-03": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-build-03.json",
+      "sha256": "856ed9a28573f80b8219868ab83a93c4a4e41ca114ad5f78e06f582a8a916d0f",
+      "command_passed": true
+    },
+    "sdk-sample-package-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-package-01.json",
+      "sha256": "90e19605865f237384738976af0a9be2ed78d0503ce79ac796f68aa3220e16f7",
+      "command_passed": true
+    },
+    "sdk-sample-verify-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-verify-01.json",
+      "sha256": "d8a93e21f071bed1c0d7592d6a5dd7e3aadaa0848904c8e219a4687e93e2a706",
+      "command_passed": true
+    },
+    "sdk-sample-install-refused-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-install-refused-01.json",
+      "sha256": "9bf2e69be8cd8a672e3d30416c8fd96d3a15ea9de373ed4def4136be3dfecfdc",
+      "command_passed": false
+    },
+    "sdk-sample-run-refused-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-run-refused-01.json",
+      "sha256": "cd3e4e9f53bca10d10c68158d67e3a34900ceadf5293a49fdd3ff4bc816bd35d",
+      "command_passed": false
+    },
+    "editor-a1-native-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/editor-a1-native-01.json",
+      "sha256": "597187ffde02310df359b2e9ed669bc698066a9e03cc593436f92a46fa12db1b",
+      "command_passed": true
+    },
+    "editor-a1-bank-measure-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/editor-a1-bank-measure-01.json",
+      "sha256": "2fd9d6c87c0b9628d7818f036203c09df43ef62b76aaf9597bff83b933a9bfa2",
+      "command_passed": true
+    },
+    "workspace-a1-producer-lint-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-producer-lint-01.json",
+      "sha256": "c7f9bf1d7d30bd7e0526198ac1a5ef2fd4becf9e83cc4320072e37007b0850f4",
+      "command_passed": true
+    },
+    "sdk-create-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-create-02.json",
+      "sha256": "6323e60210dc5570fa3c89d6a08afb38a8931a3a9a8e8bb3e093a959d869e15a",
+      "command_passed": true
+    },
+    "workspace-picker-host-build-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-picker-host-build-01.json",
+      "sha256": "312495ebe40468b690fb4a5f2530178fdfe84f7ac4a0c72a6883647c9b92b6f1",
+      "command_passed": true
+    },
+    "workspace-picker-build-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-picker-build-01.json",
+      "sha256": "38ce4f305db06dbdf165feebf8d8c6b1e8abeb138ad9769164c1eb8f83068f2a",
+      "command_passed": true
+    },
+    "workspace-picker-preview-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-picker-preview-01.json",
+      "sha256": "d32c1218a8cc10828e39251836d12f6e2e397f3c30a5172b91642a609fe72f2e",
+      "command_passed": false
+    },
+    "editor-savepaint-native-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/editor-savepaint-native-01.json",
+      "sha256": "e12a47bd6ec07b0fbcb0174c626478948332e6018c7f458904875f7e22b0ec9d",
+      "command_passed": true
+    },
+    "workspace-savepaint-build-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-savepaint-build-01.json",
+      "sha256": "07dc2f32289a8953dd5238802e692a57399a0d4ddfc5544d0332344bddcb259a",
+      "command_passed": true
+    },
+    "workspace-savepaint-preview-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-savepaint-preview-01.json",
+      "sha256": "f9783785afc46f1b2cb850455f2c23416ecdfdfa25d1a0df16f77dfaf72373b3",
+      "command_passed": false
+    },
+    "block-bulk-native-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/block-bulk-native-01.json",
+      "sha256": "72e2c2aa9c7a33ce8f7900ad3d5a53797510e863b64e7d9fd5540aedbd3b53d2",
+      "command_passed": true
+    },
+    "workspace-bulk-build-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bulk-build-01.json",
+      "sha256": "28d1595c183407a3b62e1e137d75b253ff54df9cee24e4ec2e8fdc624dcbc61c",
+      "command_passed": true
+    },
+    "workspace-bulk-preview-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bulk-preview-01.json",
+      "sha256": "4235fc29168d2378673308343d5b195c662e5d0de151195f68a5aadd6232da2b",
+      "command_passed": true
+    },
+    "workspace-bank79-tests-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bank79-tests-01.json",
+      "sha256": "e02226f271c41dea14bda50a89e2be83ddba32e27f8cec94736e22d37063d4c6",
+      "command_passed": true
+    },
+    "workspace-bank79-lint-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bank79-lint-01.json",
+      "sha256": "19946f6a2b196ab4cd05bb7de344e95afa18ff382a33b16ba525c15cf1826c57",
+      "command_passed": true
+    },
+    "workspace-evidence-bound-test-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-evidence-bound-test-01.json",
+      "sha256": "00789b8b10cb6fe91960332cff5a52f772d4bbb21fdc0beeb300d9a855a7648d",
+      "command_passed": true
+    },
+    "workspace-evidence-bound-lint-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-evidence-bound-lint-01.json",
+      "sha256": "ce9b2dd7fab04ad7f5e2dd0c153232b88e57c4f2d329f64334bfe09ace3d8690",
+      "command_passed": true
+    },
+    "workspace-a1-scenario-tests-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-scenario-tests-02.json",
+      "sha256": "a269298d345902389928eb9c6d96ace0da0bf6934133f8bc430da99b38831e70",
+      "command_passed": true
+    },
+    "workspace-a1-scenario-tests-03": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-scenario-tests-03.json",
+      "sha256": "948397ae2537e00cf7f4c0c5c5528bf0905a644d52cfaeb390ba4c7496c9b1d2",
+      "command_passed": true
+    },
+    "workspace-a1-scenario-lint-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-scenario-lint-01.json",
+      "sha256": "bac0d7d3678df4a0981578f81a1e0d33ea3131411d089e644a4d3fbf13094957",
+      "command_passed": true
+    },
+    "workspace-a1-roi-check-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-roi-check-01.json",
+      "sha256": "17126a605f99af8f79516142541cc259a3d0a5d97f866eebece99e1e9407c4a8",
+      "command_passed": true
+    },
+    "workspace-a1-scenario-host-build-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-scenario-host-build-02.json",
+      "sha256": "254014bc8f846b91ce3776c57590b85340d7a792a915fb61fe9d0e3511844ee2",
+      "command_passed": true
+    },
+    "workspace-a1-build-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-build-01.json",
+      "sha256": "d162f963b6b512c25a23e67d334ad71680bd28eae212510cc4873ef386ed49f7",
+      "command_passed": false
+    },
+    "workspace-a1-build-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-build-02.json",
+      "sha256": "f5fb98aef0cae9685f1ce0bcad316d7da290ffa7267006af66b2e3064cbebda8",
+      "command_passed": true
+    },
+    "workspace-a1-preview-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-preview-02.json",
+      "sha256": "bcd3ddc128a9d5a503c729bc4220d0f3e8f8f2be651ca2484094cd45fe5f8be0",
+      "command_passed": true
+    },
+    "workspace-a1-observation-pin-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-observation-pin-01.json",
+      "sha256": "22c2d961395d7c5e981de7c0afcba18fd158ee9bebc2aefccbe136d1e0e4c335",
+      "command_passed": true
+    },
+    "workspace-template-tests-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-template-tests-01.json",
+      "sha256": "91451b3c2f43dba8fa280d992fe7f0c6d46da70786c8e6db8bd0503905da4200",
+      "command_passed": false
+    },
+    "workspace-template-tests-02": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-template-tests-02.json",
+      "sha256": "cab42e497c9fa6953a4edc25255f310e0b79a94e5bcd6ec7e000a1effe2cc029",
+      "command_passed": true
+    },
+    "workspace-template-lint-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-template-lint-01.json",
+      "sha256": "6ac3434f79a8e8426ba522dd01b4c672887e96361acc4f7cd166a548d2be6d32",
+      "command_passed": true
+    },
+    "workspace-template-host-build-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-template-host-build-01.json",
+      "sha256": "1f6b7c45a25d299fc8f5b432ca077e5065033807d16b9c52d93eee5e3cb3a78f",
+      "command_passed": true
+    },
+    "workspace-large-preview-01": {
+      "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-large-preview-01.json",
+      "sha256": "130e78a4efd873ed72d1e7b43952b1f4cf45201d36aa44b1f39f4915234ee61b",
+      "command_passed": false
+    }
+  },
+  "kernel_stack_census": {
+    "bytes": 166792,
+    "limit": 262144,
+    "margin": 95352,
+    "limitations_retained": true,
+    "directory": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-02"
+  },
+  "actual_packages": {
+    "current_bank_bytes": 308114,
+    "candidate_bank_bytes": 118932,
+    "capacity_bytes": {
+      "Current": 323584,
+      "Candidate": 258048
+    },
+    "individual_package_max_bytes": 258048,
+    "placements": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        104784
+      ],
+      [
+        0,
+        223728
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "candidate_distinct_executable": true,
+    "all_four_semantic_tree_declarations": true,
+    "signed_dynamic_update_qualified": false
+  },
+  "first_vm": {
+    "directory": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bundle-04/preview-1794790239731288625",
+    "actual_root_admitted": true,
+    "actual_child_graph_ready": false,
+    "result": "Kernel pagefault vector14 ripffffffff8006c29c addressffffffff8081c1f8, beforechildren",
+    "observation_receipt_scope": "Preview01 exit0 records observation completed; guestexit35/M0FAIL is not a pass. Newfrontend returnsErr onretainedactualfatal line.",
+    "host_provision_only": true,
+    "historical_compatibility": false
+  },
+  "not_run": [
+    "generic installer",
+    "signed dynamic update",
+    "guest provisioning cuts",
+    "actual 1MiB native File2 Save and independent readback",
+    "normal shutdown/retirement",
+    "30-minute observation",
+    "external SDK native install/run and stable per-App private data",
+    "full M8 qualification",
+    "service crash recovery/SaveAs and broad regrant negative suite",
+    "whole Inspector self-proxy/accessibility, stale/provider-death/malformed runtime negatives"
+  ],
+  "preservation": {
+    "legacy_command_paths": "additive routing; oldM3diskvalidator preserved and cross-profile negative tested",
+    "Main": "no writes",
+    "baseline_source": "no writes",
+    "cleanup": "No source/data/proof cleanup by frontend; Parent separately audited regenerable caches and hash-verified owned compiler build cache relocation to RAM.",
+    "minimum_free_bytes": 2147483648
+  },
+  "invalid_or_superseded": [
+    "workspace-network-images-01 invoked childPython withDEVNULL/no script; supplies no build evidence; replacedby02",
+    "workspace-packages-01 refusedoverlongsourceText; correctedby02",
+    "bundle01 refusedsamecandidateexecutable correctly",
+    "bundle02 and03 actualstackgatesFAILED beforeEFI/VM; retained"
+  ],
+  "second_vm": {
+    "directory": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bundle-05/preview-1794790922024093091",
+    "observation": {
+      "disk_floor_reached": false,
+      "disk_sha256": "c4bcac68aced889f3086914ceae464acf14e8e0a5df3bb7cac2d7e6e6f90f84d",
+      "elapsed_ms": 60070,
+      "exit_code": null,
+      "fatal_guest_line": null,
+      "host_provision_new": true,
+      "m8_acceptance": false,
+      "schema": 1,
+      "scope": "Actual QEMU observation; no clean quiescence, recovery or milestone acceptance follows",
+      "serial_bytes": 37569,
+      "serial_sha256": "4a733a2457c06449aca9c24bbb76170c2e02fef8e98a8d4fb2cd54fc8a4e002d",
+      "timeout": true
+    },
+    "actual_children_started": 11,
+    "full_child_health_qualified": false,
+    "actual_last_guest_tick": 58040,
+    "actual_last_resources": {
+      "jobs": 13,
+      "processes": 12,
+      "threads": 12,
+      "spaces": 49,
+      "handles": 295,
+      "nodes": 306,
+      "objects": 82,
+      "root_subtree_frames": 1410,
+      "rpc_calls": 149,
+      "rpc_replies": 149,
+      "outstanding": 0,
+      "accepted_windows": 0
+    },
+    "scanout_png": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bundle-05/preview-1794790922024093091/screen-001.png",
+    "pixel_preserving_conversion_receipt": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-scanout-view-01.json",
+    "viewed": "Files Ready, Editor1 Chooseafile, Inspector RootLive, Shellbuttons; Editor2blank and Rootrequestedoperationrefused messages requireownerUI audit",
+    "injected_input": false,
+    "clean_shutdown": false,
+    "recovery": false,
+    "interactive_saved_bytes": false,
+    "duration_30min": false
+  },
+  "scenario": {
+    "status": "Positive native tiny-Save component: 122/122 scenario actions, actual Saved and independently verified cold bytes",
+    "positive_receipt": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/WORKSPACE_BULK_TINY_SAVE_QUALIFICATION_01.json",
+    "prior_failures": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/WORKSPACE_TINY_SAVE_DEADLINE_WITNESS_01.json",
+    "actual_run": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bulk-01/preview-1794804657307609216",
+    "cold_result": "NS4, note1 slot2/gen1/rev2/length15, exact hello workspace, SHA c8bfeab31e8dc628cc7f96b7ecd26bd1dd4264229a400702833e4e6a0af51f9f",
+    "original_save_ticks": 8192,
+    "deadline_changed": false,
+    "accepted_retry": false,
+    "storage_requests": {
+      "before_save": 656,
+      "after_save": 969,
+      "save_and_independent_readback": 313
+    },
+    "actual_bulk_denials": 12,
+    "independently_verified_native_Saved": true,
+    "duration_ms": 120086,
+    "completion": "Directly owned bounded QEMU timeout, not normal shutdown or clean quiescence",
+    "final_ordinary_rpc_outstanding": true,
+    "host_timing_report": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bulk-timealigned-01.json",
+    "timing_scope": "50ms-poll host receipt intervals and raw uncalibrated loop/handler TSC; no proof of no IRQ loss",
+    "permission_scope": "Owned PS2 automation; not human consent or generic authority proof",
+    "full_M8_acceptance": false
+  },
+  "historical_bundle05": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bundle-05",
+  "historical_build05": {
+    "image_builder_sha256": "8f11c2da321c8aa6234e1f35ffedf9936856b7e539364e58975089de6964dfe2",
+    "image_sha256": "75474237b636f290e03693e69be1b4bf69f31fd564c4032a23b449a014aa55fb",
+    "kernel_feature": "test-m8-workspace-run",
+    "kernel_sha256": "1a11ac31f3ab2167343f4c5639f7d27597d73a0f637b5c71f0bc03f7ca0b06c4",
+    "loader_retained": true,
+    "schema": 1,
+    "scope": "Actual selected V5 Kernel and EFI image; no VM admission or milestone acceptance",
+    "source_sha256": "cd92062f5aa6768c51c7435fc5f08e6a99646beb86ba1a11855b3425334fc0df"
+  },
+  "latest_actual_build": {
+    "directory": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-02",
+    "build": {
+      "image_builder_sha256": "8f11c2da321c8aa6234e1f35ffedf9936856b7e539364e58975089de6964dfe2",
+      "image_sha256": "98216ada85d8d3fe7660b975cd63d791a6ef507ab16a3e9bf9dcdfa673b49c44",
+      "kernel_feature": "test-m8-workspace-run",
+      "kernel_sha256": "10c0a6d6ec33fb03f0ab285f4f67d0ab490b92ef80a1c3dbba7a1d105fb0e0b2",
+      "loader_retained": true,
+      "schema": 1,
+      "scope": "Actual selected V5 Kernel and EFI image; no VM admission or milestone acceptance",
+      "source_sha256": "3910aea4001635b82b76d411ec2765b0854a813e6106ab5eeaf4816f77f3f1a4"
+    },
+    "scope": "Pinned Root09/Inspector04 + actual A1 Files/optimized Editor A/B + WF Workspace/bulk Block and retained cohort01 core actors. Exact current producer/Kernel inputs archived separately from each prebuilt actor source qualification; not all actors rebuilt from this source stamp."
+  },
+  "source_rebuild_cohort01": {
+    "directory": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-cohort-01",
+    "build": {
+      "image_builder_sha256": "8f11c2da321c8aa6234e1f35ffedf9936856b7e539364e58975089de6964dfe2",
+      "image_sha256": "eb8abdfd323d0b6ac4662cdb414c87a342d01d9e55db63ccc4bb038c5b5c9bf4",
+      "kernel_feature": "test-m8-workspace-run",
+      "kernel_sha256": "20d09fb9a870a710fe1165ba416dcb98ad52c449c08da6e286d2c8cda6121b1a",
+      "loader_retained": true,
+      "schema": 1,
+      "scope": "Actual selected V5 Kernel and EFI image; no VM admission or milestone acceptance",
+      "source_sha256": "919cbaf051a8daf6c7502e2b7f9e01b44e683dc0a3c8d3bfea0e0ff6665a3614"
+    },
+    "all_12_actors_source_rebuilt": true,
+    "scope": "Actual finite selected CPU revision source cohort, retained before later Root61/A1/dynamic52 edits"
+  },
+  "sdk_external": {
+    "build": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-build-03/build.json",
+    "package": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-package-01/package.json",
+    "verify": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-verify-01/verification.json",
+    "actual_elf_sha256": "4a837a2d37f95db2fb89991715ae06b30241d6c227b6ea784dd3d937977ffd3a",
+    "actual_package_sha256": "d40aece8c49ed4ed1d8986e4fd810fbc5f75c3e3eb9f52005d80f9607812ffa9",
+    "bytes": 62022,
+    "stack_census_bytes": 5608,
+    "scope": "Standalone actual source/SDK inputs are pinned in build03; later SDK Ops edits are not included",
+    "distinct_claimed_app_id": "2166bc923e97fc5419b8af8b8054d103",
+    "selected_factory_shape": "FileApp6/Editor envelope, not bundled Editor identity",
+    "install": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-install-preflight-01/request.json",
+    "run": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/sdk-sample-run-preflight-01/request.json",
+    "install_run_result": "NOT_APPLIED retained verified preflight and nonzero exit; no actual native bridge",
+    "private_data": "256-byte process-private scratch only; no durable private namespace grant; M8-11 ownership gate remains open",
+    "lto": "Initial LTO=true actual link failed; template and measured sample use lto=false with prebuilt core and large code model",
+    "created_template_actual": "sdk-create-02 produces standalone project with lto=false and public SDK paths; no native install/run claim"
+  },
+  "a1_package_producer": {
+    "contract": "ev.internal.semantic-tree@1",
+    "implementation": "handwritten public SDK snapshot/action/range codec, not generatedIDL",
+    "shared_constants": "ev_workspace_client::semantic::{INTERFACE,MAJOR,MINOR,FEATURES}",
+    "declaration": "Per-artifact boolean defaultfalse; source rebuild explicitly EditorA/Btrue; no inference from resource shape or SDK dependency",
+    "evidence": "Declared package stores digest over exact semantic.rs and semantic/operation.rs",
+    "tests": "11 focused workspace tests PASS, final attention-coordinate plan check PASS, strict host library lint PASS; actual four declared Zion packages admitted in cohort02.",
+    "native_consumer": "Actual Root09 loaded requirement checker and A1 consumer observed with Inspector04: READ filename, independent TEXT document range, revocation, protected metadata and dedicated confirmation/regrant. Whole Inspector self-proxy and runtime negative suite remain open."
+  },
+  "nd_sdk_protocol": {
+    "receipt": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/SDK_APP_PRIVATE_DATA_PROTOCOL_01.json",
+    "full_sdk_tests_passed": 31,
+    "host_and_bare_strict_lint": true,
+    "external_sample_disabled_hook_bare_check": true,
+    "new_sample_hooks_linked_or_run": false,
+    "native_Root_namespace_or_storage_hook": false,
+    "AppPrivateData_requested_or_granted": false,
+    "scope": "Protocol-only existing generated ND8B, permanent immutable peer/claim, no fresh accepted retry; actual Root verified AppId/session/storage owner still required"
+  },
+  "historical_kernel_stack_pre_bank79": {
+    "bytes": 151784,
+    "limit": 262144,
+    "margin": 110360,
+    "limitations_retained": true
+  },
+  "historical_actual_packages_pre_a1": {
+    "current_bank_bytes": 233986,
+    "candidate_bank_bytes": 109164,
+    "limit_each": 258048,
+    "placements": [
+      [
+        0,
+        0
+      ],
+      [
+        0,
+        78608
+      ],
+      [
+        0,
+        187776
+      ],
+      [
+        1,
+        0
+      ]
+    ],
+    "candidate_distinct_executable": true,
+    "signed_dynamic_update_qualified": false
+  },
+  "historical_actual_bulk_build": {
+    "directory": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-bulk-01",
+    "build": {
+      "image_builder_sha256": "8f11c2da321c8aa6234e1f35ffedf9936856b7e539364e58975089de6964dfe2",
+      "image_sha256": "bf7974ca81531991ff2fc58d76453b99b40c2881447ba43ffc6bbe28060d5189",
+      "kernel_feature": "test-m8-workspace-run",
+      "kernel_sha256": "ad35f91c3b8bfbc2a5213c4807f69a7ef3214771336df9dc3de2d66a3a8e750d",
+      "loader_retained": true,
+      "schema": 1,
+      "scope": "Actual selected V5 Kernel and EFI image; no VM admission or milestone acceptance",
+      "source_sha256": "6acd360e51840f6db8f2cb6740f3887a57aa9af69ff148e56cdaba84e1516ad9"
+    },
+    "scope": "Root06 + optimized Editor A/B + WF Workspace + actual pio-words256 Block + matching Kernel535; retained cohort01 remaining actors. Explicit GUI reference requirements, no A1 consumer/ND/52/native external install claim."
+  },
+  "a1_actual_observation": {
+    "receipt": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/WORKSPACE_A1_OBSERVATION_01.json",
+    "receipt_sha256": "9fa7827f6264dece407eae14b6d92c4d13b5bb6495215fd24fbebca84b21d57a",
+    "run": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-02/preview-1794811710111208133",
+    "duration_ms": 300081,
+    "actions": {
+      "completed": 371,
+      "total": 371
+    },
+    "cold_note": {
+      "bounded_utf8": "hello workspace",
+      "generation": 1,
+      "independently_read_sha256": "c8bfeab31e8dc628cc7f96b7ecd26bd1dd4264229a400702833e4e6a0af51f9f",
+      "kind": "File",
+      "length": 15,
+      "metadata_sha256": "c8bfeab31e8dc628cc7f96b7ecd26bd1dd4264229a400702833e4e6a0af51f9f",
+      "name": "note1",
+      "revision": 2,
+      "slot": 2,
+      "trashed": false
+    },
+    "phase_captures": [
+      {
+        "label": "A1-READ-name-after-unavailable-TEXT-intent",
+        "actual_elapsed_ms": 76203,
+        "png": {
+          "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-02/preview-1794811710111208133/evidence-screen-145.png",
+          "bytes": 11693,
+          "sha256": "2d861917ef7a89f4823f0eff4e86929492dcce7c402ad0223076666db37ad99f"
+        },
+        "original_png": "/tmp/ev-m8-1735192-1794811710865233823/screen-145.png"
+      },
+      {
+        "label": "A1-exact-current-document-TEXT-range",
+        "actual_elapsed_ms": 94505,
+        "png": {
+          "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-02/preview-1794811710111208133/evidence-screen-149.png",
+          "bytes": 11755,
+          "sha256": "319aebf50b3bd8e8d57ad83f46e3ef4073f241926a7a8ce90f6691a3912896f1"
+        },
+        "original_png": "/tmp/ev-m8-1735192-1794811710865233823/screen-149.png"
+      },
+      {
+        "label": "A1-ordinary-protected-Activate-left-binding-unchanged",
+        "actual_elapsed_ms": 134673,
+        "png": {
+          "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-02/preview-1794811710111208133/evidence-screen-175.png",
+          "bytes": 15005,
+          "sha256": "9b6a9510f1db9dd493ecbd59344bf13e894fd51af5b9a131bcba70c0b90cbd8c"
+        },
+        "original_png": "/tmp/ev-m8-1735192-1794811710865233823/screen-175.png"
+      },
+      {
+        "label": "A1-first-dedicated-Confirm-armed-new-challenge",
+        "actual_elapsed_ms": 138176,
+        "png": {
+          "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-02/preview-1794811710111208133/evidence-screen-176.png",
+          "bytes": 17670,
+          "sha256": "9d65e326949aa865b78c81f54a592e23d60e9dceacc22c0d1467545ea51ae7ea"
+        },
+        "original_png": "/tmp/ev-m8-1735192-1794811710865233823/screen-176.png"
+      },
+      {
+        "label": "A1-second-distinct-Confirm-and-native-regrant-observation",
+        "actual_elapsed_ms": 140592,
+        "png": {
+          "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-02/preview-1794811710111208133/evidence-screen-177.png",
+          "bytes": 11886,
+          "sha256": "7b281c375681b04540df63845712a23975cf46f427c2e4fa773805222dc73b5c"
+        },
+        "original_png": "/tmp/ev-m8-1735192-1794811710865233823/screen-177.png"
+      },
+      {
+        "label": "A1-final-revoked-scope-returned-to-stats",
+        "actual_elapsed_ms": 143809,
+        "png": {
+          "path": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-02/preview-1794811710111208133/evidence-screen-179.png",
+          "bytes": 13780,
+          "sha256": "937a2517dc93945131186f79c8371bb41c6d2dc860c4fa3e8c5ecdafbd5cca63"
+        },
+        "original_png": "/tmp/ev-m8-1735192-1794811710865233823/screen-179.png"
+      }
+    ],
+    "scope": "Owned synthetic PS2 reference-device observation with actual scanout pacing and independent cold read-only Dataset bytes; no human approval, broad negative-access, normal shutdown or whole-accessibility/milestone acceptance."
+  },
+  "evidence_reader_limits": {
+    "bundle_bytes": 8388608,
+    "small_build_record_bytes": 4194304,
+    "retained_failure": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-01",
+    "refinement_receipt": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/WORKSPACE_EVIDENCE_BOUND_REFINEMENT_01.json",
+    "guest_limits_changed": false
+  },
+  "owned_template_observer": {
+    "receipt": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/OWNED_TEMPLATE_OBSERVER_01.json",
+    "owned_source_snapshot": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/owned-template-observer-source-01",
+    "source_read_only": true,
+    "exact_bytes": 100663296,
+    "expected_sha_required": true,
+    "new_output_only": true,
+    "host_format_in_template_mode": false,
+    "before_after_source_checks": [
+      "wholeSHA",
+      "prefix4MiB",
+      "prefix8MiB",
+      "inode",
+      "mode",
+      "mtime"
+    ],
+    "guest_source_identity_separate": true
+  },
+  "large_initial_8192_failure": {
+    "receipt": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/WORKSPACE_1M_INITIAL_CUT_FAILURE_01.json",
+    "run": "local-engineering-archive/build/test-tmp/m8-0.4-2026-11-15-01/workspace-a1-cohort-02/preview-1794813182000557515",
+    "scope": "Original archived native guest; initial1MiB Load failed before any edit/Save; no new budget, retry or native artifact",
+    "original_ticks": 8192,
+    "completed_input_actions": 21,
+    "total_input_actions": 41,
+    "native_exit": 35,
+    "pending_request": "0x96",
+    "pending_deadline": 23394,
+    "quiescence_cut": 24418,
+    "block_attempts_accepted_replies": [
+      1475,
+      1475,
+      1475
+    ],
+    "native_pio_outputs": 0,
+    "cold_baseline1MiB_exact": true,
+    "whole_disk_and_source_unchanged": true,
+    "pending_write_stage": false,
+    "large_native_Saved": false
+  },
+  "public_edition_note": "Historical component metadata. Referenced raw local runs are not distributed; no new public-edition execution acceptance is implied."
+}

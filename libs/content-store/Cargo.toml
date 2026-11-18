@@ -1,0 +1,16 @@
+[package]
+name = "ev-content-store"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-only"
+
+[dependencies]
+ev-store = { path = "../store" }
+sha2 = { version = "=0.10.9", default-features = false, features = ["force-soft"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"

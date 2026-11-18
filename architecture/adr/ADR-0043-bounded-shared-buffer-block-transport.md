@@ -77,7 +77,7 @@ unchanged buffers/queues/reservations, denied client port access, actual process
 isolation, real waits/replies, exact mapping-owner rejection paths and final
 frame/metadata restoration. Compile-fail checks guard the shared Running image
 against mutable mapping access. Executed results belong in
-[M3 progress](../../docs/release/0.1-preview.md#validation-and-provenance); this decision is not hardware PASS.
+M3 progress; this decision is not hardware PASS.
 
 PIO avoids guest-memory DMA; it does not undo accepted disk work. Driver failure
 after command issue remains indeterminate. This fixture cannot certify device

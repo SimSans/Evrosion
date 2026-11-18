@@ -15,6 +15,11 @@ use std::{
 };
 
 pub type Result<T> = std::result::Result<T, String>;
+#[path = "build_inputs.rs"]
+mod inputs;
+pub use inputs::SourceInputPolicy;
+#[path = "build_reproducible.rs"]
+pub(crate) mod reproducible;
 
 const BUILD_ENVIRONMENT: [(&str, &str); 3] =
     [("LC_ALL", "C"), ("TZ", "UTC"), ("SOURCE_DATE_EPOCH", "0")];
@@ -25,7 +30,7 @@ pub struct Artifact {
     pub sha256: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SourceInput {
     pub path: String,
     pub sha256: String,
@@ -39,6 +44,8 @@ pub struct Manifest {
     pub source_dirty: bool,
     pub source_sha256: String,
     pub source_inputs: Vec<SourceInput>,
+    #[serde(default)]
+    pub source_input_policy: SourceInputPolicy,
     pub toolchain: String,
     pub rustc: String,
     pub cargo: String,
@@ -57,6 +64,15 @@ pub struct Manifest {
     pub image_builder: Artifact,
     #[serde(default)]
     pub supervisor: Vec<Artifact>,
+}
+
+impl Manifest {
+    /// Validate the declared policy against its actual inventory before using
+    /// source identities. Missing historical policy means the original scope;
+    /// serde rejects unknown policy names rather than silently defaulting them.
+    pub fn validate_policy_rows(&self) -> Result<()> {
+        self.source_input_policy.validate_rows(&self.source_inputs)
+    }
 }
 
 pub fn hash_file(path: &Path) -> Result<String> {
@@ -80,18 +96,22 @@ pub fn write_json(path: &Path, value: &impl Serialize) -> Result<()> {
 }
 
 fn probe(root: &Path, program: &str, arguments: &[&str]) -> Result<String> {
+    probe_output(root, program, arguments).map(|value| value.trim().to_owned())
+}
+
+fn probe_output(root: &Path, program: &str, arguments: &[&str]) -> Result<String> {
     let captured = SystemRunner
         .run(&Invocation::new(program, arguments, root))
         .map_err(|error| error.to_string())?
         .checked()
         .map_err(|error| error.to_string())?;
-    String::from_utf8(captured.stdout)
-        .map(|value| value.trim().to_owned())
-        .map_err(|error| error.to_string())
+    String::from_utf8(captured.stdout).map_err(|error| error.to_string())
 }
 
 pub(crate) fn source_inputs(root: &Path) -> Result<(String, Vec<SourceInput>)> {
-    let paths = probe(
+    // NUL-delimited Git paths are data: trimming can silently lose a leading
+    // space in the first real source filename.
+    let paths = probe_output(
         root,
         "git",
         &[
@@ -111,6 +131,9 @@ pub(crate) fn source_inputs(root: &Path) -> Result<(String, Vec<SourceInput>)> {
     let mut inputs = Vec::new();
     let mut hash = Sha256::new();
     for path in paths {
+        if !SourceInputPolicy::CURRENT.includes(path) {
+            continue;
+        }
         let absolute = root.join(path);
         if !absolute.exists() {
             continue;
@@ -130,6 +153,7 @@ pub(crate) fn source_inputs(root: &Path) -> Result<(String, Vec<SourceInput>)> {
             sha256,
         });
     }
+    SourceInputPolicy::CURRENT.validate_rows(&inputs)?;
     Ok((format!("{:x}", hash.finalize()), inputs))
 }
 
@@ -145,6 +169,7 @@ pub fn unique_directory(parent: &Path, prefix: &str) -> Result<PathBuf> {
 }
 
 pub(crate) fn logged(command: &mut Command, log: &Path) -> Result<()> {
+    reproducible::configure(command)?;
     let file = File::create(log).map_err(|error| error.to_string())?;
     println!("Building; log: {}", log.display());
     let status = command
@@ -174,18 +199,24 @@ pub fn build(options: &BuildOptions) -> Result<()> {
             return Err(format!("unset {variable} for a recorded M0 build"));
         }
     }
+    if let Some((name, _)) = std::env::vars_os()
+        .find(|(name, value)| !value.is_empty() && reproducible::unrecorded_override(name))
+    {
+        return Err(format!(
+            "unset {} for a recorded build",
+            name.to_string_lossy()
+        ));
+    }
     let toolchain = Toolchain::load(&root)?;
     let (source_sha256, inputs) = source_inputs(&root)?;
     let cargo_lock_sha256 = hash_file(&root.join("Cargo.lock"))?;
     let loader_lock_sha256 = hash_file(&root.join("third_party/bootloader-uefi.Cargo.lock"))?;
     let profile = if options.release { "release" } else { "dev" };
-    let build_id = format!(
-        "{:x}",
-        Sha256::digest(format!(
-            "m0-v2\0{source_sha256}\0{}\0{profile}\0qemu-test-exit\0{}",
-            toolchain.channel,
-            options.fixture.as_deref().unwrap_or("normal")
-        ))
+    let build_id = SourceInputPolicy::CURRENT.build_id(
+        &source_sha256,
+        &toolchain.channel,
+        profile,
+        options.fixture.as_deref(),
     );
     let output = root.join("build/m0");
     let directory = unique_directory(&output.join("artifacts"), &build_id[..16])?;
@@ -234,6 +265,21 @@ pub fn build(options: &BuildOptions) -> Result<()> {
         Some("m5-native" | "m5-native-system" | "m5-native-recovery") => {
             "qemu-test-exit,test-m5-native"
         }
+        Some("m7-document") => "qemu-test-exit,test-m7-document-observe",
+        Some("m7-document-session") => "qemu-test-exit,test-m7-document",
+        Some("m7-document-network" | "m7-document-system" | "m7-document-recovery") => {
+            "qemu-test-exit,test-m6-network,test-m7-document-observe"
+        }
+        Some("m6-session") => "qemu-test-exit,test-m6-session",
+        Some(
+            "m6-network"
+            | "m6-network-system"
+            | "m6-network-recovery"
+            | "m6-network-owner"
+            | "m6-network-system-owner"
+            | "m6-network-recovery-owner",
+        ) => "qemu-test-exit,test-m6-network",
+        Some("m6-network-negative") => "qemu-test-exit,test-m6-network-negative",
         Some("m5-ipc-bench") => "qemu-test-exit,test-m5-ipc-bench",
         Some("m5-provider") => "qemu-test-exit,test-m5-provider",
         None => "qemu-test-exit",
@@ -252,8 +298,14 @@ pub fn build(options: &BuildOptions) -> Result<()> {
             &bundle,
         )?;
     }
-    if let Some(fixture @ ("m5-native" | "m5-native-system" | "m5-native-recovery")) =
-        options.fixture.as_deref()
+    if let Some(
+        fixture @ ("m5-native"
+        | "m5-native-system"
+        | "m5-native-recovery"
+        | "m6-session"
+        | "m7-document"
+        | "m7-document-session"),
+    ) = options.fixture.as_deref()
     {
         use ev_userspace_contract::root_v2::native::catalogue::BootMode;
         let mode = match fixture {
@@ -267,6 +319,40 @@ pub fn build(options: &BuildOptions) -> Result<()> {
             &toolchain,
             &source_sha256,
             mode,
+            matches!(
+                fixture,
+                "m6-session" | "m7-document" | "m7-document-session"
+            ),
+            matches!(fixture, "m7-document" | "m7-document-session"),
+            &mut supervisor,
+            &bundle,
+        )?;
+    }
+    if let Some(mode) = options.fixture.as_deref().and_then(|fixture| {
+        crate::network_mode::Mode::from_fixture(fixture)
+            .or_else(|| crate::network_mode::Mode::from_document_fixture(fixture))
+            .or_else(|| crate::network_mode::Mode::from_owner_fixture(fixture))
+            .or_else(|| {
+                (fixture == "m6-network-negative").then_some(crate::network_mode::Mode::Standalone)
+            })
+    }) {
+        crate::supervisor::network_graph::extend(
+            options.fixture.as_deref() == Some("m6-network-negative"),
+            options
+                .fixture
+                .as_deref()
+                .and_then(crate::network_mode::Mode::from_document_fixture)
+                .is_some(),
+            &root,
+            &directory,
+            &toolchain,
+            &source_sha256,
+            mode,
+            options
+                .fixture
+                .as_deref()
+                .and_then(crate::network_mode::Mode::from_owner_fixture)
+                .is_some(),
             &mut supervisor,
             &bundle,
         )?;
@@ -324,9 +410,9 @@ pub fn build(options: &BuildOptions) -> Result<()> {
         .join("evrosion-kernel");
     fs::copy(kernel_source, directory.join("kernel.elf")).map_err(|error| error.to_string())?;
     let mut builder = Command::new("rustup");
-    // Separate cache generation: upstream's nested cargo invocation does not declare
-    // target rustflags as a rerun input. v2 must never reuse a pre-policy EFI binary.
-    let builder_target = target.join("m0-image-v2");
+    // The nested upstream Cargo invocation does not declare target flags as a
+    // rerun input. A new policy must not reuse an older cached EFI binary.
+    let builder_target = target.join(reproducible::IMAGE_CACHE);
     builder
         .current_dir(&root)
         .args([
@@ -378,6 +464,11 @@ pub fn build(options: &BuildOptions) -> Result<()> {
             sha256: hash_file(&path)?,
         })
     };
+    let mut declared_environment: std::collections::BTreeMap<_, _> = BUILD_ENVIRONMENT
+        .into_iter()
+        .map(|(key, value)| (key.into(), value.into()))
+        .collect();
+    declared_environment.extend(reproducible::recorded_environment(&builder)?);
     let manifest = Manifest {
         schema: 1,
         build_id,
@@ -385,20 +476,14 @@ pub fn build(options: &BuildOptions) -> Result<()> {
         source_dirty,
         source_sha256,
         source_inputs: inputs,
+        source_input_policy: SourceInputPolicy::CURRENT,
         toolchain: toolchain.channel,
         rustc,
         cargo,
         cargo_lock_sha256,
         loader_lock_sha256,
         profile: profile.into(),
-        declared_environment: BUILD_ENVIRONMENT
-            .into_iter()
-            .chain([(
-                "CARGO_TARGET_X86_64_UNKNOWN_UEFI_RUSTFLAGS",
-                "-C link-arg=/debug:none",
-            )])
-            .map(|(key, value)| (key.into(), value.into()))
-            .collect(),
+        declared_environment,
         target: "x86_64-unknown-none".into(),
         qemu_test_exit: true,
         fixture: options.fixture.clone(),
@@ -409,6 +494,7 @@ pub fn build(options: &BuildOptions) -> Result<()> {
         image_builder: artifact("ev-image-builder")?,
         supervisor,
     };
+    manifest.validate_policy_rows()?;
     write_json(&directory.join("manifest.json"), &manifest)?;
     let temporary = directory.join("publish-manifest.json");
     write_json(&temporary, &manifest)?;

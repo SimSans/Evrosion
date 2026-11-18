@@ -499,6 +499,7 @@ pub(crate) fn load(root: &Path, source: &Path) -> Result<Prepared> {
     )?;
     let manifest: Manifest =
         serde_json::from_slice(&manifest_bytes).map_err(|error| error.to_string())?;
+    manifest.validate_policy_rows()?;
     if manifest.schema != 1
         || manifest.fixture.as_deref() != Some("m3-owner")
         || !manifest.qemu_test_exit

@@ -31,7 +31,24 @@ impl Profile {
 pub trait Wire {
     type Error;
     fn call(&mut self, bytes: [u8; 8], deadline: u64) -> Result<[u8; 8], Self::Error>;
+    /// Opt-in metadata for a transport that independently enforces a fresh,
+    /// finite operation deadline. This is not capability or timeout ownership.
+    fn supports_session(&self) -> bool {
+        false
+    }
+    /// Check the captured horizon before publishing a shared-window request.
+    fn session_deadline_valid(&self, _deadline: u64) -> bool {
+        false
+    }
+    /// Capture the child request cut before a shared window is published. The
+    /// default preserves the tight adapter's existing exact-deadline contract.
+    fn capture_session_deadline(&self, deadline: u64) -> Option<u64> {
+        self.session_deadline_valid(deadline).then_some(deadline)
+    }
 }
+#[cfg(all(test, feature = "test-store-client"))]
+#[path = "store_io/session_tests.rs"]
+mod session_tests;
 /// This uses the existing scalar endpoint, without importing Echo's wire codec
 /// or presenting Echo's generated trait as this interface's type contract.
 pub struct Endpoint(pub SyncEndpoint);
@@ -59,7 +76,8 @@ impl Wire for Endpoint {
 pub struct DesktopEndpoint {
     endpoint: SyncEndpoint,
     stop: u64,
-    last: u64,
+    last: core::cell::Cell<u64>,
+    aggregate_span: u64,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum DesktopTransportError {
@@ -76,8 +94,26 @@ impl DesktopEndpoint {
         Some(Self {
             endpoint: SyncEndpoint { endpoint },
             stop,
-            last: 0,
+            last: core::cell::Cell::new(0),
+            aggregate_span: 1024,
         })
+    }
+    /// The sustained profile still checks each absolute operation deadline
+    /// before its first IPC acceptance and never extends it during retries.
+    pub fn for_session(endpoint: u64) -> Option<Self> {
+        (endpoint != 0).then_some(Self {
+            endpoint: SyncEndpoint { endpoint },
+            stop: 0,
+            last: core::cell::Cell::new(0),
+            aggregate_span: 1024,
+        })
+    }
+    /// Explicit bounded multi-sector transaction profile. The aggregate cut is
+    /// never renewed; each independently issued child captures at most1024 ticks.
+    pub fn for_session_transactions(endpoint: u64) -> Option<Self> {
+        let mut endpoint = Self::for_session(endpoint)?;
+        endpoint.aggregate_span = 8192;
+        Some(endpoint)
     }
 }
 trait DesktopRuntime {
@@ -85,6 +121,30 @@ trait DesktopRuntime {
     fn call(&mut self, endpoint: u64, bytes: [u8; 8], deadline: u64)
     -> ev_userspace_runtime::Reply;
     fn yield_now(&mut self) -> ev_userspace_runtime::Reply;
+}
+fn capture_desktop_deadline(
+    runtime: &mut impl DesktopRuntime,
+    deadline: u64,
+    aggregate_span: u64,
+    last: &mut u64,
+) -> Option<u64> {
+    let clock = runtime.clock();
+    if clock.status != 0 || clock.capability != 0 || clock.value < *last {
+        return None;
+    }
+    *last = clock.value;
+    if !ev_userspace_runtime::execution::accepts_deadline(0, clock.value, deadline, aggregate_span)
+    {
+        return None;
+    }
+    Some(
+        deadline.min(
+            clock
+                .value
+                .checked_add(1024)
+                .filter(|cut| *cut != u64::MAX)?,
+        ),
+    )
 }
 struct ActualRuntime;
 impl DesktopRuntime for ActualRuntime {
@@ -116,7 +176,7 @@ fn desktop_exchange<R: DesktopRuntime>(
     stop: u64,
     last: &mut u64,
 ) -> Result<[u8; 8], DesktopTransportError> {
-    if deadline <= stop || deadline > stop + 1024 {
+    if stop != 0 && (deadline <= stop || deadline > stop + 1024) {
         return Err(DesktopTransportError::Deadline);
     }
     for _ in 0..4096 {
@@ -125,7 +185,7 @@ fn desktop_exchange<R: DesktopRuntime>(
             return Err(DesktopTransportError::Clock);
         }
         *last = clock.value;
-        if *last >= stop {
+        if !ev_userspace_runtime::execution::accepts_deadline(stop, *last, deadline, 1024) {
             return Err(DesktopTransportError::Deadline);
         }
         let reply = runtime.call(endpoint, bytes, deadline);
@@ -153,15 +213,31 @@ fn desktop_exchange<R: DesktopRuntime>(
 }
 impl Wire for DesktopEndpoint {
     type Error = DesktopTransportError;
+    fn supports_session(&self) -> bool {
+        self.stop == 0
+    }
+    fn session_deadline_valid(&self, deadline: u64) -> bool {
+        self.capture_session_deadline(deadline).is_some()
+    }
+    fn capture_session_deadline(&self, deadline: u64) -> Option<u64> {
+        let mut last = self.last.get();
+        let captured =
+            capture_desktop_deadline(&mut ActualRuntime, deadline, self.aggregate_span, &mut last);
+        self.last.set(last);
+        captured
+    }
     fn call(&mut self, bytes: [u8; 8], deadline: u64) -> Result<[u8; 8], Self::Error> {
-        desktop_exchange(
+        let mut last = self.last.get();
+        let result = desktop_exchange(
             &mut ActualRuntime,
             self.endpoint.endpoint,
             bytes,
             deadline,
             self.stop,
-            &mut self.last,
-        )
+            &mut last,
+        );
+        self.last.set(last);
+        result
     }
 }
 
@@ -253,7 +329,8 @@ impl<T: Wire, W: Window> StoreRegion<T, W, NoCut> {
     /// The stop value constrains requests; it does not authenticate the kernel's
     /// enforcement or create window authority. Only the fixed fixture is ready.
     pub fn new(transport: T, window: W, stop: u64) -> Option<Self> {
-        stop.checked_add(1024).filter(|_| stop != 0)?;
+        stop.checked_add(1024)
+            .filter(|_| stop != 0 || transport.supports_session())?;
         Some(Self {
             transport,
             window,
@@ -272,7 +349,8 @@ impl<T: Wire, W: Window> StoreRegion<T, W, NoCut> {
 }
 impl<T: Wire, W: Window, C: Mutations> StoreRegion<T, W, C> {
     pub fn with_observer(transport: T, window: W, stop: u64, observer: C) -> Option<Self> {
-        stop.checked_add(1024).filter(|_| stop != 0)?;
+        stop.checked_add(1024)
+            .filter(|_| stop != 0 || transport.supports_session())?;
         Some(Self {
             transport,
             window,
@@ -289,7 +367,7 @@ impl<T: Wire, W: Window, C: Mutations> StoreRegion<T, W, C> {
     pub fn into_parts(self) -> (T, W) {
         (self.transport, self.window)
     }
-    fn preflight(&self, lba: u64, deadline: u64) -> Result<u32, Error<T::Error>> {
+    fn preflight(&self, lba: u64, deadline: u64) -> Result<(u32, u64), Error<T::Error>> {
         self.preflight_profile(self.profile, lba, deadline)
     }
     fn preflight_profile(
@@ -297,14 +375,27 @@ impl<T: Wire, W: Window, C: Mutations> StoreRegion<T, W, C> {
         profile: Profile,
         lba: u64,
         deadline: u64,
-    ) -> Result<u32, Error<T::Error>> {
+    ) -> Result<(u32, u64), Error<T::Error>> {
         if self.poisoned {
             return Err(Error::NeedsRecovery);
         }
-        if deadline <= self.stop || deadline > self.stop + 1024 {
+        let child = if self.stop == 0 {
+            self.transport
+                .capture_session_deadline(deadline)
+                .ok_or(Error::Deadline)?
+        } else {
+            deadline
+        };
+        if (self.stop != 0 && (deadline <= self.stop || deadline > self.stop + 1024))
+            || deadline == 0
+            || deadline == u64::MAX
+            || child == 0
+            || child == u64::MAX
+            || child > deadline
+        {
             return Err(Error::Deadline);
         }
-        profile.sector(lba).ok_or(Error::Bounds)
+        Ok((profile.sector(lba).ok_or(Error::Bounds)?, child))
     }
     fn request(&mut self, request: Request, deadline: u64) -> Result<(), Error<T::Error>> {
         let bytes = self
@@ -338,8 +429,8 @@ impl<T: Wire, W: Window, C: Mutations> StoreRegion<T, W, C> {
         out: &mut Sector,
         deadline: u64,
     ) -> Result<(), Error<T::Error>> {
-        let sector = self.preflight_profile(profile, lba, deadline)?;
-        self.request(Request::Read { sector }, deadline)?;
+        let (sector, child) = self.preflight_profile(profile, lba, deadline)?;
+        self.request(Request::Read { sector }, child)?;
         self.window.load(out);
         Ok(())
     }
@@ -350,9 +441,9 @@ impl<T: Wire, W: Window, C: Mutations> StoreRegion<T, W, C> {
         bytes: &Sector,
         deadline: u64,
     ) -> Result<(), Error<T::Error>> {
-        let sector = self.preflight_profile(profile, lba, deadline)?;
+        let (sector, child) = self.preflight_profile(profile, lba, deadline)?;
         self.window.store(bytes);
-        self.request(Request::Write { sector }, deadline)
+        self.request(Request::Write { sector }, child)
     }
 }
 impl<T: Wire, W: Window, C: Mutations> SectorIo for StoreRegion<T, W, C> {
@@ -367,8 +458,8 @@ impl<T: Wire, W: Window, C: Mutations> SectorIo for StoreRegion<T, W, C> {
         self.write_profile(self.profile, lba, bytes, deadline)
     }
     fn flush(&mut self, deadline: u64) -> Result<(), Self::Error> {
-        self.preflight(0, deadline)?;
-        self.request(Request::Flush, deadline)
+        let (_, child) = self.preflight(0, deadline)?;
+        self.request(Request::Flush, child)
     }
 }
 
@@ -428,8 +519,8 @@ impl<T: Wire, W: Window> SectorIo for FileRegion<'_, T, W> {
     }
     fn flush(&mut self, deadline: u64) -> Result<(), Self::Error> {
         let mut owner = self.inner.try_borrow_mut().map_err(|_| Error::Busy)?;
-        owner.preflight_profile(Profile::Desktop(self.region), 0, deadline)?;
-        owner.request(Request::Flush, deadline)
+        let (_, child) = owner.preflight_profile(Profile::Desktop(self.region), 0, deadline)?;
+        owner.request(Request::Flush, child)
     }
 }
 
@@ -722,6 +813,52 @@ mod tests {
                 capability: 0,
             }
         }
+    }
+    #[test]
+    fn sustained_transport_bounds_each_operation_and_keeps_its_first_deadline() {
+        let request = Request::Read { sector: 0 }.encode();
+        let success = ev_userspace_runtime::Reply {
+            status: 0,
+            value: u64::from_le_bytes(Request::Read { sector: 0 }.success().encode()),
+            capability: 0,
+        };
+        let model = || BusyModel {
+            reply: success,
+            busy: 0,
+            calls: Vec::new(),
+            ticks: 5000,
+            stall: false,
+        };
+        // Ordinary finite constructors do not silently opt in to a session.
+        assert!(DesktopEndpoint::new(256, 0).is_none());
+        assert!(DesktopEndpoint::for_session(0).is_none());
+        for deadline in [0, 5000, 6025, u64::MAX] {
+            let mut runtime = model();
+            assert_eq!(
+                desktop_exchange(&mut runtime, 256, request, deadline, 0, &mut 0),
+                Err(DesktopTransportError::Deadline)
+            );
+            assert!(runtime.calls.is_empty());
+        }
+        let mut runtime = BusyModel {
+            busy: 10,
+            ..model()
+        };
+        assert_eq!(
+            desktop_exchange(&mut runtime, 256, request, 5003, 0, &mut 0),
+            Err(DesktopTransportError::Deadline)
+        );
+        assert_eq!(runtime.calls.len(), 3);
+        assert!(runtime.calls.iter().all(|call| call.2 == 5003));
+        let mut runtime = model();
+        assert!(desktop_exchange(&mut runtime, 256, request, 5512, 0, &mut 0).is_ok());
+        assert_eq!(runtime.calls.len(), 1);
+        let mut runtime = model();
+        assert_eq!(
+            desktop_exchange(&mut runtime, 256, request, 5512, 0, &mut 5001),
+            Err(DesktopTransportError::Clock)
+        );
+        assert!(runtime.calls.is_empty());
     }
     #[test]
     fn desktop_busy_retry_preserves_absolute_deadline_and_never_retries_accepted_failure() {

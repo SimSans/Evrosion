@@ -119,8 +119,13 @@ fn get_ref(b: &[u8], i: usize) -> Option<GenerationRef> {
         .then_some(g)
 }
 pub(super) fn root(value: &Root) -> Sector {
-    let mut b = header(ROOT_KIND, value.sequence, value.last_operation, 384);
-    let p = &mut b[64..448];
+    let length = if value.last_failure.is_some_and(|f| f.evidence.is_some()) {
+        416
+    } else {
+        384
+    };
+    let mut b = header(ROOT_KIND, value.sequence, value.last_operation, length);
+    let p = &mut b[64..64 + length];
     p[0] = value.active;
     p[1] = value.known_good;
     p[2] = value.staged;
@@ -145,6 +150,7 @@ pub(super) fn root(value: &Root) -> Sector {
             LastFailureReason::MissingProgress => 2,
             LastFailureReason::StorageFailure => 3,
             LastFailureReason::AttemptBudgetExhausted => 4,
+            LastFailureReason::CriticalComponentFault => 5,
         };
         p[274] = failure.attempts;
         p[275] = u8::from(failure.process_stamp.is_some());
@@ -156,12 +162,15 @@ pub(super) fn root(value: &Root) -> Sector {
         if let Some(stamp) = failure.process_stamp {
             p[344..376].copy_from_slice(&stamp);
         }
+        if let Some(e) = failure.evidence {
+            encode_evidence(e, &mut p[376..416]);
+        }
     }
     seal(b)
 }
 pub(super) fn decode_root(b: &Sector) -> Option<Root> {
     let (sequence, last_operation, p) = checked(b, ROOT_KIND)?;
-    if p.len() != 384
+    if !matches!(p.len(), 384 | 416)
         || sequence == 0
         || last_operation.checked_add(1) != Some(sequence)
         || p[7] > 1
@@ -289,9 +298,9 @@ pub(super) fn decode_root(b: &Sector) -> Option<Root> {
 }
 fn decode_failure(p: &[u8]) -> Option<Option<LastFailure>> {
     if p[272] == 0 {
-        return empty(&p[272..384]).then_some(None);
+        return (p.len() == 384 && empty(&p[272..384])).then_some(None);
     }
-    if p[272] != 1 || p[275] > 1 || !empty(&p[276..280]) || !empty(&p[376..384]) {
+    if p[272] != 1 || p[275] > 1 || !empty(&p[276..280]) {
         return None;
     }
     let reason = match p[273] {
@@ -299,7 +308,19 @@ fn decode_failure(p: &[u8]) -> Option<Option<LastFailure>> {
         2 => LastFailureReason::MissingProgress,
         3 => LastFailureReason::StorageFailure,
         4 => LastFailureReason::AttemptBudgetExhausted,
+        5 => LastFailureReason::CriticalComponentFault,
         _ => return None,
+    };
+    let evidence = if reason == LastFailureReason::CriticalComponentFault {
+        if p.len() != 416 {
+            return None;
+        }
+        Some(decode_evidence(&p[376..416])?)
+    } else {
+        if p.len() != 384 || !empty(&p[376..384]) {
+            return None;
+        }
+        None
     };
     let raw_stamp = hash_at(p, 344);
     let process_stamp = if p[275] == 1 {
@@ -318,6 +339,7 @@ fn decode_failure(p: &[u8]) -> Option<Option<LastFailure>> {
         boot_serial: get64(p, 288),
         attempts: p[274],
         reason,
+        evidence,
         supervisor_image: hash_at(p, 312),
         process_stamp,
         operation: OperationId::new(get64(p, 296))?,
@@ -341,7 +363,14 @@ fn encode_admission(report: AdmissionReport, out: &mut [u8]) {
     put16(out, 160, report.health_version);
 }
 pub(super) fn decode_admission(op: &Operation) -> Option<AdmissionReport> {
-    if !matches!(op.kind, 4 | 5) || usize::from(op.len) != if op.kind == 4 { 162 } else { 198 } {
+    if !matches!(op.kind, 4 | 5 | 8)
+        || usize::from(op.len)
+            != match op.kind {
+                4 => 162,
+                8 => 202,
+                _ => 198,
+            }
+    {
         return None;
     }
     Some(AdmissionReport {
@@ -354,6 +383,27 @@ pub(super) fn decode_admission(op: &Operation) -> Option<AdmissionReport> {
         health_contract: hash_at(&op.body, 128),
         health_version: get16(&op.body, 160),
     })
+}
+fn encode_evidence(e: FailureEvidence, b: &mut [u8]) {
+    b[..4].copy_from_slice(&e.object_start.to_le_bytes());
+    b[4..8].copy_from_slice(&e.bytes.to_le_bytes());
+    b[8..40].copy_from_slice(&e.sha256);
+}
+fn decode_evidence(b: &[u8]) -> Option<FailureEvidence> {
+    if b.len() != 40 {
+        return None;
+    }
+    let e = FailureEvidence {
+        object_start: u32::from_le_bytes(b[..4].try_into().ok()?),
+        bytes: u32::from_le_bytes(b[4..8].try_into().ok()?),
+        sha256: b[8..40].try_into().ok()?,
+    };
+    e.valid().then_some(e)
+}
+pub(super) fn critical_evidence(op: &Operation) -> Option<FailureEvidence> {
+    (op.kind == 8 && op.health == 5 && op.len == 202)
+        .then(|| decode_evidence(&op.body[162..202]))
+        .flatten()
 }
 pub(super) fn health_details(op: &Operation) -> Option<(u32, Digest)> {
     if op.kind != 5 || op.len != 198 {
@@ -408,6 +458,18 @@ pub(super) fn operation<E>(request: Request<'_>) -> Result<Operation, Error<E>> 
             op.boot_serial = report.boot_serial;
             op.len = 162;
             encode_admission(report, &mut op.body);
+        }
+        Request::CriticalFault(report) => {
+            if !report.evidence.valid() {
+                return Err(Error::InvalidRequest);
+            }
+            op.kind = 8;
+            op.health = 5;
+            op.generation = report.admitted.generation.get();
+            op.boot_serial = report.admitted.boot_serial;
+            op.len = 202;
+            encode_admission(report.admitted, &mut op.body);
+            encode_evidence(report.evidence, &mut op.body[162..202]);
         }
         Request::Health(report) => {
             op.kind = 5;
@@ -498,6 +560,14 @@ pub(super) fn decode_operation(b: &Sector) -> Option<(u64, u64, Operation)> {
             if decode_admission(&op)?.process_stamp == ZERO
                 || op.boot_serial == 0
                 || !(1..=4).contains(&op.health)
+            {
+                return None;
+            }
+        }
+        8 => {
+            if decode_admission(&op)?.process_stamp == ZERO
+                || op.boot_serial == 0
+                || critical_evidence(&op).is_none()
             {
                 return None;
             }
